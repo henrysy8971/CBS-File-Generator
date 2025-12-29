@@ -1,0 +1,44 @@
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+*.iml
+
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+
+# Build
+*.class
+*.jar
+*.war
+*.ear
+
+# Logs
+logs/
+*.log
+
+# Generated files
+generated-files/
+archived-files/
+temp-files/
+
+# Environment
+.env
+*.properties.local
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Runtime data
+*.db
+*.sqlite
