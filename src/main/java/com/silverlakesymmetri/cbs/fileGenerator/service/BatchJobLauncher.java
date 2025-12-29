@@ -100,16 +100,14 @@ public class BatchJobLauncher {
 			// Select appropriate job (specialized or dynamic)
 			Job jobToRun = selectJobByInterfaceType(interfaceType);
 
+			logger.info("Starting Batch Job for JobId: {}", jobId);
+			fileGenerationService.markProcessing(jobId); // Update status to IN_PROGRESS before launch
+
 			// Launch the job
 			jobLauncher.run(jobToRun, jobParameters);
-
-			logger.info("File generation job launched successfully - jobId: {}, interfaceType: {}",
-					jobId, interfaceType);
 		} catch (Exception e) {
-			logger.error("Error launching file generation job - jobId: {}, interfaceType: {}",
-					jobId, interfaceType, e);
-			fileGenerationService.markFailed(jobId,
-					"Error launching job: " + e.getMessage());
+			logger.error("Critical failure launching Batch Job {}", jobId, e);
+			fileGenerationService.markFailed(jobId, "Launch Failure: " + e.getMessage());
 		}
 
 		return CompletableFuture.completedFuture(null);

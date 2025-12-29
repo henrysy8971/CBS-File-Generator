@@ -15,7 +15,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class AppConfigService {
-
 	private static final Logger logger = LoggerFactory.getLogger(AppConfigService.class);
 
 	private final AppConfigRepository repository;
@@ -92,19 +91,21 @@ public class AppConfigService {
 	@Transactional
 	@Scheduled(fixedDelayString = "${app.config.cache.refresh-interval-ms:300000}") // default 5 min
 	public void refreshCache() {
-		List<AppConfig> updated = repository.findByActiveTrueAndUpdatedDateAfter(lastRefresh);
+		LocalDateTime startTime = LocalDateTime.now(); // Capture start time
 
-		// Update/add entries
-		updated.forEach(cfg -> cache.put(cfg.getConfigKey(), cfg.getConfigValue()));
+		// Get all changes (both newly active and newly inactive)
+		List<AppConfig> changes = repository.findByActiveTrueAndUpdatedDateAfter(lastRefresh);
 
-		// Remove any keys that are no longer active
-		Set<String> updatedKeys = new HashSet<>();
-		updated.forEach(cfg -> updatedKeys.add(cfg.getConfigKey()));
-		cache.keySet().removeIf(key -> !updatedKeys.contains(key) &&
-				repository.findByConfigKey(key).map(cfg -> !cfg.isActive()).orElse(false));
+		for (AppConfig cfg : changes) {
+			if (cfg.isActive()) {
+				cache.put(cfg.getConfigKey(), cfg.getConfigValue());
+			} else {
+				cache.remove(cfg.getConfigKey());
+			}
+		}
 
-		lastRefresh = LocalDateTime.now();
-		logger.info("AppConfig partial cache refresh completed: {} updated configs", updated.size());
+		lastRefresh = startTime;
+		logger.info("AppConfig partial cache refresh completed: {} updated configs", changes.size());
 	}
 
 	/**
