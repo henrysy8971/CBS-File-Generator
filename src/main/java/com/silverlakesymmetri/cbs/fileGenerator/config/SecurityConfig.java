@@ -16,8 +16,10 @@ public class SecurityConfig extends WebMvcConfigurerAdapter {
 
 	@Bean
 	public FilterRegistrationBean securityFilter() {
-		FilterRegistrationBean registration = new FilterRegistrationBean(tokenAuthenticationFilter);
+		FilterRegistrationBean registration = new FilterRegistrationBean();
+		registration.setFilter(tokenAuthenticationFilter);
 		registration.addUrlPatterns("/api/*");
+		// Order 1 ensures it runs early in the filter chain
 		registration.setOrder(1);
 		return registration;
 	}

@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.util.AntPathMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import javax.servlet.FilterChain;
@@ -27,42 +28,48 @@ public class TokenAuthenticationFilter extends OncePerRequestFilter {
 	@Value("${auth.token.enable-validation:true}")
 	private boolean enableValidation;
 
+	private final AntPathMatcher pathMatcher = new AntPathMatcher();
+
 	@Override
 	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
 									FilterChain filterChain) throws ServletException, IOException {
 
-		// Skip validation for health check endpoints
+		// 1. Resolve path (Handle potential nulls or context paths)
 		String requestPath = request.getRequestURI();
-		if (shouldSkipTokenValidation(requestPath)) {
+		if (request.getContextPath() != null) {
+			requestPath = requestPath.substring(request.getContextPath().length());
+		}
+
+		// 2. Combined Early Exit (The "Bypass" logic)
+		if (!enableValidation || shouldSkipTokenValidation(requestPath)) {
 			filterChain.doFilter(request, response);
 			return;
 		}
 
-		if (!enableValidation) {
-			filterChain.doFilter(request, response);
-			return;
-		}
-
+		// 3. Extract Token
 		String token = request.getHeader(tokenHeaderName);
 
+		// 4. Validate Presence
 		if (token == null || token.isEmpty()) {
-			logger.warn("Missing authentication token for request: {}", requestPath);
+			logger.warn("Security Alert: Missing token for protected path: {}", requestPath);
 			response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Missing authentication token");
 			return;
 		}
 
+		// 5. Validate Authenticity/Expiry
 		if (!tokenValidator.validateToken(token)) {
-			logger.warn("Invalid or expired token for request: {}", requestPath);
+			logger.warn("Security Alert: Invalid/Expired token attempt for path: {}", requestPath);
 			response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Invalid or expired token");
 			return;
 		}
 
+		// 6. Success - Proceed to Controller
 		filterChain.doFilter(request, response);
 	}
 
 	private boolean shouldSkipTokenValidation(String requestPath) {
-		return requestPath.contains("/health") ||
-				requestPath.contains("/info") ||
-				requestPath.contains("/actuator");
+		return pathMatcher.match("/actuator/**", requestPath) ||
+				pathMatcher.match("/health/**", requestPath) ||
+				pathMatcher.match("/info", requestPath);
 	}
 }

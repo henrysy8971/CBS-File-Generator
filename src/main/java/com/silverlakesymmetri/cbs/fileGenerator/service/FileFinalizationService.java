@@ -10,7 +10,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
+import java.util.Set;
 
 @Service
 public class FileFinalizationService {
@@ -26,37 +29,42 @@ public class FileFinalizationService {
 	 */
 	public boolean finalizeFile(String partFilePath) {
 		Path partPath = Paths.get(partFilePath);
-
 		if (!Files.exists(partPath)) {
-			logger.warn("Part file not found for finalization: {}", partFilePath);
+			logger.error("Finalization failed: Part file missing at {}", partFilePath);
 			return false;
 		}
 
-		try {
-			// Final file path
-			Path finalPath = Paths.get(partFilePath.replaceAll("\\.part$", ""));
+		// Safer path manipulation
+		String partPathStr = partPath.toString();
+		if (!partPathStr.endsWith(".part")) {
+			logger.error("Finalization failed: File {} does not have .part extension", partPathStr);
+			return false;
+		}
+		Path finalPath = Paths.get(partPathStr.substring(0, partPathStr.length() - 5));
 
-			// Atomic move if possible
+		try {
+			// Step 1: Atomic Move
 			try {
 				Files.move(partPath, finalPath, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
 			} catch (Exception e) {
-				logger.warn("Atomic move not supported, using regular move: {}", e.getMessage());
+				logger.warn("Atomic move failed, falling back to REPLACE_EXISTING for {}", finalPath);
 				Files.move(partPath, finalPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 			}
-			logger.info("File finalized: {} -> {}", partFilePath, finalPath);
 
-			// Generate SHA256 checksum
-			String shaFile = generateShaFile(finalPath);
-			if (shaFile == null) {
-				logger.error("SHA file generation failed for: {}", finalPath);
+			applyPosixPermissions(finalPath, "rw-r--r--");
+
+			// Step 2: Generate SHA (Failure here shouldn't necessarily undo Step 1)
+			try {
+				generateShaFile(finalPath);
+			} catch (Exception e) {
+				logger.error("CRITICAL: File renamed but SHA generation failed for {}", finalPath, e);
+				// In many banks, a missing SHA is a 'Failed' file.
 				return false;
 			}
 
-			logger.info("SHA file generated successfully: {}", shaFile);
 			return true;
-
 		} catch (Exception e) {
-			logger.error("Error finalizing file: {}", partFilePath, e);
+			logger.error("Fatal error during finalization of {}", partFilePath, e);
 			return false;
 		}
 	}
@@ -86,6 +94,7 @@ public class FileFinalizationService {
 				Files.move(shaPartPath, finalShaPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 			}
 
+			applyPosixPermissions(finalShaPath, "rw-r--r--");
 			return finalShaPath.toString();
 
 		} catch (Exception e) {
@@ -168,6 +177,21 @@ public class FileFinalizationService {
 		} catch (Exception e) {
 			logger.error("Error verifying SHA file for: {}", filePathStr, e);
 			return false;
+		}
+	}
+
+	/**
+	 * Helper to apply permissions only if the OS supports them.
+	 */
+	private void applyPosixPermissions(Path path, String permsStr) {
+		try {
+			if (path.getFileSystem().supportedFileAttributeViews().contains("posix")) {
+				Set<PosixFilePermission> perms = PosixFilePermissions.fromString(permsStr);
+				Files.setPosixFilePermissions(path, perms);
+				logger.debug("Applied POSIX permissions {} to {}", permsStr, path);
+			}
+		} catch (Exception e) {
+			logger.warn("Failed to set POSIX permissions for {}: {}", path, e.getMessage());
 		}
 	}
 }

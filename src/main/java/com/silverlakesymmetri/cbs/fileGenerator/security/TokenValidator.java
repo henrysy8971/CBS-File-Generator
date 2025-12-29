@@ -40,11 +40,13 @@ public class TokenValidator {
 			return false;
 		}
 
-		// Update last used date
-		dbToken.setLastUsedDate(new Timestamp(System.currentTimeMillis()));
-		dbTokenRepository.save(dbToken);
+		// Optimization: Only update DB if last used > 1 minute ago to reduce DB load
+		long oneMinuteAgo = System.currentTimeMillis() - 60000;
+		if (dbToken.getLastUsedDate() == null || dbToken.getLastUsedDate().getTime() < oneMinuteAgo) {
+			dbToken.setLastUsedDate(new Timestamp(System.currentTimeMillis()));
+			dbTokenRepository.save(dbToken);
+		}
 
-		logger.debug("Token validation successful - {}", dbToken.getApplicationName());
 		return true;
 	}
 
