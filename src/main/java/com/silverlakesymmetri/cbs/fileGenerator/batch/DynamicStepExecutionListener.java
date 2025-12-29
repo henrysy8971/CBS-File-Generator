@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.batch.core.ExitStatus;
 import org.springframework.batch.core.StepExecution;
 import org.springframework.batch.core.listener.StepExecutionListenerSupport;
+import org.springframework.batch.item.ExecutionContext;
 
 /**
  * Step listener responsible for:
@@ -34,50 +35,43 @@ public class DynamicStepExecutionListener extends StepExecutionListenerSupport {
 
 	@Override
 	public ExitStatus afterStep(StepExecution stepExecution) {
-		try {
-			// Capture .part file metadata
-			if (dynamicItemWriter != null) {
-				String partFilePath = dynamicItemWriter.getPartFilePath();
-				if (partFilePath != null && partFilePath.endsWith(".part")) {
-					stepExecution.getJobExecution()
-							.getExecutionContext()
-							.putString("partFilePath", partFilePath);
+		String jobId = stepExecution.getJobParameters().getString("jobId");
+		ExecutionContext stepContext = stepExecution.getExecutionContext();
 
-					logger.info("Captured .part file for finalization: {}", partFilePath);
+		// Determine Step Success
+		// A step is successful if its status is COMPLETED and no exceptions occurred.
+		boolean isSuccess = !stepExecution.getStatus().isUnsuccessful()
+				&& stepExecution.getFailureExceptions().isEmpty();
+
+		try {
+			// Notify Writer of success status
+			// This allows the writer to decide whether to write XML footers and finalize the file.
+			if (dynamicItemWriter != null) {
+				dynamicItemWriter.setStepSuccessful(isSuccess);
+
+				// Hand off the .part file path to the Job Execution Context for SHA-256 calculation
+				String partPath = dynamicItemWriter.getPartFilePath();
+				if (partPath != null) {
+					stepExecution.getJobExecution().getExecutionContext().putString("partFilePath", partPath);
 				}
 			}
 
-			// Persist record metrics to FileGenerationService
-			String jobId = stepExecution.getJobParameters().getString("jobId");
-			if (jobId != null && dynamicItemWriter != null) {
+			// Extract metrics (Keys must match DynamicItemProcessor constants)
+			long processed = stepContext.getLong("processedCount", 0L);
+			long skipped = stepContext.getLong("skippedCount", 0L);
+			long invalid = stepContext.getLong("invalidCount", 0L);
 
-				long processed = 0L;
-				long skipped = 0L;
-				long invalid = 0L;
-
-				// If DynamicItemProcessor is step-scoped, retrieve counts from ExecutionContext
-				Object processorObj = stepExecution.getExecutionContext().get("itemProcessor");
-				if (processorObj instanceof com.silverlakesymmetri.cbs.fileGenerator.batch.DynamicItemProcessor) {
-					com.silverlakesymmetri.cbs.fileGenerator.batch.DynamicItemProcessor processor =
-							(com.silverlakesymmetri.cbs.fileGenerator.batch.DynamicItemProcessor) processorObj;
-
-					processed = processor.getProcessedCount();
-					skipped = processor.getSkippedCount();
-					invalid = processor.getInvalidCount();
-				}
-
+			if (jobId != null) {
 				fileGenerationService.updateFileMetrics(jobId, processed, skipped, invalid);
 				logger.info("Step metrics persisted: jobId={}, processed={}, skipped={}, invalid={}",
 						jobId, processed, skipped, invalid);
 			}
 
 		} catch (Exception e) {
-			logger.error("Failed to persist step metrics or .part file metadata for step {}",
-					stepExecution.getStepName(), e);
+			// We catch so the job doesn't fail purely because of a logging/metrics blip
+			logger.error("Non-critical error syncing metrics for step {}", stepExecution.getStepName(), e);
 		}
 
-		return stepExecution.getExitStatus() != null
-				? stepExecution.getExitStatus()
-				: ExitStatus.COMPLETED;
+		return stepExecution.getExitStatus();
 	}
 }

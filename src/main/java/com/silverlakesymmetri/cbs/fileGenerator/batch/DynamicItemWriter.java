@@ -3,11 +3,12 @@ package com.silverlakesymmetri.cbs.fileGenerator.batch;
 import com.silverlakesymmetri.cbs.fileGenerator.dto.DynamicRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.batch.core.StepExecution;
-import org.springframework.batch.core.annotation.BeforeStep;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.item.ExecutionContext;
+import org.springframework.batch.item.ItemStreamException;
+import org.springframework.batch.item.ItemStreamWriter;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -21,10 +22,8 @@ import java.util.List;
  */
 @Component
 @StepScope
-public class DynamicItemWriter implements OutputFormatWriter {
-
+public class DynamicItemWriter implements OutputFormatWriter, ItemStreamWriter<DynamicRecord> {
 	private static final Logger logger = LoggerFactory.getLogger(DynamicItemWriter.class);
-
 	private static final String CONTEXT_KEY_PART_FILE = "dynamic.writer.partFilePath";
 	private static final String CONTEXT_KEY_RECORD_COUNT = "dynamic.writer.recordCount";
 
@@ -35,101 +34,105 @@ public class DynamicItemWriter implements OutputFormatWriter {
 	private String interfaceType;
 	private String outputFilePath;
 
-	private ExecutionContext stepContext;
-
 	/**
-	 * Step-scoped initialization.
-	 * Determines which writer to use and initializes it.
-	 */
-	@BeforeStep
-	public void beforeStep(StepExecution stepExecution) {
-		this.interfaceType = stepExecution.getJobParameters().getString("interfaceType");
-		this.outputFilePath = stepExecution.getJobParameters().getString("outputFilePath");
-		this.stepContext = stepExecution.getExecutionContext();
-
-		if (interfaceType == null || interfaceType.trim().isEmpty()) {
-			throw new IllegalArgumentException("Job parameter 'interfaceType' is required");
-		}
-		if (outputFilePath == null || outputFilePath.trim().isEmpty()) {
-			throw new IllegalArgumentException("Job parameter 'outputFilePath' is required");
-		}
-
-		try {
-			// Select delegate writer based on interface configuration
-			this.delegateWriter = writerFactory.selectWriter(interfaceType);
-
-			// Check if restarting: restore part file path and record count
-			String existingPartFile = stepContext.getString(CONTEXT_KEY_PART_FILE, null);
-			long existingCount = stepContext.getLong(CONTEXT_KEY_RECORD_COUNT, 0);
-
-			if (existingPartFile != null) {
-				// Resume existing .part file
-				delegateWriter.init(existingPartFile, interfaceType);
-				logger.info("Resuming writer from existing part file: {}, current record count={}",
-						existingPartFile, existingCount);
-			} else {
-				// Start new .part file
-				delegateWriter.init(outputFilePath, interfaceType);
-				logger.info("Initialized new writer for interface={}, outputFile={}",
-						interfaceType, outputFilePath);
-			}
-
-		} catch (Exception e) {
-			logger.error("Error initializing DynamicItemWriter for interface {}", interfaceType, e);
-			throw new RuntimeException("Failed to initialize DynamicItemWriter", e);
-		}
-	}
-
-	/**
-	 * Write items to the delegate writer.
-	 * Updates record count in ExecutionContext for restart-safety.
+	 * Replaces @BeforeStep logic.
+	 * Spring Batch calls this automatically at the start of the Step.
 	 */
 	@Override
-	public void write(List<? extends DynamicRecord> items) throws Exception {
+	public void open(ExecutionContext executionContext) throws ItemStreamException {
+		// Note: interfaceType and outputFilePath are still injected via JobParameters
+		// (usually handled via @Value("#{jobParameters['...']}") in StepScope beans)
+
 		if (delegateWriter == null) {
-			throw new IllegalStateException("Writer not initialized. Did @BeforeStep execute?");
+			try {
+				this.delegateWriter = writerFactory.selectWriter(interfaceType);
+
+				// RESTORE STATE: ExecutionContext is the source of truth for restarts
+				String existingPartFile = executionContext.getString(CONTEXT_KEY_PART_FILE, null);
+				long existingCount = executionContext.getLong(CONTEXT_KEY_RECORD_COUNT, 0);
+
+				if (delegateWriter instanceof GenericXMLWriter) {
+					((GenericXMLWriter) delegateWriter).setInitialRecordCount(existingCount);
+				}
+
+				if (existingPartFile != null) {
+					delegateWriter.init(existingPartFile, interfaceType);
+					logger.info("Restart detected. Resuming [{}] from: {}", interfaceType, existingPartFile);
+				} else {
+					delegateWriter.init(outputFilePath, interfaceType);
+					logger.info("New execution. Initializing [{}] at: {}", interfaceType, outputFilePath);
+				}
+			} catch (Exception e) {
+				throw new ItemStreamException("Failed to initialize delegate writer during open()", e);
+			}
 		}
-		if (items == null || items.isEmpty()) return;
+	}
 
-		delegateWriter.write(items);
-
-		// Update restart state
-		stepContext.putString(CONTEXT_KEY_PART_FILE, delegateWriter.getPartFilePath());
-		stepContext.putLong(CONTEXT_KEY_RECORD_COUNT, delegateWriter.getRecordCount());
+	@Override
+	public void update(ExecutionContext executionContext) {
+		// Periodically called by Spring Batch to save the current progress
+		if (delegateWriter != null) {
+			executionContext.putString(CONTEXT_KEY_PART_FILE, delegateWriter.getPartFilePath());
+			executionContext.putLong(CONTEXT_KEY_RECORD_COUNT, delegateWriter.getRecordCount());
+		}
 	}
 
 	/**
-	 * Close the delegate writer and ensure resources are released.
+	 * Satisfies the OutputFormatWriter interface.
+	 * In this proxy class, actual initialization is handled in open().
 	 */
 	@Override
-	public void close() throws Exception {
+	public void init(String outputFilePath, String interfaceType) throws Exception {
+		// No-op: The framework calls open() which handles the delegate setup.
+		// We keep this to satisfy the interface contract.
+	}
+
+	@Override
+	public void close() {
 		if (delegateWriter != null) {
 			try {
 				delegateWriter.close();
-				logger.info("DynamicItemWriter closed successfully - interface={}, totalRecords={}",
-						interfaceType, delegateWriter.getRecordCount());
 			} catch (Exception e) {
-				logger.error("Error closing DynamicItemWriter delegate for interface {}", interfaceType, e);
-				throw e;
+				throw new ItemStreamException("Error closing delegate writer", e);
 			}
 		}
-	}
-
-	/**
-	 * No-op: handled in beforeStep
-	 */
-	@Override
-	public void init(String outputFilePath, String interfaceType) {
-		// No-op: initialization handled in @BeforeStep
 	}
 
 	@Override
 	public long getRecordCount() {
+		// Must delegate to get the actual count for the StepListener
 		return delegateWriter != null ? delegateWriter.getRecordCount() : 0;
 	}
 
 	@Override
 	public String getPartFilePath() {
+		// Must delegate so the JobListener knows which file to rename/checksum
 		return delegateWriter != null ? delegateWriter.getPartFilePath() : null;
+	}
+
+	// Standard write method remains the same...
+	@Override
+	public void write(List<? extends DynamicRecord> items) throws Exception {
+		if (delegateWriter == null) {
+			throw new IllegalStateException("Delegate writer not initialized. open() may have failed.");
+		}
+		delegateWriter.write(items);
+	}
+
+	// Setters for JobParameters (Injected by Spring Batch via @Value)
+	@Value("#{jobParameters['interfaceType']}")
+	public void setInterfaceType(String interfaceType) {
+		this.interfaceType = interfaceType;
+	}
+
+	@Value("#{jobParameters['outputFilePath']}")
+	public void setOutputFilePath(String outputFilePath) {
+		this.outputFilePath = outputFilePath;
+	}
+
+	public void setStepSuccessful(boolean success) {
+		if (delegateWriter instanceof GenericXMLWriter) {
+			((GenericXMLWriter) delegateWriter).setStepSuccessful(success);
+		}
 	}
 }

@@ -9,7 +9,6 @@ import org.springframework.stereotype.Component;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.util.List;
 import java.util.Locale;
 
@@ -21,145 +20,168 @@ import java.util.Locale;
 @StepScope
 public class GenericXMLWriter implements OutputFormatWriter {
 
-    private static final Logger logger = LoggerFactory.getLogger(GenericXMLWriter.class);
+	private static final Logger logger = LoggerFactory.getLogger(GenericXMLWriter.class);
 
-    private final FileFinalizationService fileFinalizationService;
+	private final FileFinalizationService fileFinalizationService;
 
-    private BufferedWriter fileWriter;
-    private String partFilePath;
-    private String finalFilePath;
-    private long recordCount = 0;
-    private String interfaceType;
-    private boolean headerWritten = false;
+	private BufferedWriter fileWriter;
+	private String partFilePath;
+	private String finalFilePath;
+	private long recordCount = 0;
+	private String interfaceType;
+	private boolean headerWritten = false;
+	private boolean stepSuccessful = false;
 
-    public GenericXMLWriter(FileFinalizationService fileFinalizationService) {
-        this.fileFinalizationService = fileFinalizationService;
-    }
+	public GenericXMLWriter(FileFinalizationService fileFinalizationService) {
+		this.fileFinalizationService = fileFinalizationService;
+	}
 
-    @Override
-    public void init(String outputFilePath, String interfaceType) throws IOException {
-        this.interfaceType = interfaceType;
-        this.finalFilePath = outputFilePath;
-        this.partFilePath = outputFilePath + ".part";
+	@Override
+	public void init(String outputFilePath, String interfaceType) throws IOException {
+		this.interfaceType = interfaceType;
+		this.partFilePath = outputFilePath.endsWith(".part") ? outputFilePath : outputFilePath + ".part";
 
-        File outputFile = new File(partFilePath);
-        if (!outputFile.getParentFile().exists()) {
-            outputFile.getParentFile().mkdirs();
-        }
+		File outputFile = new File(partFilePath);
 
-        this.fileWriter = new BufferedWriter(
-                new OutputStreamWriter(Files.newOutputStream(outputFile.toPath()), StandardCharsets.UTF_8)
-        );
+		// RESTART LOGIC: Check if file exists and has data
+		boolean isRestart = outputFile.exists() && outputFile.length() > 0;
 
-        logger.info("GenericXMLWriter initialized - temp file: {}, interfaceType: {}", partFilePath, interfaceType);
-    }
+		if (outputFile.getParentFile() != null) outputFile.getParentFile().mkdirs();
 
-    @Override
-    public void write(List<? extends DynamicRecord> items) throws Exception {
-        if (items == null || items.isEmpty()) {
-            return;
-        }
+		// Use append=true for restarts
+		this.fileWriter = new BufferedWriter(new OutputStreamWriter(
+				new FileOutputStream(outputFile, isRestart), StandardCharsets.UTF_8));
 
-        for (DynamicRecord record : items) {
-            if (!headerWritten) {
-                writeXmlHeader();
-                headerWritten = true;
-            }
-            writeRecord(record);
-            recordCount++;
+		if (isRestart) {
+			this.headerWritten = true; // Don't write header again
+			logger.info("GenericXMLWriter resuming existing .part file: {}", partFilePath);
+		} else {
+			logger.info("GenericXMLWriter created new .part file: {}", partFilePath);
+		}
+	}
 
-            // Flush periodically
-            if (recordCount % 1000 == 0) {
-                fileWriter.flush();
-            }
-        }
+	@Override
+	public void write(List<? extends DynamicRecord> items) throws Exception {
+		if (items == null || items.isEmpty()) {
+			return;
+		}
 
-        logger.debug("Wrote {} records to temp file {}", items.size(), partFilePath);
-    }
+		for (DynamicRecord record : items) {
+			if (!headerWritten) {
+				writeXmlHeader();
+				headerWritten = true;
+			}
+			writeRecord(record);
+			recordCount++;
 
-    private void writeXmlHeader() throws IOException {
-        String rootElement = resolveRootElement();
-        fileWriter.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-        fileWriter.write(String.format("<%s xmlns=\"http://www.example.com/%s\">\n", rootElement, rootElement));
-        fileWriter.write("  <records>\n");
-    }
+			fileWriter.flush();
+		}
 
-    private void writeRecord(DynamicRecord record) throws IOException {
-        String rootElement = resolveRootElement();
-        String itemElement = rootElement + "Item";
-        fileWriter.write("    <" + itemElement + ">\n");
+		logger.debug("Wrote {} records to temp file {}", items.size(), partFilePath);
+	}
 
-        for (String columnName : record.getColumnNames()) {
-            Object value = record.getValue(columnName);
-            if (value != null) {
-                String xmlElement = sanitizeElementName(columnName);
-                String xmlValue = escapeXml(value.toString());
-                fileWriter.write(String.format("      <%s>%s</%s>\n", xmlElement, xmlValue, xmlElement));
-            }
-        }
+	private void writeXmlHeader() throws IOException {
+		String rootElement = resolveRootElement();
+		fileWriter.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+		fileWriter.write(String.format("<%s xmlns=\"http://www.example.com/%s\">\n", rootElement, rootElement));
+		fileWriter.write("  <records>\n");
+	}
 
-        fileWriter.write("    </" + itemElement + ">\n");
-    }
+	private void writeRecord(DynamicRecord record) throws IOException {
+		String rootElement = resolveRootElement();
+		String itemElement = rootElement + "Item";
+		fileWriter.write("    <" + itemElement + ">\n");
 
-    private String sanitizeElementName(String name) {
-        String sanitized = name.toLowerCase(Locale.ROOT)
-                .replaceAll("[^a-z0-9_]", "_")
-                .replaceAll("_+", "_");
-        if (!sanitized.matches("^[a-z_].*")) {
-            sanitized = "_" + sanitized;
-        }
-        return sanitized;
-    }
+		for (String columnName : record.getColumnNames()) {
+			Object value = record.getValue(columnName);
+			if (value != null) {
+				String xmlElement = sanitizeElementName(columnName);
+				String xmlValue = escapeXml(value.toString());
+				fileWriter.write(String.format("      <%s>%s</%s>\n", xmlElement, xmlValue, xmlElement));
+			}
+		}
 
-    private String escapeXml(String text) {
-        if (text == null) return "";
-        return text.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;")
-                .replace("'", "&apos;");
-    }
+		fileWriter.write("    </" + itemElement + ">\n");
+	}
 
-    private String resolveRootElement() {
-        if (interfaceType == null) return "data";
-        return interfaceType.toLowerCase(Locale.ROOT).replaceFirst("_interface$", "");
-    }
+	private String sanitizeElementName(String name) {
+		String sanitized = name.toLowerCase(Locale.ROOT)
+				.replaceAll("[^a-z0-9_]", "_")
+				.replaceAll("_+", "_");
+		if (!sanitized.matches("^[a-z_].*")) {
+			sanitized = "_" + sanitized;
+		}
+		return sanitized;
+	}
 
-    @Override
-    public void close() throws IOException {
-        try {
-            if (headerWritten) {
-                String rootElement = resolveRootElement();
-                fileWriter.write("  </records>\n");
-                fileWriter.write(String.format("  <totalRecords>%d</totalRecords>\n", recordCount));
-                fileWriter.write("</" + rootElement + ">\n");
-            }
+	private String escapeXml(String text) {
+		if (text == null) return "";
+		return text.replace("&", "&amp;")
+				.replace("<", "&lt;")
+				.replace(">", "&gt;")
+				.replace("\"", "&quot;")
+				.replace("'", "&apos;");
+	}
 
-            if (fileWriter != null) {
-                fileWriter.close();
-            }
+	private String resolveRootElement() {
+		if (interfaceType == null) return "data";
+		return interfaceType.toLowerCase(Locale.ROOT).replaceFirst("_interface$", "");
+	}
 
-            // Finalize file with .part-safe mechanism
-            boolean finalized = fileFinalizationService.finalizeFile(partFilePath);
-            if (finalized) {
-                logger.info("GenericXMLWriter finalized file successfully: {}", finalFilePath);
-            } else {
-                logger.warn("GenericXMLWriter failed to finalize file: {}", finalFilePath);
-            }
+	@Override
+	public void close() throws IOException {
+		try {
+			if (fileWriter != null) {
+				// Only write closing tags if the step was 100% successful
+				if (headerWritten && stepSuccessful) {
+					writeXmlFooter();
+				} else {
+					logger.warn("Step not successful or no records written. Skipping XML footer for interface: {}", interfaceType);
+				}
 
-        } catch (Exception e) {
-            logger.error("Error closing GenericXMLWriter", e);
-            throw e;
-        }
-    }
+				fileWriter.flush();
+				fileWriter.close();
+			}
 
-    @Override
-    public long getRecordCount() {
-        return recordCount;
-    }
+			// Only rename from .part to final if successful
+			if (stepSuccessful) {
+				boolean finalized = fileFinalizationService.finalizeFile(partFilePath);
+				logger.info("GenericXMLWriter finalized file: {}", finalized);
+			}
 
-    @Override
-    public String getPartFilePath() {
-        return partFilePath;
-    }
+		} catch (Exception e) {
+			logger.error("Error during GenericXMLWriter close", e);
+			throw new IOException("Failed to close/finalize XML writer", e);
+		}
+	}
+
+	@Override
+	public long getRecordCount() {
+		return recordCount;
+	}
+
+	@Override
+	public String getPartFilePath() {
+		return partFilePath;
+	}
+
+	/**
+	 * This will be called by the StepListener or DynamicItemWriter
+	 * before the close() method is triggered.
+	 */
+	public void setStepSuccessful(boolean success) {
+		this.stepSuccessful = success;
+	}
+
+	public void setInitialRecordCount(long count) {
+		this.recordCount = count;
+	}
+
+	private void writeXmlFooter() throws IOException {
+		String rootElement = resolveRootElement();
+		fileWriter.write("  </records>\n");
+		fileWriter.write(String.format("  <totalRecords>%d</totalRecords>\n", recordCount));
+		fileWriter.write("</" + rootElement + ">\n");
+		fileWriter.flush();
+	}
 }
