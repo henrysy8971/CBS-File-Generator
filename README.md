@@ -90,6 +90,8 @@ src/test/java/com/silverlakesymmetri/cbs/fileGenerator/  ← Unit tests
 
 - **Framework**: Spring Boot 1.5.22 (Java 8 compatible)
 - **Database**: Oracle Database (JDBC)
+- **Concurrency**: JPA Optimistic Locking (@Version)
+- **Integrity**: SHA-256 Checksum Verification
 - **Job Scheduling**: Quartz Scheduler 2.3.0
 - **Batch Processing**: Spring Batch
 - **File Formatting**: BeanIO 2.1.0
@@ -114,7 +116,8 @@ src/test/java/com/silverlakesymmetri/cbs/fileGenerator/  ← Unit tests
 - Audit trail with created/updated dates
 
 ### 3. Spring Batch File Generation
-- Chunked data processing (default 1000 records per chunk)
+- **Cursor-Based Reading:** Uses `JdbcCursorItemReader` to prevent `OutOfMemory` errors when processing millions of banking records.
+- **Chunking:** Default 1000 records per transaction chunk for optimal performance and rollback capability.
 - JDBC cursor-based item reader for large datasets
 - Configurable item processors for validation
 - Multiple output format support (CSV, XML, etc.)
@@ -139,13 +142,24 @@ src/test/java/com/silverlakesymmetri/cbs/fileGenerator/  ← Unit tests
 - Field-level configuration
 - Complex record structure support
 
-### 7. REST API Endpoints
-```
-POST   /api/v1/file-generation/generate        - Create new file generation job
-GET    /api/v1/file-generation/status/{jobId}  - Check job status
-GET    /api/v1/file-generation/pending         - List pending jobs
-GET    /api/v1/file-generation/health          - Health check
-```
+### 7. Atomic File Finalization & Integrity
+- **Safety First:** Files are written with a `.part` extension during processing.
+- **Atomic Rename:** Files are only moved to their final name upon successful Batch completion.
+- **Checksum Verification:** The system calculates a SHA-256 hash post-generation and verifies it before marking the job as `COMPLETED`.
+
+### 8. Race Condition Protection
+- **Optimistic Locking:** Uses JPA `@Version` to prevent duplicate batch executions for the same jobId.
+- **Async Guarding:** The `BatchJobLauncher` performs a status pre-check to ensure only `PENDING` jobs can transition to `PROCESSING`.
+
+### 8. REST API Endpoints
+All endpoints (except health) require a valid `X-DB-Token` in the header.
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| **POST** | `/api/v1/file-generation/generate` | Queues a new job (Returns 202 Accepted) |
+| **GET** | `/api/v1/file-generation/status/{jobId}` | Returns status, metrics, and error messages |
+| **GET** | `/api/v1/file-generation/pending` | Lists all jobs currently in `PENDING` state |
+| **GET** | `/api/v1/file-generation/health` | Service and interface status |
 
 ## Database Schema
 
@@ -174,15 +188,19 @@ Manages authentication tokens
 ### FILE_GENERATION Table
 Tracks file generation job execution
 - FILE_GEN_ID (Primary Key)
-- JOB_ID (Unique)
+- JOB_ID (Unique UUID for tracking.)
+- INTERFACE_TYPE
 - FILE_NAME
 - FILE_PATH
-- STATUS (PENDING, PROCESSING, COMPLETED, FAILED)
+- STATUS State machine(PENDING, PROCESSING, COMPLETED, FAILED)
 - RECORD_COUNT
+- SKIPPED_RECORD_COUNT
+- INVALID_RECORD_COUNT
 - ERROR_MESSAGE
 - CREATED_BY
 - CREATED_DATE
 - COMPLETED_DATE
+- VERSION: Integer for JPA Optimistic Locking.
 
 ## Configuration Properties
 
@@ -246,6 +264,9 @@ Logs are written to:
 Comprehensive documentation for understanding and using this template:
 
 ### Getting Started
+
+
+
 - **TEMPLATE_APPLICATION_SUMMARY.md** - Complete overview of this template application, architecture, and how to use it as a starting point for new projects
 
 ### Architecture & Design

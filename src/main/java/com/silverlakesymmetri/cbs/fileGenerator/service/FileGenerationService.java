@@ -5,6 +5,9 @@ import com.silverlakesymmetri.cbs.fileGenerator.repository.FileGenerationReposit
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Recover;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -53,10 +56,27 @@ public class FileGenerationService {
 		updateStatus(jobId, FileGenerationStatus.FINALIZING);
 	}
 
+	/**
+	 * Mark job as completed with a retry policy.
+	 * Retries up to 3 times with a 2-second delay if a transient DB error occurs.
+	 */
+	@Retryable(
+			value = {
+					org.springframework.dao.TransientDataAccessException.class,
+					org.springframework.orm.ObjectOptimisticLockingFailureException.class
+			},
+			maxAttempts = 3,
+			backoff = @Backoff(delay = 2000)
+	)
 	public void markCompleted(String jobId) {
 		updateStatus(jobId, FileGenerationStatus.COMPLETED);
 	}
 
+	@Retryable(
+			value = {org.springframework.dao.TransientDataAccessException.class},
+			maxAttempts = 3,
+			backoff = @Backoff(delay = 2000)
+	)
 	public void markFailed(String jobId, String errorMessage) {
 		FileGeneration fg = getRequired(jobId);
 		fg.setStatus(FileGenerationStatus.FAILED.name());
@@ -65,6 +85,15 @@ public class FileGenerationService {
 		repository.save(fg);
 
 		logger.error("File generation failed: jobId={}, error={}", jobId, errorMessage);
+	}
+
+	/**
+	 * Recover method: This runs if all 3 retry attempts fail.
+	 */
+	@Recover
+	public void recover(Exception e, String jobId) {
+		logger.error("CRITICAL: Final database update failed after retries for JobId: {}. Manual intervention required.", jobId, e);
+		// Here you could send an alert to an IT support Slack channel or email
 	}
 
 	private void updateStatus(String jobId, FileGenerationStatus status) {

@@ -19,7 +19,6 @@ import org.springframework.context.annotation.Configuration;
  */
 @Configuration
 public class DynamicBatchConfig {
-
 	private static final Logger logger = LoggerFactory.getLogger(DynamicBatchConfig.class);
 
 	private final JobBuilderFactory jobBuilderFactory;
@@ -51,12 +50,24 @@ public class DynamicBatchConfig {
 		this.dynamicItemWriter = dynamicItemWriter;
 	}
 
+	// Define the Job Listener as a Bean
+	@Bean
+	public DynamicJobExecutionListener jobExecutionListener() {
+		return new DynamicJobExecutionListener(fileGenerationService, fileFinalizationService);
+	}
+
+	// Define the Step Listener as a Bean
+	@Bean
+	public DynamicStepExecutionListener stepExecutionListener() {
+		return new DynamicStepExecutionListener(dynamicItemWriter, fileGenerationService);
+	}
+
 	@Bean
 	public Job dynamicFileGenerationJob() {
 		logger.info("Configuring dynamicFileGenerationJob with chunk size {}", chunkSize);
 		return jobBuilderFactory.get("dynamicFileGenerationJob")
 				.incrementer(new RunIdIncrementer())
-				.listener(new DynamicJobExecutionListener(fileGenerationService, fileFinalizationService))
+				.listener(jobExecutionListener())
 				.flow(dynamicFileGenerationStep())
 				.end()
 				.build();
@@ -72,7 +83,7 @@ public class DynamicBatchConfig {
 				.reader(dynamicItemReader)
 				.processor(dynamicItemProcessor)
 				.writer(dynamicItemWriter)
-				.listener(new DynamicStepExecutionListener(dynamicItemWriter, fileGenerationService))
+				.listener(stepExecutionListener())
 				.allowStartIfComplete(true) // allows restart with .part handling
 				.build();
 	}

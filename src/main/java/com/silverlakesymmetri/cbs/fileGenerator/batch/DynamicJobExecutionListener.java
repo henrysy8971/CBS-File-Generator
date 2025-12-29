@@ -21,12 +21,14 @@ public class DynamicJobExecutionListener implements JobExecutionListener {
 	private static final Logger logger = LoggerFactory.getLogger(DynamicJobExecutionListener.class);
 
 	private final FileFinalizationService fileFinalizationService;
+	private final FileGenerationService fileGenerationService;
 
 	/**
 	 * Preferred constructor (new code)
 	 */
-	public DynamicJobExecutionListener(FileFinalizationService fileFinalizationService) {
+	public DynamicJobExecutionListener(FileFinalizationService fileFinalizationService, FileGenerationService fileGenerationService) {
 		this.fileFinalizationService = fileFinalizationService;
+		this.fileGenerationService = fileGenerationService;
 	}
 
 	/**
@@ -35,6 +37,7 @@ public class DynamicJobExecutionListener implements JobExecutionListener {
 	public DynamicJobExecutionListener(FileGenerationService fileGenerationService,
 									   FileFinalizationService fileFinalizationService) {
 		this.fileFinalizationService = fileFinalizationService;
+		this.fileGenerationService = fileGenerationService;
 	}
 
 	@Override
@@ -44,6 +47,7 @@ public class DynamicJobExecutionListener implements JobExecutionListener {
 
 	@Override
 	public void afterJob(JobExecution jobExecution) {
+		String jobId = jobExecution.getJobParameters().getString("jobId");
 		String partFilePath = jobExecution.getExecutionContext().getString("partFilePath", null);
 
 		if (partFilePath == null) {
@@ -51,26 +55,20 @@ public class DynamicJobExecutionListener implements JobExecutionListener {
 			return;
 		}
 
-		// Handle failed or stopped jobs: cleanup partial file
+		// Handle FAILED or STOPPED jobs
 		if (jobExecution.getStatus() != BatchStatus.COMPLETED) {
-			logger.warn("Job not completed (status={}); cleaning up part file: {}",
-					jobExecution.getStatus(), partFilePath);
-			try {
-				fileFinalizationService.cleanupPartFile(partFilePath);
-			} catch (Exception e) {
-				logger.error("Error during cleanup of part file: {}", partFilePath, e);
-			}
+			handleJobFailure(jobId, jobExecution, partFilePath);
 			return;
 		}
 
-		logger.info("Finalizing part file: {}", partFilePath);
-
 		try {
+			logger.info("Finalizing part file: {}", partFilePath);
+
 			// Atomic rename: .part → final
 			boolean finalized = fileFinalizationService.finalizeFile(partFilePath);
 
 			if (!finalized) {
-				String msg = "File finalization failed for " + partFilePath;
+				String msg = "Atomic rename failed for " + partFilePath;
 				logger.error(msg);
 				throw new RuntimeException(msg);
 			}
@@ -80,16 +78,29 @@ public class DynamicJobExecutionListener implements JobExecutionListener {
 			boolean verified = fileFinalizationService.verifyShaFile(finalFilePath);
 
 			if (!verified) {
-				String msg = "SHA256 verification failed for finalized file: " + finalFilePath;
+				String msg = "SHA256 checksum mismatch for " + finalFilePath;
 				logger.error(msg);
 				throw new RuntimeException(msg);
 			}
 
+			// Only mark as COMPLETED if all file operations succeeded
+			fileGenerationService.markCompleted(jobId);
 			logger.info("File finalized and verified successfully: {}", finalFilePath);
 
 		} catch (Exception e) {
-			logger.error("Critical exception during finalization of part file: {}", partFilePath, e);
-			throw new RuntimeException("Critical exception during file finalization", e);
+			logger.error("Finalization failed for JobId: {}", jobId, e);
+			// Update DB to FAILED if post-processing fails
+			fileGenerationService.markFailed(jobId, "Post-processing error: " + e.getMessage());
+			// Cleanup the .part file if it still exists after a failed rename/verify
+			fileFinalizationService.cleanupPartFile(partFilePath);
 		}
+	}
+
+	private void handleJobFailure(String jobId, JobExecution jobExecution, String partFilePath) {
+		logger.warn("Job {} did not complete successfully. Cleaning up.", jobId);
+		fileFinalizationService.cleanupPartFile(partFilePath);
+
+		// Sync DB status with Spring Batch status
+		fileGenerationService.markFailed(jobId, "Batch execution status: " + jobExecution.getStatus());
 	}
 }

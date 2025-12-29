@@ -16,6 +16,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @RestController
@@ -23,6 +24,7 @@ import java.util.stream.Collectors;
 public class FileGenerationController {
 
 	private static final Logger logger = LoggerFactory.getLogger(FileGenerationController.class);
+	private static final Pattern INTERFACE_TYPE_PATTERN = Pattern.compile("^[A-Za-z0-9_]+$");
 
 	@Autowired
 	private FileGenerationService fileGenerationService;
@@ -49,6 +51,14 @@ public class FileGenerationController {
 					.body(new FileGenerationResponse("VALIDATION_ERROR", "interfaceType is required"));
 		}
 
+		if (!INTERFACE_TYPE_PATTERN.matcher(interfaceType).matches()) {
+			return ResponseEntity.badRequest()
+					.body(new FileGenerationResponse(
+							"VALIDATION_ERROR",
+							"interfaceType must contain only alphanumeric characters or underscores"
+					));
+		}
+
 		InterfaceConfig config;
 		try {
 			config = interfaceConfigLoader.getConfig(interfaceType);
@@ -65,6 +75,11 @@ public class FileGenerationController {
 							"VALIDATION_ERROR",
 							"Interface '" + interfaceType + "' is disabled"
 					));
+		}
+
+		if (fileGenerationService.hasRunningJob(interfaceType)) {
+			return ResponseEntity.status(HttpStatus.CONFLICT)
+					.body(new FileGenerationResponse("CONFLICT", "A job for this interface is already running."));
 		}
 
 		logger.info("File generation request received - Interface: {}, User: {}", interfaceType, userName);
@@ -148,6 +163,7 @@ public class FileGenerationController {
 	public ResponseEntity<?> getInterfaceConfiguration(@PathVariable String interfaceType) {
 		try {
 			InterfaceConfig config = interfaceConfigLoader.getConfig(interfaceType);
+			config.setDataSourceQuery(null);
 			return ResponseEntity.ok(config);
 		} catch (IllegalArgumentException ex) {
 			return ResponseEntity.status(HttpStatus.NOT_FOUND)

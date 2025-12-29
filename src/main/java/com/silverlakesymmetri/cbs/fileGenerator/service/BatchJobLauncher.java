@@ -2,6 +2,7 @@ package com.silverlakesymmetri.cbs.fileGenerator.service;
 
 import com.silverlakesymmetri.cbs.fileGenerator.config.InterfaceConfigLoader;
 import com.silverlakesymmetri.cbs.fileGenerator.config.model.InterfaceConfig;
+import com.silverlakesymmetri.cbs.fileGenerator.entity.FileGeneration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.batch.core.Job;
@@ -16,6 +17,7 @@ import org.springframework.stereotype.Service;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 @Service
@@ -51,6 +53,22 @@ public class BatchJobLauncher {
 	@Async
 	public CompletableFuture<Void> launchFileGenerationJob(String jobId, String interfaceType) {
 		try {
+			// Check current status before launching
+			Optional<FileGeneration> currentJob = fileGenerationService.getFileGeneration(jobId);
+
+			if (!currentJob.isPresent()) {
+				logger.error("Job launch aborted: JobId {} not found in database", jobId);
+				return CompletableFuture.completedFuture(null);
+			}
+
+			// Only allow PENDING jobs to start.
+			// This prevents double-clicks from triggering multiple Batch runs.
+			if (!"PENDING".equals(currentJob.get().getStatus())) {
+				logger.warn("Job launch aborted: JobId {} is already in status {}",
+						jobId, currentJob.get().getStatus());
+				return CompletableFuture.completedFuture(null);
+			}
+
 			// Validate interface configuration
 			if (!interfaceConfigLoader.interfaceExists(interfaceType)) {
 				String error = "Interface configuration not found: " + interfaceType;

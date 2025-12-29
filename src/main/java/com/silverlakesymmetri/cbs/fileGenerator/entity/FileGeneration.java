@@ -48,6 +48,24 @@ public class FileGeneration {
 
 	@Column(name = "COMPLETED_DATE")
 	private Timestamp completedDate;
+	/**
+	 * OPTIMISTIC LOCKING VERSION FIELD
+	 * Hibernate will automatically increment this on every update.
+	 * If two threads try to update the same record, the second one will fail
+	 * because the version won't match.
+	 */
+
+	@Version
+	@Column(name = "VERSION")
+	private Integer version;
+
+	public Integer getVersion() {
+		return version;
+	}
+
+	public void setVersion(Integer version) {
+		this.version = version;
+	}
 
 	// Constructors
 	public FileGeneration() {
