@@ -2,10 +2,13 @@ package com.silverlakesymmetri.cbs.fileGenerator.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.io.BufferedWriter;
 import java.io.FileInputStream;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,10 +20,32 @@ import java.util.Set;
 
 @Service
 public class FileFinalizationService {
-
 	private static final Logger logger = LoggerFactory.getLogger(FileFinalizationService.class);
 	private static final String SHA256_ALGORITHM = "SHA-256";
 	private static final int BUFFER_SIZE = 8192;
+
+	@Autowired
+	private FileGenerationService fileGenerationService;
+
+	@Async("taskExecutor")
+	public void finalizeFileAsync(String jobId, String partFilePath) {
+		logger.info("Starting async finalization for JobId: {}", jobId);
+		try {
+			fileGenerationService.markFinalizing(jobId);
+
+			boolean success = finalizeFile(partFilePath);
+
+			if (success) {
+				fileGenerationService.markCompleted(jobId);
+				logger.info("Async finalization successful for JobId: {}", jobId);
+			} else {
+				fileGenerationService.markFailed(jobId, "File finalization logic returned false.");
+			}
+		} catch (Exception e) {
+			logger.error("Async finalization crashed for JobId: {}", jobId, e);
+			fileGenerationService.markFailed(jobId, "Async Error: " + e.getMessage());
+		}
+	}
 
 	/**
 	 * Finalize a .part file safely:
@@ -34,31 +59,23 @@ public class FileFinalizationService {
 			return false;
 		}
 
-		// Safer path manipulation
 		String partPathStr = partPath.toString();
 		if (!partPathStr.endsWith(".part")) {
 			logger.error("Finalization failed: File {} does not have .part extension", partPathStr);
 			return false;
 		}
+
+		// Strip .part (5 characters)
 		Path finalPath = Paths.get(partPathStr.substring(0, partPathStr.length() - 5));
 
 		try {
 			// Step 1: Atomic Move
-			try {
-				Files.move(partPath, finalPath, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
-			} catch (Exception e) {
-				logger.warn("Atomic move failed, falling back to REPLACE_EXISTING for {}", finalPath);
-				Files.move(partPath, finalPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-			}
-
+			moveFileSafely(partPath, finalPath);
 			applyPosixPermissions(finalPath, "rw-r--r--");
 
 			// Step 2: Generate SHA (Failure here shouldn't necessarily undo Step 1)
-			try {
-				generateShaFile(finalPath);
-			} catch (Exception e) {
-				logger.error("CRITICAL: File renamed but SHA generation failed for {}", finalPath, e);
-				// In many banks, a missing SHA is a 'Failed' file.
+			String shaPath = generateShaFile(finalPath);
+			if (shaPath == null) {
 				return false;
 			}
 
@@ -86,20 +103,22 @@ public class FileFinalizationService {
 				writer.flush();
 			}
 
-			// Atomic rename to .sha
-			try {
-				Files.move(shaPartPath, finalShaPath, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
-			} catch (Exception e) {
-				logger.warn("Atomic move not supported for SHA file, using regular move: {}", e.getMessage());
-				Files.move(shaPartPath, finalShaPath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
-			}
-
+			moveFileSafely(shaPartPath, finalShaPath);
 			applyPosixPermissions(finalShaPath, "rw-r--r--");
 			return finalShaPath.toString();
 
 		} catch (Exception e) {
 			logger.error("Error generating SHA file for: {}", filePath, e);
 			return null;
+		}
+	}
+
+	private void moveFileSafely(Path source, Path target) throws IOException {
+		try {
+			Files.move(source, target, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+		} catch (Exception e) {
+			logger.warn("Atomic move failed for {}, using REPLACE_EXISTING", source.getFileName());
+			Files.move(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
 		}
 	}
 

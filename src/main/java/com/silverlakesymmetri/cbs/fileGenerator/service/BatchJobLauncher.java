@@ -63,7 +63,7 @@ public class BatchJobLauncher {
 
 			// Only allow PENDING jobs to start.
 			// This prevents double-clicks from triggering multiple Batch runs.
-			if (!"PENDING".equals(currentJob.get().getStatus())) {
+			if (!FileGenerationStatus.PENDING.name().equals(currentJob.get().getStatus())) {
 				logger.warn("Job launch aborted: JobId {} is already in status {}",
 						jobId, currentJob.get().getStatus());
 				return CompletableFuture.completedFuture(null);

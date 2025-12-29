@@ -45,15 +45,15 @@ public class FileGenerationService {
 	// ==================== Status ====================
 
 	public void markProcessing(String jobId) {
-		updateStatus(jobId, FileGenerationStatus.PROCESSING);
+		updateStatus(jobId, FileGenerationStatus.PROCESSING, null);
 	}
 
 	public void markStopped(String jobId) {
-		updateStatus(jobId, FileGenerationStatus.STOPPED);
+		updateStatus(jobId, FileGenerationStatus.STOPPED, null);
 	}
 
 	public void markFinalizing(String jobId) {
-		updateStatus(jobId, FileGenerationStatus.FINALIZING);
+		updateStatus(jobId, FileGenerationStatus.FINALIZING, null);
 	}
 
 	/**
@@ -69,7 +69,7 @@ public class FileGenerationService {
 			backoff = @Backoff(delay = 2000)
 	)
 	public void markCompleted(String jobId) {
-		updateStatus(jobId, FileGenerationStatus.COMPLETED);
+		updateStatus(jobId, FileGenerationStatus.COMPLETED, null);
 	}
 
 	@Retryable(
@@ -78,12 +78,7 @@ public class FileGenerationService {
 			backoff = @Backoff(delay = 2000)
 	)
 	public void markFailed(String jobId, String errorMessage) {
-		FileGeneration fg = getRequired(jobId);
-		fg.setStatus(FileGenerationStatus.FAILED.name());
-		fg.setErrorMessage(errorMessage);
-		fg.setCompletedDate(now());
-		repository.save(fg);
-
+		updateStatus(jobId, FileGenerationStatus.FAILED, errorMessage);
 		logger.error("File generation failed: jobId={}, error={}", jobId, errorMessage);
 	}
 
@@ -96,9 +91,13 @@ public class FileGenerationService {
 		// Here you could send an alert to an IT support Slack channel or email
 	}
 
-	private void updateStatus(String jobId, FileGenerationStatus status) {
+	private void updateStatus(String jobId, FileGenerationStatus status, String errorMessage) {
 		FileGeneration fg = getRequired(jobId);
 		fg.setStatus(status.name());
+
+		if (errorMessage != null) {
+			fg.setErrorMessage(errorMessage);
+		}
 
 		if (status == FileGenerationStatus.COMPLETED
 				|| status == FileGenerationStatus.FAILED) {
@@ -138,14 +137,14 @@ public class FileGenerationService {
 
 	@Transactional(readOnly = true)
 	public List<FileGeneration> getPendingFileGenerations() {
-		return repository.findByStatus(FileGenerationStatus.PENDING.name());
+		return repository.findByStatus(FileGenerationStatus.PENDING);
 	}
 
 	@Transactional(readOnly = true)
 	public boolean hasRunningJob(String interfaceType) {
 		return repository.existsByInterfaceTypeAndStatus(
 				interfaceType,
-				FileGenerationStatus.PROCESSING.name()
+				FileGenerationStatus.PROCESSING
 		);
 	}
 

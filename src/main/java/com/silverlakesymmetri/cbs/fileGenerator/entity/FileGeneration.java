@@ -1,5 +1,7 @@
 package com.silverlakesymmetri.cbs.fileGenerator.entity;
 
+import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationStatus;
+
 import javax.persistence.*;
 import java.sql.Timestamp;
 
@@ -8,12 +10,11 @@ import java.sql.Timestamp;
 public class FileGeneration {
 
 	@Id
-	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "FILE_GEN_SEQ")
-	@SequenceGenerator(name = "FILE_GEN_SEQ", sequenceName = "FILE_GEN_SEQ", allocationSize = 1)
+	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	@Column(name = "FILE_GEN_ID")
 	private Long fileGenId;
 
-	@Column(name = "JOB_ID", nullable = false)
+	@Column(name = "JOB_ID", nullable = false, unique = true)
 	private String jobId;
 
 	@Column(name = "INTERFACE_TYPE", length = 100)
@@ -25,6 +26,7 @@ public class FileGeneration {
 	@Column(name = "FILE_PATH", nullable = false)
 	private String filePath;
 
+	@Enumerated(EnumType.STRING)
 	@Column(name = "STATUS", nullable = false, length = 20)
 	private String status; // PENDING, PROCESSING, STOPPED, FINALIZING, COMPLETED, FAILED
 
@@ -37,6 +39,7 @@ public class FileGeneration {
 	@Column(name = "INVALID_RECORD_COUNT")
 	private Long invalidRecordCount;
 
+	@Lob
 	@Column(name = "ERROR_MESSAGE")
 	private String errorMessage;
 
@@ -75,7 +78,7 @@ public class FileGeneration {
 		this.jobId = jobId;
 		this.fileName = fileName;
 		this.filePath = filePath;
-		this.status = "PENDING";
+		this.status = FileGenerationStatus.PENDING.name();
 		this.createdDate = new Timestamp(System.currentTimeMillis());
 	}
 
@@ -182,5 +185,12 @@ public class FileGeneration {
 
 	public void setCompletedDate(Timestamp completedDate) {
 		this.completedDate = completedDate;
+	}
+
+	@PrePersist
+	protected void onCreate() {
+		if (this.createdDate == null) {
+			this.createdDate = new Timestamp(System.currentTimeMillis());
+		}
 	}
 }
