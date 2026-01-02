@@ -1,15 +1,15 @@
 {
-  "interfaces": {
-    "ORDER_INTERFACE": {
-      "name": "ORDER_INTERFACE",
-      "dataSourceQuery": "SELECT o FROM Order o LEFT JOIN FETCH o.lineItems WHERE o.status = 'ACTIVE'",
-      "beanioMappingFile": "customer-mapping.xml",
-      "xsdSchemaFile": "order_schema.xsd",
-      "chunkSize": 1000,
-      "outputFormat": "XML",
-      "outputFileExtension": "xml",
-      "enabled": true,
-      "description": "Order interface - uses BeanIO mapping and optional XSD validation"
-    }
-  }
+	"interfaces": {
+		"ORDER_INTERFACE": {
+			"name": "ORDER_INTERFACE",
+			"dataSourceQuery": "SELECT o FROM Order o LEFT JOIN FETCH o.lineItems WHERE o.status = 'ACTIVE'",
+			"beanioMappingFile": "customer-mapping.xml",
+			"xsdSchemaFile": "order_schema.xsd",
+			"chunkSize": 1000,
+			"outputFormat": "XML",
+			"outputFileExtension": "xml",
+			"enabled": true,
+			"description": "Order interface - uses BeanIO mapping and optional XSD validation"
+		}
+	}
 }

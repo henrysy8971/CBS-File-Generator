@@ -97,9 +97,6 @@ public class DynamicJobExecutionListener implements JobExecutionListener {
 	}
 
 	private void handleJobFailure(String jobId, JobExecution jobExecution, String partFilePath) {
-		logger.warn("Job {} did not complete successfully. Cleaning up.", jobId);
-		fileFinalizationService.cleanupPartFile(partFilePath);
-
 		// Sync DB status with Spring Batch status
 		fileGenerationService.markFailed(jobId, "Batch execution status: " + jobExecution.getStatus());
 	}

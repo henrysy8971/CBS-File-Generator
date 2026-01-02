@@ -21,206 +21,228 @@ import org.springframework.stereotype.Component;
 @Component
 public class OrderItemProcessor implements ItemProcessor<OrderDto, OrderDto> {
 
-  private static final Logger logger = LoggerFactory.getLogger(OrderItemProcessor.class);
+	private static final Logger logger = LoggerFactory.getLogger(OrderItemProcessor.class);
 
-  @Autowired(required = false)
-  private XsdValidator xsdValidator;
+	private static final String KEY_PROCESSED = "processedCount";
+	private static final String KEY_SKIPPED = "skippedCount";
+	private static final String KEY_INVALID = "invalidCount";
 
-  @Autowired
-  private InterfaceConfigLoader interfaceConfigLoader;
+	@Autowired
+	private InterfaceConfigLoader interfaceConfigLoader;
 
-  private String xsdSchemaFile;
-  private StepExecution stepExecution;
+	@Autowired(required = false)
+	private XsdValidator xsdValidator;
 
-  /**
-   * Called before step to load schema configuration
-   */
-  @BeforeStep
-  public void beforeStep(StepExecution stepExecution) {
-    this.stepExecution = stepExecution;
-    String interfaceType = stepExecution.getJobParameters().getString("interfaceType");
-    
-    try {
-      InterfaceConfig config = interfaceConfigLoader.getConfig(interfaceType);
-      if (config != null) {
-        this.xsdSchemaFile = config.getXsdSchemaFile();
-        if (xsdSchemaFile != null && xsdValidator != null && xsdValidator.schemaExists(xsdSchemaFile)) {
-          logger.info("XSD schema validation enabled for ORDER_INTERFACE (schema: {})", 
-              xsdSchemaFile);
-        }
-      }
-    } catch (Exception e) {
-      logger.warn("Error loading schema configuration", e);
-    }
-  }
+	private String xsdSchemaFile;
+	private StepExecution stepExecution;
 
-  /**
-   * Process order DTO - validate and apply transformations
-   */
-  @Override
-  public OrderDto process(OrderDto orderDto) throws Exception {
-    try {
-      // Validate order
-      if (!validateOrder(orderDto)) {
-        logger.warn("Order validation failed: orderId={}", orderDto.getOrderId());
-        return null;  // Skip invalid order
-      }
+	@BeforeStep
+	public void beforeStep(StepExecution stepExecution) {
+		this.stepExecution = stepExecution;
+		String interfaceType = stepExecution.getJobParameters().getString("interfaceType");
 
-      // Validate line items
-      int validLineItems = 0;
-      for (LineItemDto lineItem : orderDto.getLineItems()) {
-        if (validateLineItem(lineItem)) {
-          validLineItems++;
-        } else {
-          logger.warn("Line item validation failed: lineItemId={}", lineItem.getLineItemId());
-        }
-      }
+		// Initialize counters in ExecutionContext if missing
+		stepExecution.getExecutionContext().putLong(KEY_PROCESSED,
+				stepExecution.getExecutionContext().getLong(KEY_PROCESSED, 0L));
+		stepExecution.getExecutionContext().putLong(KEY_SKIPPED,
+				stepExecution.getExecutionContext().getLong(KEY_SKIPPED, 0L));
+		stepExecution.getExecutionContext().putLong(KEY_INVALID,
+				stepExecution.getExecutionContext().getLong(KEY_INVALID, 0L));
 
-      if (validLineItems == 0 && !orderDto.getLineItems().isEmpty()) {
-        logger.warn("All line items failed validation for order: {}", orderDto.getOrderId());
-        return null;
-      }
+		try {
+			InterfaceConfig config = interfaceConfigLoader.getConfig(interfaceType);
+			if (config != null) {
+				this.xsdSchemaFile = config.getXsdSchemaFile();
+				if (xsdSchemaFile != null && xsdValidator != null && xsdValidator.schemaExists(xsdSchemaFile)) {
+					logger.info("XSD schema validation enabled for ORDER_INTERFACE (schema: {})",
+							xsdSchemaFile);
+				}
+			}
+		} catch (Exception e) {
+			logger.warn("Error loading schema configuration for interface: {}", interfaceType, e);
+		}
+	}
 
-      // Apply transformations
-      applyTransformations(orderDto);
+	@Override
+	public OrderDto process(OrderDto orderDto) throws Exception {
+		try {
+			if (!validateOrder(orderDto)) {
+				incrementCount(KEY_SKIPPED);
+				logger.warn("Order validation failed: orderId={}", orderDto.getOrderId());
+				return null;
+			}
 
-      // Optional XSD validation
-      if (xsdSchemaFile != null && xsdValidator != null) {
-        String xmlContent = convertOrderToXml(orderDto);
-        if (!xsdValidator.validateRecord(xmlContent, xsdSchemaFile)) {
-          logger.warn("XSD validation failed for order: {} - skipping", orderDto.getOrderId());
-          return null;
-        }
-      }
+			int validLineItems = 0;
+			for (LineItemDto lineItem : orderDto.getLineItems()) {
+				if (validateLineItem(lineItem)) {
+					validLineItems++;
+				} else {
+					logger.warn("Line item validation failed: lineItemId={}", lineItem.getLineItemId());
+				}
+			}
 
-      logger.debug("Order processed successfully: orderId={}, lineItems={}", 
-          orderDto.getOrderId(), validLineItems);
+			if (validLineItems == 0 && !orderDto.getLineItems().isEmpty()) {
+				incrementCount(KEY_SKIPPED);
+				logger.warn("All line items failed validation for order: {}", orderDto.getOrderId());
+				return null;
+			}
 
-      return orderDto;
-    } catch (Exception e) {
-      logger.error("Error processing order: orderId={}", orderDto.getOrderId(), e);
-      return null;  // Skip on error
-    }
-  }
+			applyTransformations(orderDto);
 
-  /**
-   * Validate order data
-   */
-  private boolean validateOrder(OrderDto orderDto) {
-    // Check required fields
-    if (orderDto.getOrderId() == null || orderDto.getOrderId().isEmpty()) {
-      logger.warn("Order validation failed: orderId is empty");
-      return false;
-    }
+			if (xsdSchemaFile != null && xsdValidator != null) {
+				String xmlContent = convertOrderToXml(orderDto);
+				if (!xsdValidator.validateRecord(xmlContent, xsdSchemaFile)) {
+					incrementCount(KEY_INVALID);
+					logger.warn("XSD validation failed for order: {} - skipping", orderDto.getOrderId());
+					return null;
+				}
+			}
 
-    if (orderDto.getOrderNumber() == null || orderDto.getOrderNumber().isEmpty()) {
-      logger.warn("Order validation failed: orderNumber is empty");
-      return false;
-    }
+			incrementCount(KEY_PROCESSED);
+			logger.debug("Order processed successfully: orderId={}, lineItems={}",
+					orderDto.getOrderId(), validLineItems);
+			return orderDto;
 
-    if (orderDto.getOrderAmount() == null) {
-      logger.warn("Order validation failed: orderAmount is null for orderId={}", 
-          orderDto.getOrderId());
-      return false;
-    }
+		} catch (Exception e) {
+			incrementCount(KEY_INVALID);
+			logger.error("Error processing order: orderId={}", orderDto.getOrderId(), e);
+			return null;  // Skip on error
+		}
+	}
 
-    return true;
-  }
+	/**
+	 * Validate order data
+	 */
+	private boolean validateOrder(OrderDto orderDto) {
+		// Check required fields
+		if (orderDto.getOrderId() == null || orderDto.getOrderId().isEmpty()) {
+			logger.warn("Order validation failed: orderId is empty");
+			return false;
+		}
 
-  /**
-   * Validate line item data
-   */
-  private boolean validateLineItem(LineItemDto lineItem) {
-    if (lineItem.getLineItemId() == null || lineItem.getLineItemId().isEmpty()) {
-      return false;
-    }
+		if (orderDto.getOrderNumber() == null || orderDto.getOrderNumber().isEmpty()) {
+			logger.warn("Order validation failed: orderNumber is empty");
+			return false;
+		}
 
-    if (lineItem.getProductId() == null || lineItem.getProductId().isEmpty()) {
-      return false;
-    }
+		if (orderDto.getOrderAmount() == null) {
+			logger.warn("Order validation failed: orderAmount is null for orderId={}",
+					orderDto.getOrderId());
+			return false;
+		}
 
-    if (lineItem.getQuantity() == null || lineItem.getQuantity() <= 0) {
-      return false;
-    }
+		return true;
+	}
 
-    return true;
-  }
+	/**
+	 * Validate line item data
+	 */
+	private boolean validateLineItem(LineItemDto lineItem) {
+		if (lineItem.getLineItemId() == null || lineItem.getLineItemId().isEmpty()) {
+			return false;
+		}
 
-  /**
-   * Apply transformations to order and line items
-   */
-  private void applyTransformations(OrderDto orderDto) {
-    // Trim string fields
-    if (orderDto.getOrderNumber() != null) {
-      orderDto.setOrderNumber(orderDto.getOrderNumber().trim());
-    }
+		if (lineItem.getProductId() == null || lineItem.getProductId().isEmpty()) {
+			return false;
+		}
 
-    if (orderDto.getCustomerName() != null) {
-      orderDto.setCustomerName(orderDto.getCustomerName().trim());
-    }
+		return lineItem.getQuantity() != null && lineItem.getQuantity() > 0;
+	}
 
-    // Transform line items
-    for (LineItemDto lineItem : orderDto.getLineItems()) {
-      if (lineItem.getProductName() != null) {
-        lineItem.setProductName(lineItem.getProductName().trim());
-      }
-    }
+	/**
+	 * Apply transformations to order and line items
+	 */
+	private void applyTransformations(OrderDto orderDto) {
+		// Trim string fields
+		if (orderDto.getOrderNumber() != null) {
+			orderDto.setOrderNumber(orderDto.getOrderNumber().trim());
+		}
 
-    logger.debug("Transformations applied to order: {}", orderDto.getOrderId());
-  }
+		if (orderDto.getCustomerName() != null) {
+			orderDto.setCustomerName(orderDto.getCustomerName().trim());
+		}
 
-  /**
-   * Convert Order to XML for validation
-   */
-  private String convertOrderToXml(OrderDto orderDto) {
-    StringBuilder xml = new StringBuilder();
-    xml.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-    xml.append("<order>\n");
-    xml.append("  <orderId>").append(escapeXml(orderDto.getOrderId())).append("</orderId>\n");
-    xml.append("  <orderNumber>").append(escapeXml(orderDto.getOrderNumber())).append("</orderNumber>\n");
-    
-    if (orderDto.getOrderAmount() != null) {
-      xml.append("  <orderAmount>").append(orderDto.getOrderAmount()).append("</orderAmount>\n");
-    }
-    
-    if (orderDto.getCustomerName() != null) {
-      xml.append("  <customerName>").append(escapeXml(orderDto.getCustomerName()))
-          .append("</customerName>\n");
-    }
+		// Transform line items
+		for (LineItemDto lineItem : orderDto.getLineItems()) {
+			if (lineItem.getProductName() != null) {
+				lineItem.setProductName(lineItem.getProductName().trim());
+			}
+		}
 
-    // Add line items
-    if (!orderDto.getLineItems().isEmpty()) {
-      xml.append("  <lineItems>\n");
-      for (LineItemDto lineItem : orderDto.getLineItems()) {
-        xml.append("    <lineItem>\n");
-        xml.append("      <lineItemId>").append(escapeXml(lineItem.getLineItemId()))
-            .append("</lineItemId>\n");
-        xml.append("      <productId>").append(escapeXml(lineItem.getProductId()))
-            .append("</productId>\n");
-        if (lineItem.getQuantity() != null) {
-          xml.append("      <quantity>").append(lineItem.getQuantity()).append("</quantity>\n");
-        }
-        xml.append("    </lineItem>\n");
-      }
-      xml.append("  </lineItems>\n");
-    }
+		logger.debug("Transformations applied to order: {}", orderDto.getOrderId());
+	}
 
-    xml.append("</order>\n");
-    return xml.toString();
-  }
+	/**
+	 * Convert Order to XML for validation
+	 */
+	private String convertOrderToXml(OrderDto orderDto) {
+		StringBuilder xml = new StringBuilder();
+		xml.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+		xml.append("<order>\n");
+		xml.append("  <orderId>").append(escapeXml(orderDto.getOrderId())).append("</orderId>\n");
+		xml.append("  <orderNumber>").append(escapeXml(orderDto.getOrderNumber())).append("</orderNumber>\n");
 
-  /**
-   * Escape XML special characters
-   */
-  private String escapeXml(String text) {
-    if (text == null) {
-      return "";
-    }
-    return text
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace("\"", "&quot;")
-        .replace("'", "&apos;");
-  }
+		if (orderDto.getOrderAmount() != null) {
+			xml.append("  <orderAmount>").append(orderDto.getOrderAmount()).append("</orderAmount>\n");
+		}
+
+		if (orderDto.getCustomerName() != null) {
+			xml.append("  <customerName>").append(escapeXml(orderDto.getCustomerName()))
+					.append("</customerName>\n");
+		}
+
+		// Add line items
+		if (!orderDto.getLineItems().isEmpty()) {
+			xml.append("  <lineItems>\n");
+			for (LineItemDto lineItem : orderDto.getLineItems()) {
+				xml.append("    <lineItem>\n");
+				xml.append("      <lineItemId>").append(escapeXml(lineItem.getLineItemId()))
+						.append("</lineItemId>\n");
+				xml.append("      <productId>").append(escapeXml(lineItem.getProductId()))
+						.append("</productId>\n");
+				if (lineItem.getQuantity() != null) {
+					xml.append("      <quantity>").append(lineItem.getQuantity()).append("</quantity>\n");
+				}
+				xml.append("    </lineItem>\n");
+			}
+			xml.append("  </lineItems>\n");
+		}
+
+		xml.append("</order>\n");
+		return xml.toString();
+	}
+
+	/**
+	 * Escape XML special characters
+	 */
+	private String escapeXml(String text) {
+		if (text == null) {
+			return "";
+		}
+		return text
+				.replace("&", "&amp;")
+				.replace("<", "&lt;")
+				.replace(">", "&gt;")
+				.replace("\"", "&quot;")
+				.replace("'", "&apos;");
+	}
+
+	private void incrementCount(String key) {
+		long current = stepExecution.getExecutionContext().getLong(key, 0L);
+		stepExecution.getExecutionContext().putLong(key, current + 1);
+	}
+
+	// ---------------- Public accessors for listeners ----------------
+
+	public long getProcessedCount() {
+		return stepExecution.getExecutionContext().getLong(KEY_PROCESSED, 0L);
+	}
+
+	public long getSkippedCount() {
+		return stepExecution.getExecutionContext().getLong(KEY_SKIPPED, 0L);
+	}
+
+	public long getInvalidCount() {
+		return stepExecution.getExecutionContext().getLong(KEY_INVALID, 0L);
+	}
 }

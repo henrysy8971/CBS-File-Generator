@@ -66,7 +66,7 @@ public class FileFinalizationService {
 		}
 
 		// Strip .part (5 characters)
-		Path finalPath = Paths.get(partPathStr.substring(0, partPathStr.length() - 5));
+		Path finalPath = Paths.get(partPathStr.replaceAll("\\.part$", ""));
 
 		try {
 			// Step 1: Atomic Move
@@ -75,11 +75,7 @@ public class FileFinalizationService {
 
 			// Step 2: Generate SHA (Failure here shouldn't necessarily undo Step 1)
 			String shaPath = generateShaFile(finalPath);
-			if (shaPath == null) {
-				return false;
-			}
-
-			return true;
+			return shaPath != null;
 		} catch (Exception e) {
 			logger.error("Fatal error during finalization of {}", partFilePath, e);
 			return false;

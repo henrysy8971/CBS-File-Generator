@@ -9,16 +9,16 @@ import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
 import org.springframework.batch.core.configuration.annotation.StepBuilderFactory;
+import org.springframework.batch.core.launch.JobLauncher;
 import org.springframework.batch.core.launch.support.RunIdIncrementer;
+import org.springframework.batch.core.launch.support.SimpleJobLauncher;
+import org.springframework.batch.core.repository.JobRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.TaskExecutor;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
-import org.springframework.batch.core.launch.JobLauncher;
-import org.springframework.batch.core.repository.JobRepository;
-import org.springframework.batch.core.launch.support.SimpleJobLauncher;
-import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * Production-ready dynamic batch configuration for generic file generation.
@@ -85,8 +85,6 @@ public class DynamicBatchConfig {
 	@Bean
 	public Step dynamicFileGenerationStep() {
 		logger.info("Configuring dynamicFileGenerationStep");
-
-		// StepScope ensures a fresh reader/writer instance for each job run
 		return stepBuilderFactory.get("dynamicFileGenerationStep")
 				.<DynamicRecord, DynamicRecord>chunk(chunkSize)
 				.reader(dynamicItemReader)
@@ -118,7 +116,7 @@ public class DynamicBatchConfig {
 	@Bean
 	public TaskExecutor batchTaskExecutor() {
 		ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-		executor.setCorePoolSize(5);       // Minimum 5 threads
+		executor.setCorePoolSize(5);      // Minimum 5 threads
 		executor.setMaxPoolSize(10);      // Maximum 10 concurrent files
 		executor.setQueueCapacity(25);    // 25 jobs can wait in queue
 		executor.setThreadNamePrefix("Batch-Async-");

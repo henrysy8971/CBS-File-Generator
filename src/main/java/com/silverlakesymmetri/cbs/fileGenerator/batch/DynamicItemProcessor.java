@@ -39,7 +39,6 @@ public class DynamicItemProcessor implements ItemProcessor<DynamicRecord, Dynami
 	@BeforeStep
 	public void beforeStep(StepExecution stepExecution) {
 		this.stepExecution = stepExecution;
-
 		String interfaceType = stepExecution.getJobParameters().getString("interfaceType");
 
 		// Initialize counters in ExecutionContext if missing
@@ -50,7 +49,6 @@ public class DynamicItemProcessor implements ItemProcessor<DynamicRecord, Dynami
 		stepExecution.getExecutionContext().putLong(KEY_INVALID,
 				stepExecution.getExecutionContext().getLong(KEY_INVALID, 0L));
 
-		// Load optional XSD schema
 		try {
 			InterfaceConfig config = interfaceConfigLoader.getConfig(interfaceType);
 			if (config != null) {

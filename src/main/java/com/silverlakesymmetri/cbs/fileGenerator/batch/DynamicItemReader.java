@@ -16,7 +16,6 @@ import org.springframework.stereotype.Component;
 
 import javax.persistence.EntityManager;
 import javax.persistence.PersistenceContext;
-import javax.persistence.Query;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -113,25 +112,27 @@ public class DynamicItemReader implements ItemReader<DynamicRecord> {
 	 * Fetch the next batch of records from the database using paging.
 	 */
 	private void fetchNextBatch() {
-		Query query = entityManager.createQuery(queryString);
+		// Specify Tuple.class to capture column aliases
+		javax.persistence.TypedQuery<javax.persistence.Tuple> query = entityManager.createQuery(queryString, javax.persistence.Tuple.class);
 		query.setFirstResult(currentPage * DEFAULT_BATCH_SIZE);
 		query.setMaxResults(DEFAULT_BATCH_SIZE);
 
-		List<?> results = query.getResultList();
+		List<javax.persistence.Tuple> results = query.getResultList();
 		if (results.isEmpty()) {
 			resultIterator = null;
 			return;
 		}
 
-		List<Object[]> rows = new ArrayList<>(results.size());
-		for (Object result : results) {
-			Object[] row = (result instanceof Object[]) ? (Object[]) result : new Object[]{result};
-			rows.add(row);
+		// Extract real column names from the first Tuple result
+		if (columnNames == null) {
+			javax.persistence.Tuple firstResult = results.get(0);
+			extractColumnMetadataFromTuple(firstResult);
+		}
 
-			// Extract column metadata from first row only
-			if (columnNames == null) {
-				extractColumnMetadata(row);
-			}
+		// Convert results to an iterator of Object arrays for the existing logic
+		List<Object[]> rows = new ArrayList<>();
+		for (javax.persistence.Tuple tuple : results) {
+			rows.add(tuple.toArray());
 		}
 
 		resultIterator = rows.iterator();
@@ -139,19 +140,20 @@ public class DynamicItemReader implements ItemReader<DynamicRecord> {
 		logger.debug("Fetched batch {} with {} records for interface {}", currentPage, rows.size(), interfaceType);
 	}
 
-	/**
-	 * Extract column names and types from first row.
-	 */
-	private void extractColumnMetadata(Object[] row) {
-		columnNames = new String[row.length];
-		columnTypes = new ColumnType[row.length];
+	private void extractColumnMetadataFromTuple(javax.persistence.Tuple tuple) {
+		List<javax.persistence.TupleElement<?>> elements = tuple.getElements();
+		columnNames = new String[elements.size()];
+		columnTypes = new ColumnType[elements.size()];
 
-		for (int i = 0; i < row.length; i++) {
-			columnNames[i] = "column_" + (i + 1);
-			columnTypes[i] = ColumnType.fromJavaValue(row[i]);
+		for (int i = 0; i < elements.size(); i++) {
+			javax.persistence.TupleElement<?> element = elements.get(i);
+			// This captures the "AS alias" from your JPQL
+			columnNames[i] = element.getAlias();
+			columnTypes[i] = ColumnType.fromJavaValue(tuple.get(i));
 		}
 
-		logger.debug("Extracted {} columns for interface {}", columnNames.length, interfaceType);
+		logger.debug("Extracted actual aliases: {} for interface {}",
+				java.util.Arrays.toString(columnNames), interfaceType);
 	}
 
 	/**

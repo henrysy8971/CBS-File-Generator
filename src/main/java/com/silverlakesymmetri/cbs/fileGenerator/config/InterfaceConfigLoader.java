@@ -108,13 +108,6 @@ public class InterfaceConfigLoader {
 				throw new IllegalStateException(
 						"Interface [" + key + "] missing dataSourceQuery");
 			}
-
-			if (cfg.getBeanioMappingFile() == null ||
-					cfg.getBeanioMappingFile().trim().isEmpty()) {
-
-				throw new IllegalStateException(
-						"Interface [" + key + "] missing beanioMappingFile");
-			}
 		});
 	}
 
