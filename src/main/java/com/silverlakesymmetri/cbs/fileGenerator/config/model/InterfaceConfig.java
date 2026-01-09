@@ -10,10 +10,6 @@ public class InterfaceConfig {
 	public static final int DEFAULT_CHUNK_SIZE = 1000;
 	public static final OutputFormat DEFAULT_OUTPUT_FORMAT = OutputFormat.XML;
 	public static final String DEFAULT_FILE_EXTENSION = "xml";
-	public static final String DEFAULT_ROOT_ELEMENT = "records";
-	public static final String DEFAULT_NAMESPACE = "";
-	public static final String DEFAULT_KEYSET_COLUMN = "id";
-	public static final String DEFAULT_STREAM_NAME = "interfaceStream";
 
 	/* ================= Core (Mandatory, Immutable) ================= */
 	private String name;
@@ -21,14 +17,14 @@ public class InterfaceConfig {
 
 	/* ================= Optional (Mutable) ================= */
 	private String beanioMappingFile;
-	private String streamName = DEFAULT_STREAM_NAME;
+	private String streamName;
 	private String xsdSchemaFile;
 	private int chunkSize = DEFAULT_CHUNK_SIZE;
 	private OutputFormat outputFormat = DEFAULT_OUTPUT_FORMAT;
 	private String outputFileExtension = DEFAULT_FILE_EXTENSION;
-	private String rootElement = DEFAULT_ROOT_ELEMENT;
-	private String namespace = DEFAULT_NAMESPACE;
-	private String keysetColumn = DEFAULT_KEYSET_COLUMN;
+	private String rootElement;
+	private String namespace;
+	private String keysetColumn;
 	private boolean enabled = true;
 	private String description;
 
@@ -114,7 +110,7 @@ public class InterfaceConfig {
 	}
 
 	public void setRootElement(String rootElement) {
-		this.rootElement = rootElement != null ? rootElement : DEFAULT_ROOT_ELEMENT;
+		this.rootElement = rootElement;
 	}
 
 	public String getNamespace() {
@@ -122,7 +118,7 @@ public class InterfaceConfig {
 	}
 
 	public void setNamespace(String namespace) {
-		this.namespace = namespace != null ? namespace : DEFAULT_NAMESPACE;
+		this.namespace = namespace;
 	}
 
 	public String getKeysetColumn() {
@@ -130,7 +126,7 @@ public class InterfaceConfig {
 	}
 
 	public void setKeysetColumn(String keysetColumn) {
-		this.keysetColumn = keysetColumn != null ? keysetColumn : DEFAULT_KEYSET_COLUMN;
+		this.keysetColumn = keysetColumn;
 	}
 
 	public String getDescription() {
@@ -142,16 +138,22 @@ public class InterfaceConfig {
 	}
 
 	/* ================= toString ================= */
+
 	@Override
 	public String toString() {
 		return "InterfaceConfig{" +
 				"name='" + name + '\'' +
-				", enabled=" + enabled +
+				", dataSourceQuery='" + dataSourceQuery + '\'' +
+				", beanioMappingFile='" + beanioMappingFile + '\'' +
+				", streamName='" + streamName + '\'' +
+				", xsdSchemaFile='" + xsdSchemaFile + '\'' +
 				", chunkSize=" + chunkSize +
 				", outputFormat=" + outputFormat +
+				", outputFileExtension='" + outputFileExtension + '\'' +
 				", rootElement='" + rootElement + '\'' +
 				", namespace='" + namespace + '\'' +
 				", keysetColumn='" + keysetColumn + '\'' +
+				", enabled=" + enabled +
 				", description='" + description + '\'' +
 				'}';
 	}
