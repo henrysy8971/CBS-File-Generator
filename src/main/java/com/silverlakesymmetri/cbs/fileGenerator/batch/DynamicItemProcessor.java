@@ -25,7 +25,6 @@ public class DynamicItemProcessor implements ItemProcessor<DynamicRecord, Dynami
 	private final XsdValidator xsdValidator;
 
 	private StepExecution stepExecution;
-
 	private String activeXsdSchema;
 
 	@Autowired
@@ -96,9 +95,8 @@ public class DynamicItemProcessor implements ItemProcessor<DynamicRecord, Dynami
 
 	// ================= Metrics =================
 	private void initializeMetric(String key) {
-		ExecutionContext ctx = stepExecution.getExecutionContext();
-		if (!ctx.containsKey(key)) {
-			ctx.putLong(key, 0L);
+		if (!stepExecution.getExecutionContext().containsKey(key)) {
+			stepExecution.getExecutionContext().putLong(key, 0L);
 		}
 	}
 

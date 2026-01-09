@@ -37,7 +37,9 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto> {
 
 	@Override
 	public void open(ExecutionContext executionContext) throws ItemStreamException {
+
 		BufferedWriter writer = null;
+
 		try {
 			File file = new File(partFilePath);
 			boolean append = executionContext.containsKey(RESTART_COUNT_KEY);

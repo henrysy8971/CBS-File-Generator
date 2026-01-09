@@ -12,8 +12,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import javax.persistence.*;
-import java.util.Comparator;
+import javax.persistence.EntityManager;
+import javax.persistence.Tuple;
+import javax.persistence.TupleElement;
+import javax.persistence.TypedQuery;
 import java.util.Iterator;
 import java.util.List;
 
@@ -21,20 +23,18 @@ import java.util.List;
 @StepScope
 public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 	private static final Logger logger = LoggerFactory.getLogger(DynamicItemReader.class);
-
-	// State keys for the ExecutionContext
 	private static final String CONTEXT_KEY_TOTAL = "dynamic.reader.totalProcessed";
 	private static final String CONTEXT_KEY_LAST_ID = "dynamic.reader.lastProcessedId";
 
 	private final int pageSize;
+
 	private final InterfaceConfig interfaceConfig;
 	private final String interfaceType;
 	private final String queryString;
 	private final EntityManager entityManager;
-
-	// Stored state
 	private String[] columnNames;
 	private ColumnType[] columnTypes;
+
 	private Iterator<Tuple> resultIterator;
 	private Long lastProcessedId = null;
 	private long totalProcessed = 0;
@@ -42,19 +42,24 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 	@Autowired
 	public DynamicItemReader(
 			InterfaceConfig interfaceConfig,
-			@Value("${file.generation.chunk-size:1000}") int pageSize, EntityManager entityManager
+			EntityManager entityManager,
+			@Value("${file.generation.chunk-size:1000}") int pageSize
 	) {
 		this.interfaceConfig = interfaceConfig;
-		this.pageSize = pageSize;
 		this.entityManager = entityManager;
+		this.pageSize = pageSize;
 
-		if (interfaceConfig == null) throw new IllegalArgumentException("InterfaceConfig cannot be null");
-		if (interfaceConfig.getName() == null)
+		if (interfaceConfig == null) {
+			throw new IllegalArgumentException("InterfaceConfig cannot be null");
+		}
+
+		if (interfaceConfig.getName() == null) {
 			throw new IllegalArgumentException("Interface Name must be defined");
-		if (interfaceConfig.getKeysetColumn() == null)
-			throw new IllegalArgumentException("Keyset column must be defined");
-		if (interfaceConfig.getDataSourceQuery() == null)
+		}
+
+		if (interfaceConfig.getDataSourceQuery() == null) {
 			throw new IllegalArgumentException("Data source query must be defined");
+		}
 
 		this.interfaceType = interfaceConfig.getName();
 		this.queryString = interfaceConfig.getDataSourceQuery();
@@ -75,14 +80,14 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 			Tuple tuple = resultIterator.next();
 			DynamicRecord record = convertRowToRecord(tuple);
 
-			// Update keyset
-			Object idValue = tuple.get(interfaceConfig.getKeysetColumn());
-			if (!(idValue instanceof Number)) {
-				throw new IllegalStateException("Keyset column must be numeric");
+			if (interfaceConfig.getKeysetColumn() != null) {
+				Object idValue = tuple.get(interfaceConfig.getKeysetColumn());
+				if (!(idValue instanceof Number)) {
+					throw new IllegalStateException("Keyset column must be numeric");
+				}
+				lastProcessedId = ((Number) idValue).longValue();
 			}
-			lastProcessedId = ((Number) idValue).longValue();
 
-			// Increment total processed
 			totalProcessed++;
 
 			if (totalProcessed % pageSize == 0) {

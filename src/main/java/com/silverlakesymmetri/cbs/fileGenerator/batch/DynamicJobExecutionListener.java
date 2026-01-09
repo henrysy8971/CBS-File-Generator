@@ -19,7 +19,6 @@ import org.springframework.beans.factory.annotation.Autowired;
  */
 public class DynamicJobExecutionListener implements JobExecutionListener {
 	private static final Logger logger = LoggerFactory.getLogger(DynamicJobExecutionListener.class);
-
 	private final FileFinalizationService fileFinalizationService;
 	private final FileGenerationService fileGenerationService;
 
@@ -74,7 +73,6 @@ public class DynamicJobExecutionListener implements JobExecutionListener {
 			// Only mark as COMPLETED if all file operations succeeded
 			fileGenerationService.markCompleted(jobId);
 			logger.info("File finalized and verified successfully: {}", finalFilePath);
-
 		} catch (Exception e) {
 			logger.error("Finalization failed for JobId: {}", jobId, e);
 			// Update DB to FAILED if post-processing fails

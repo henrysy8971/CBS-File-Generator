@@ -13,7 +13,6 @@ import org.springframework.data.domain.*;
 import org.springframework.stereotype.Component;
 
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -22,12 +21,12 @@ import java.util.stream.Collectors;
 @StepScope
 public class OrderItemReader implements ItemStreamReader<OrderDto> {
 	private static final Logger logger = LoggerFactory.getLogger(OrderItemReader.class);
-
 	private static final String CONTEXT_KEY_TOTAL = "order.reader.totalProcessed";
 	private static final String CONTEXT_KEY_LAST_ID = "order.reader.lastProcessedId";
 	private static final String INTERFACE_TYPE = "ORDER_INTERFACE";
 
 	private final int pageSize;
+
 	private final OrderRepository orderRepository;
 	private final OrderRowMapper orderRowMapper;
 

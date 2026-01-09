@@ -4,6 +4,7 @@ import com.silverlakesymmetri.cbs.fileGenerator.dto.DynamicRecord;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
@@ -23,7 +24,6 @@ public class DynamicBatchConfig {
 	private final DynamicItemReader dynamicItemReader;
 	private final DynamicItemProcessor dynamicItemProcessor;
 	private final DynamicItemWriter dynamicItemWriter;
-
 	private final FileValidationTasklet fileValidationTasklet;
 
 	@Value("${file.generation.chunk-size:1000}")
@@ -67,7 +67,7 @@ public class DynamicBatchConfig {
 				.incrementer(new RunIdIncrementer())
 				.listener(sharedJobListener)
 				.start(dynamicFileGenerationStep())
-				.on("COMPLETED").to(dynamicValidationStep()) // Only validate if success
+				.on(BatchStatus.COMPLETED.name()).to(dynamicValidationStep()) // Only validate if success
 				.on("*").fail() // Fail if anything else happens
 				.end()
 				.build();

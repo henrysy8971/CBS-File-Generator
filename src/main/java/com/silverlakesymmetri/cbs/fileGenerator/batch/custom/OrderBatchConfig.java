@@ -6,6 +6,7 @@ import com.silverlakesymmetri.cbs.fileGenerator.dto.OrderDto;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
@@ -19,12 +20,9 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class OrderBatchConfig {
 	private static final Logger logger = LoggerFactory.getLogger(OrderBatchConfig.class);
-
 	private final JobBuilderFactory jobBuilderFactory;
 	private final StepBuilderFactory stepBuilderFactory;
 	private final FileGenerationService fileGenerationService;
-
-	// Order-specific components
 	private final OrderItemReader orderItemReader;
 	private final OrderItemProcessor orderItemProcessor;
 	private final OrderItemWriter orderItemWriter;
@@ -55,7 +53,6 @@ public class OrderBatchConfig {
 	@Bean
 	public Step orderFileValidationStep() {
 		return stepBuilderFactory.get("orderFileValidationStep")
-				// Pass the validator and config loader to the Tasklet
 				.tasklet(fileValidationTasklet)
 				.build();
 	}
@@ -67,7 +64,7 @@ public class OrderBatchConfig {
 				.incrementer(new RunIdIncrementer())
 				.listener(sharedJobListener)
 				.start(orderFileGenerationStep())
-				.on("COMPLETED").to(orderFileValidationStep()) // Move to validation only on success
+				.on(BatchStatus.COMPLETED.name()).to(orderFileValidationStep()) // Move to validation only on success
 				.on("*").fail() // Fail the job for any other status (FAILED, STOPPED)
 				.end()
 				.build();

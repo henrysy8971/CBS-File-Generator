@@ -113,6 +113,19 @@ public class OrderItemProcessor implements ItemProcessor<OrderDto, OrderDto> {
 		ctx.putLong(key, ctx.getLong(key, 0L) + 1);
 	}
 
+	// ================= Metrics Accessors =================
+	public long getProcessedCount() {
+		return stepExecution.getExecutionContext().getLong(BatchMetricsConstants.KEY_PROCESSED, 0L);
+	}
+
+	public long getSkippedCount() {
+		return stepExecution.getExecutionContext().getLong(BatchMetricsConstants.KEY_SKIPPED, 0L);
+	}
+
+	public long getInvalidCount() {
+		return stepExecution.getExecutionContext().getLong(BatchMetricsConstants.KEY_INVALID, 0L);
+	}
+
 	// ================= Validation =================
 	private boolean isValidOrder(OrderDto order) {
 		return order != null &&
@@ -130,18 +143,5 @@ public class OrderItemProcessor implements ItemProcessor<OrderDto, OrderDto> {
 				.anyMatch(item -> item.getLineItemId() != null &&
 						item.getQuantity() != null &&
 						item.getQuantity() > 0);
-	}
-
-	// ================= Metrics Accessors =================
-	public long getProcessedCount() {
-		return stepExecution.getExecutionContext().getLong(BatchMetricsConstants.KEY_PROCESSED, 0L);
-	}
-
-	public long getSkippedCount() {
-		return stepExecution.getExecutionContext().getLong(BatchMetricsConstants.KEY_SKIPPED, 0L);
-	}
-
-	public long getInvalidCount() {
-		return stepExecution.getExecutionContext().getLong(BatchMetricsConstants.KEY_INVALID, 0L);
 	}
 }
