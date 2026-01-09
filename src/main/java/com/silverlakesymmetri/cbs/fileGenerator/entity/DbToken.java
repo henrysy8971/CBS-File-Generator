@@ -6,7 +6,6 @@ import java.sql.Timestamp;
 @Entity
 @Table(name = "DB_TOKEN")
 public class DbToken {
-
 	@Id
 	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "DB_TOKEN_SEQ")
 	@SequenceGenerator(name = "DB_TOKEN_SEQ", sequenceName = "DB_TOKEN_SEQ", allocationSize = 1)

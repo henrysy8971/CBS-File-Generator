@@ -26,20 +26,21 @@ public class FileGenerationController {
 	private static final Logger logger = LoggerFactory.getLogger(FileGenerationController.class);
 	private static final Pattern INTERFACE_TYPE_PATTERN = Pattern.compile("^[A-Za-z0-9_]+$");
 
-	@Autowired
-	private FileGenerationService fileGenerationService;
-
-	@Autowired
-	private BatchJobLauncher batchJobLauncher;
-
-	@Autowired
-	private InterfaceConfigLoader interfaceConfigLoader;
-
-	@Autowired
-	private org.quartz.Scheduler scheduler; // To check background poller status
+	private final FileGenerationService fileGenerationService;
+	private final BatchJobLauncher batchJobLauncher;
+	private final InterfaceConfigLoader interfaceConfigLoader;
+	private final org.quartz.Scheduler scheduler;
 
 	@Value("${file.generation.output-directory}")
 	private String outputDirectory;
+
+	@Autowired
+	public FileGenerationController(FileGenerationService fileGenerationService, BatchJobLauncher batchJobLauncher, InterfaceConfigLoader interfaceConfigLoader, org.quartz.Scheduler scheduler) {
+		this.fileGenerationService = fileGenerationService;
+		this.batchJobLauncher = batchJobLauncher;
+		this.interfaceConfigLoader = interfaceConfigLoader;
+		this.scheduler = scheduler;
+	}
 
 	// ==================== Generate File ====================
 

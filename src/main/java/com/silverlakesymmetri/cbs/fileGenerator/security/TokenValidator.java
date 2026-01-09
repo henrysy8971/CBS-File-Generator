@@ -12,11 +12,13 @@ import java.util.Optional;
 
 @Component
 public class TokenValidator {
-
 	private static final Logger logger = LoggerFactory.getLogger(TokenValidator.class);
+	private final DbTokenRepository dbTokenRepository;
 
 	@Autowired
-	private DbTokenRepository dbTokenRepository;
+	public TokenValidator(DbTokenRepository dbTokenRepository) {
+		this.dbTokenRepository = dbTokenRepository;
+	}
 
 	public boolean validateToken(String token) {
 		if (token == null || token.isEmpty()) {

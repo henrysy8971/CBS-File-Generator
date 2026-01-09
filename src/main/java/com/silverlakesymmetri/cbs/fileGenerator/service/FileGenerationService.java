@@ -48,11 +48,6 @@ public class FileGenerationService {
 	}
 
 	@Transactional
-	public void markStopped(String jobId) {
-		transitionStatus(jobId, FileGenerationStatus.STOPPED, null);
-	}
-
-	@Transactional
 	public void markFinalizing(String jobId) {
 		transitionStatus(jobId, FileGenerationStatus.FINALIZING, null);
 	}
@@ -106,7 +101,7 @@ public class FileGenerationService {
 		if (!currentStatus.canTransitionTo(nextStatus)) {
 			throw new IllegalStateException(
 					"Invalid status transition: " +
-							currentStatus + " → " + nextStatus +
+							currentStatus + " -> " + nextStatus +
 							" for jobId=" + jobId
 			);
 		}

@@ -19,13 +19,16 @@ public class DynamicItemWriter implements OutputFormatWriter, ItemStreamWriter<D
 	private static final Logger logger = LoggerFactory.getLogger(DynamicItemWriter.class);
 	private static final String CONTEXT_KEY_PART_FILE = "dynamic.writer.partFilePath";
 	private static final String CONTEXT_KEY_RECORD_COUNT = "dynamic.writer.recordCount";
-
-	@Autowired
-	private OutputFormatWriterFactory writerFactory;
+	private final OutputFormatWriterFactory writerFactory;
 
 	private OutputFormatWriter delegateWriter;
 	private String interfaceType;
 	private String outputFilePath;
+
+	@Autowired
+	public DynamicItemWriter(OutputFormatWriterFactory writerFactory) {
+		this.writerFactory = writerFactory;
+	}
 
 	@Override
 	public void open(ExecutionContext executionContext) throws ItemStreamException {

@@ -32,8 +32,8 @@ public class OutputFormatWriterFactory {
 	/**
 	 * Select writer based on interface configuration.
 	 * Priority:
-	 * 1. If beanioMappingFile is configured → Use BeanIOFormatWriter
-	 * 2. Otherwise → Use .part-aware GenericXMLWriter (safe fallback)
+	 * 1. If beanioMappingFile is configured -> Use BeanIOFormatWriter
+	 * 2. Otherwise -> Use .part-aware GenericXMLWriter (safe fallback)
 	 */
 	public OutputFormatWriter selectWriter(String interfaceType) {
 		try {

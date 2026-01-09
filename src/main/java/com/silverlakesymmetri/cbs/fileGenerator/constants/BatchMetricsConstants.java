@@ -4,7 +4,6 @@ package com.silverlakesymmetri.cbs.fileGenerator.constants;
  * Centralized constants for Spring Batch processing metrics.
  */
 public final class BatchMetricsConstants {
-
 	// Prevent instantiation
 	private BatchMetricsConstants() { }
 

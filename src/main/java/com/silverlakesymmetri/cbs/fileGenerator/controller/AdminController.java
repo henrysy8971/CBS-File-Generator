@@ -15,14 +15,16 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/admin")
 public class AdminController {
-	@Autowired
-	private JobLauncher jobLauncher;
+	private final JobLauncher jobLauncher;
+	private final Job cleanupJob;
+	private final Scheduler scheduler; // The Quartz Scheduler bean
 
 	@Autowired
-	private Job cleanupJob;
-
-	@Autowired
-	private Scheduler scheduler; // The Quartz Scheduler bean
+	public AdminController(JobLauncher jobLauncher, Job cleanupJob, Scheduler scheduler) {
+		this.jobLauncher = jobLauncher;
+		this.cleanupJob = cleanupJob;
+		this.scheduler = scheduler;
+	}
 
 	@PostMapping("/cleanup")
 	public String triggerCleanup() throws Exception {

@@ -11,6 +11,7 @@ import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.batch.core.step.tasklet.Tasklet;
 import org.springframework.batch.item.ExecutionContext;
 import org.springframework.batch.repeat.RepeatStatus;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
@@ -23,6 +24,7 @@ public class FileValidationTasklet implements Tasklet {
 	private final XsdValidator xsdValidator;
 	private final InterfaceConfigLoader interfaceConfigLoader;
 
+	@Autowired
 	public FileValidationTasklet(XsdValidator xsdValidator, InterfaceConfigLoader interfaceConfigLoader) {
 		this.xsdValidator = xsdValidator;
 		this.interfaceConfigLoader = interfaceConfigLoader;

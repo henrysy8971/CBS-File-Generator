@@ -4,6 +4,7 @@ import com.silverlakesymmetri.cbs.fileGenerator.entity.AppConfig;
 import com.silverlakesymmetri.cbs.fileGenerator.repository.AppConfigRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,12 +20,11 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 public class AppConfigService {
 	private static final Logger logger = LoggerFactory.getLogger(AppConfigService.class);
-
 	private final AppConfigRepository repository;
-
 	private final Map<String, String> cache = new ConcurrentHashMap<>();
 	private LocalDateTime lastRefresh = LocalDateTime.MIN;
 
+	@Autowired
 	public AppConfigService(AppConfigRepository repository) {
 		this.repository = repository;
 	}

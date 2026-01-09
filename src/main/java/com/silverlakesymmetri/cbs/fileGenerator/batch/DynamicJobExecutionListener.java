@@ -7,11 +7,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.JobExecution;
 import org.springframework.batch.core.JobExecutionListener;
+import org.springframework.beans.factory.annotation.Autowired;
 
 /**
  * Job listener for safe finalization of .part files after batch completion.
  * Features:
- * - Atomic rename (.part → final)
+ * - Atomic rename (.part -> final)
  * - SHA256 checksum verification
  * - Restart-safe behavior
  * - Backward-compatible constructors
@@ -22,6 +23,7 @@ public class DynamicJobExecutionListener implements JobExecutionListener {
 	private final FileFinalizationService fileFinalizationService;
 	private final FileGenerationService fileGenerationService;
 
+	@Autowired
 	public DynamicJobExecutionListener(FileFinalizationService fileFinalizationService, FileGenerationService fileGenerationService) {
 		this.fileFinalizationService = fileFinalizationService;
 		this.fileGenerationService = fileGenerationService;

@@ -24,9 +24,12 @@ public class FileFinalizationService {
 	private static final Logger logger = LoggerFactory.getLogger(FileFinalizationService.class);
 	private static final String SHA256_ALGORITHM = "SHA-256";
 	private static final int BUFFER_SIZE = 8192;
+	private final FileGenerationService fileGenerationService;
 
 	@Autowired
-	private FileGenerationService fileGenerationService;
+	public FileFinalizationService(FileGenerationService fileGenerationService) {
+		this.fileGenerationService = fileGenerationService;
+	}
 
 	@Async("taskExecutor")
 	public void finalizeFileAsync(String jobId, String partFilePath) {
@@ -50,7 +53,7 @@ public class FileFinalizationService {
 
 	/**
 	 * Finalize a .part file safely:
-	 * 1. Atomically move .part → final file
+	 * 1. Atomically move .part -> final file
 	 * 2. Generate SHA256 checksum file (.sha)
 	 */
 	public boolean finalizeFile(String partFilePath) {
@@ -78,10 +81,10 @@ public class FileFinalizationService {
 
 			// Rename the .sha file to match the new final filename
 			Path oldSha = Paths.get(shaPath);
-			Path newSha = Paths.get(finalPath.toString() + ".sha");
+			Path newSha = Paths.get(finalPath + ".sha");
 			Files.move(oldSha, newSha, StandardCopyOption.REPLACE_EXISTING);
 
-			applyPosixPermissions(finalPath, "rw-r--r--");
+			applyPosixPermissions(finalPath);
 			return true;
 		} catch (Exception e) {
 			logger.error("Fatal error during finalization of {}", partFilePath, e);
@@ -90,7 +93,7 @@ public class FileFinalizationService {
 	}
 
 	/**
-	 * Generate SHA256 checksum file safely (.sha.part → .sha)
+	 * Generate SHA256 checksum file safely (.sha.part -> .sha)
 	 */
 	private String generateShaFile(Path filePath) {
 		Path shaPartPath = Paths.get(filePath.toString() + ".sha.part");
@@ -107,7 +110,7 @@ public class FileFinalizationService {
 			}
 
 			moveFileSafely(shaPartPath, finalShaPath);
-			applyPosixPermissions(finalShaPath, "rw-r--r--");
+			applyPosixPermissions(finalShaPath);
 			return finalShaPath.toString();
 
 		} catch (Exception e) {
@@ -205,12 +208,12 @@ public class FileFinalizationService {
 	/**
 	 * Helper to apply permissions only if the OS supports them.
 	 */
-	private void applyPosixPermissions(Path path, String permsStr) {
+	private void applyPosixPermissions(Path path) {
 		try {
 			if (path.getFileSystem().supportedFileAttributeViews().contains("posix")) {
-				Set<PosixFilePermission> perms = PosixFilePermissions.fromString(permsStr);
+				Set<PosixFilePermission> perms = PosixFilePermissions.fromString("rw-r--r--");
 				Files.setPosixFilePermissions(path, perms);
-				logger.debug("Applied POSIX permissions {} to {}", permsStr, path);
+				logger.debug("Applied POSIX permissions {} to {}", "rw-r--r--", path);
 			}
 		} catch (Exception e) {
 			logger.warn("Failed to set POSIX permissions for {}: {}", path, e.getMessage());

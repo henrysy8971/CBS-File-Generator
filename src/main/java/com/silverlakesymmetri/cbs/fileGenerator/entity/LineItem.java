@@ -7,7 +7,6 @@ import java.math.BigDecimal;
 @Entity
 @Table(name = "LINE_ITEMS")
 public class LineItem implements Serializable {
-
 	@Id
 	@Column(name = "LINE_ITEM_ID")
 	private String lineItemId;

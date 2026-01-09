@@ -8,14 +8,14 @@ import org.springframework.batch.core.ExitStatus;
 import org.springframework.batch.core.StepExecution;
 import org.springframework.batch.core.listener.StepExecutionListenerSupport;
 import org.springframework.batch.item.ExecutionContext;
+import org.springframework.beans.factory.annotation.Autowired;
 
 public class OrderStepExecutionListener extends StepExecutionListenerSupport {
-	private static final Logger logger =
-			LoggerFactory.getLogger(OrderStepExecutionListener.class);
-
+	private static final Logger logger = LoggerFactory.getLogger(OrderStepExecutionListener.class);
 	private final OrderItemWriter orderItemWriter;
 	private final FileGenerationService fileGenerationService;
 
+	@Autowired
 	public OrderStepExecutionListener(
 			OrderItemWriter orderItemWriter,
 			FileGenerationService fileGenerationService) {

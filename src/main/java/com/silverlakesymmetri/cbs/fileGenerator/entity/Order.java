@@ -9,7 +9,6 @@ import java.util.List;
 @Entity
 @Table(name = "ORDERS")
 public class Order implements Serializable {
-
 	@Id
 	@Column(name = "ORDER_ID")
 	private Long orderId;

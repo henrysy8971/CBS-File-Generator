@@ -25,15 +25,18 @@ import java.util.stream.Stream;
 @Component
 public class BatchCleanupTasklet implements Tasklet {
 	private static final Logger logger = LoggerFactory.getLogger(BatchCleanupTasklet.class);
-
-	@Autowired
-	private JdbcTemplate jdbcTemplate;
+	private final JdbcTemplate jdbcTemplate;
 
 	@Value("${file.generation.max-file-age-in-days:30}")
 	private int daysToKeep;
 
 	@Value("${file.generation.output-directory}")
 	private String storageDirectory;
+
+	@Autowired
+	public BatchCleanupTasklet(JdbcTemplate jdbcTemplate) {
+		this.jdbcTemplate = jdbcTemplate;
+	}
 
 	@Override
 	public RepeatStatus execute(StepContribution contribution, ChunkContext chunkContext) {

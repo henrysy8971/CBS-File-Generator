@@ -13,15 +13,16 @@ import org.springframework.stereotype.Component;
 @DisallowConcurrentExecution
 public class FileGenerationScheduler extends QuartzJobBean {
 	private static final Logger logger = LoggerFactory.getLogger(FileGenerationScheduler.class);
+	private final FileGenerationService fileGenerationService;
+	private final BatchJobLauncher batchJobLauncher;
+	private final Scheduler scheduler; // Injected to actually perform the scheduling
 
 	@Autowired
-	private FileGenerationService fileGenerationService;
-
-	@Autowired
-	private BatchJobLauncher batchJobLauncher;
-
-	@Autowired
-	private Scheduler scheduler; // Injected to actually perform the scheduling
+	public FileGenerationScheduler(FileGenerationService fileGenerationService, BatchJobLauncher batchJobLauncher, Scheduler scheduler) {
+		this.fileGenerationService = fileGenerationService;
+		this.batchJobLauncher = batchJobLauncher;
+		this.scheduler = scheduler;
+	}
 
 	@Override
 	protected void executeInternal(JobExecutionContext context) throws JobExecutionException {

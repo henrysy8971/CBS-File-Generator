@@ -10,8 +10,12 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurerAdapter
 
 @Configuration
 public class SecurityConfig extends WebMvcConfigurerAdapter {
+	private final TokenAuthenticationFilter tokenAuthenticationFilter;
+
 	@Autowired
-	private TokenAuthenticationFilter tokenAuthenticationFilter;
+	public SecurityConfig(TokenAuthenticationFilter tokenAuthenticationFilter) {
+		this.tokenAuthenticationFilter = tokenAuthenticationFilter;
+	}
 
 	@Bean
 	public FilterRegistrationBean securityFilter() {

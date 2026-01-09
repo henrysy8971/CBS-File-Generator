@@ -20,13 +20,13 @@ import org.springframework.stereotype.Component;
 @StepScope
 public class OrderItemProcessor implements ItemProcessor<OrderDto, OrderDto> {
 	private static final Logger logger = LoggerFactory.getLogger(OrderItemProcessor.class);
-
 	private final InterfaceConfigLoader interfaceConfigLoader;
 	private final XsdValidator xsdValidator;
 
 	private StepExecution stepExecution;
 	private String activeXsdSchema;
 
+	@Autowired
 	public OrderItemProcessor(
 			InterfaceConfigLoader interfaceConfigLoader,
 			@Autowired(required = false) XsdValidator xsdValidator) {

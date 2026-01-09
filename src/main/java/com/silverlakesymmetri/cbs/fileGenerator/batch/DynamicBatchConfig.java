@@ -9,6 +9,7 @@ import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
 import org.springframework.batch.core.configuration.annotation.StepBuilderFactory;
 import org.springframework.batch.core.launch.support.RunIdIncrementer;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -16,7 +17,6 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class DynamicBatchConfig {
 	private static final Logger logger = LoggerFactory.getLogger(DynamicBatchConfig.class);
-
 	private final JobBuilderFactory jobBuilderFactory;
 	private final StepBuilderFactory stepBuilderFactory;
 	private final FileGenerationService fileGenerationService;
@@ -29,6 +29,7 @@ public class DynamicBatchConfig {
 	@Value("${file.generation.chunk-size:1000}")
 	private int chunkSize;
 
+	@Autowired
 	public DynamicBatchConfig(
 			JobBuilderFactory jobBuilderFactory,
 			StepBuilderFactory stepBuilderFactory,

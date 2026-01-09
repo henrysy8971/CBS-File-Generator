@@ -8,6 +8,7 @@ import org.springframework.batch.core.ExitStatus;
 import org.springframework.batch.core.StepExecution;
 import org.springframework.batch.core.listener.StepExecutionListenerSupport;
 import org.springframework.batch.item.ExecutionContext;
+import org.springframework.beans.factory.annotation.Autowired;
 
 public class DynamicStepExecutionListener extends StepExecutionListenerSupport {
 	private static final Logger logger =
@@ -16,6 +17,7 @@ public class DynamicStepExecutionListener extends StepExecutionListenerSupport {
 	private final DynamicItemWriter dynamicItemWriter;
 	private final FileGenerationService fileGenerationService;
 
+	@Autowired
 	public DynamicStepExecutionListener(
 			DynamicItemWriter dynamicItemWriter,
 			FileGenerationService fileGenerationService) {

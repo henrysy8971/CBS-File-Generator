@@ -13,7 +13,6 @@ import java.util.Date;
 
 @Component
 public class OrderRowMapper {
-
 	private static final Logger logger = LoggerFactory.getLogger(OrderRowMapper.class);
 	private static final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 

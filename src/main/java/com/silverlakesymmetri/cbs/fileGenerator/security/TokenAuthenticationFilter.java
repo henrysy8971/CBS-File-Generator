@@ -18,9 +18,7 @@ import java.io.IOException;
 public class TokenAuthenticationFilter extends OncePerRequestFilter {
 
 	private static final Logger logger = LoggerFactory.getLogger(TokenAuthenticationFilter.class);
-
-	@Autowired
-	private TokenValidator tokenValidator;
+	private final TokenValidator tokenValidator;
 
 	@Value("${auth.token.header-name:X-DB-Token}")
 	private String tokenHeaderName;
@@ -29,6 +27,11 @@ public class TokenAuthenticationFilter extends OncePerRequestFilter {
 	private boolean enableValidation;
 
 	private final AntPathMatcher pathMatcher = new AntPathMatcher();
+
+	@Autowired
+	public TokenAuthenticationFilter(TokenValidator tokenValidator) {
+		this.tokenValidator = tokenValidator;
+	}
 
 	@Override
 	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,

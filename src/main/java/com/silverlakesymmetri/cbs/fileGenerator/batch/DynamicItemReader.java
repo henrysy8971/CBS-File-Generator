@@ -8,6 +8,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.item.ExecutionContext;
 import org.springframework.batch.item.ItemStreamReader;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -38,6 +39,7 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 	private Long lastProcessedId = null;
 	private long totalProcessed = 0;
 
+	@Autowired
 	public DynamicItemReader(
 			InterfaceConfig interfaceConfig,
 			@Value("${file.generation.chunk-size:1000}") int pageSize, EntityManager entityManager

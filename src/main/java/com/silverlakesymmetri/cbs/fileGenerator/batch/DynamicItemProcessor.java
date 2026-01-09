@@ -21,7 +21,6 @@ import java.util.Set;
 @StepScope
 public class DynamicItemProcessor implements ItemProcessor<DynamicRecord, DynamicRecord> {
 	private static final Logger logger = LoggerFactory.getLogger(DynamicItemProcessor.class);
-
 	private final InterfaceConfigLoader interfaceConfigLoader;
 	private final XsdValidator xsdValidator;
 
@@ -29,6 +28,7 @@ public class DynamicItemProcessor implements ItemProcessor<DynamicRecord, Dynami
 
 	private String activeXsdSchema;
 
+	@Autowired
 	public DynamicItemProcessor(
 			InterfaceConfigLoader interfaceConfigLoader,
 			@Autowired(required = false) XsdValidator xsdValidator) {

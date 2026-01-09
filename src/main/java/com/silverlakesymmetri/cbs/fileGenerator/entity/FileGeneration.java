@@ -8,7 +8,6 @@ import java.sql.Timestamp;
 @Entity
 @Table(name = "FILE_GENERATION")
 public class FileGeneration {
-
 	@Id
 	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	@Column(name = "FILE_GEN_ID")

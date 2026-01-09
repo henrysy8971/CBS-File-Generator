@@ -8,7 +8,6 @@ import org.springframework.scheduling.quartz.SchedulerFactoryBean;
 
 @Configuration
 public class QuartzConfiguration {
-
 	@Bean
 	public JobFactory jobFactory(ApplicationContext applicationContext) {
 		AutowiringSpringBeanJobFactory jobFactory = new AutowiringSpringBeanJobFactory();

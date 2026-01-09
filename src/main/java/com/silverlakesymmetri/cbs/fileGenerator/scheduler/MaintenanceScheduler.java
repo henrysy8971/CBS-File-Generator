@@ -13,12 +13,14 @@ import org.springframework.stereotype.Service;
 @Service
 public class MaintenanceScheduler {
 	private static final Logger logger = LoggerFactory.getLogger(MaintenanceScheduler.class);
+	private final JobLauncher jobLauncher;
+	private final Job cleanupJob; // You would define this in DynamicBatchConfig
 
 	@Autowired
-	private JobLauncher jobLauncher;
-
-	@Autowired
-	private Job cleanupJob; // You would define this in DynamicBatchConfig
+	public MaintenanceScheduler(JobLauncher jobLauncher, Job cleanupJob) {
+		this.jobLauncher = jobLauncher;
+		this.cleanupJob = cleanupJob;
+	}
 
 	@Scheduled(cron = "0 0 0 * * SUN") // Every Sunday at Midnight
 	public void runCleanup() {

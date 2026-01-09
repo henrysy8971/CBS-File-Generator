@@ -24,12 +24,11 @@ import java.util.concurrent.CompletableFuture;
 @Service
 public class BatchJobLauncher {
 	private static final Logger logger = LoggerFactory.getLogger(BatchJobLauncher.class);
-
 	private final JobLauncher jobLauncher;
 	private final Job defaultJob;
 	private final InterfaceConfigLoader interfaceConfigLoader;
 	private final FileGenerationService fileGenerationService;
-	private final Map<String, Job> allJobs; // Keyed by interfaceType
+	private final Map<String, Job> allJobs;
 
 	@Value("${file.generation.output-directory}")
 	private String outputDirectory;

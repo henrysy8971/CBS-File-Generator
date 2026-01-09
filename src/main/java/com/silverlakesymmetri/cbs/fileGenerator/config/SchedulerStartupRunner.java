@@ -10,17 +10,19 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class SchedulerStartupRunner implements CommandLineRunner {
-
 	private static final Logger logger = LoggerFactory.getLogger(SchedulerStartupRunner.class);
-
-	@Autowired
-	private FileGenerationScheduler fileGenerationScheduler;
+	private final FileGenerationScheduler fileGenerationScheduler;
 
 	@Value("${batch.scheduler.cron:0 0/5 * * * ?}") // Default to every 5 minutes
 	private String cronExpression;
 
+	@Autowired
+	public SchedulerStartupRunner(FileGenerationScheduler fileGenerationScheduler) {
+		this.fileGenerationScheduler = fileGenerationScheduler;
+	}
+
 	@Override
-	public void run(String... args) throws Exception {
+	public void run(String... args) {
 		logger.info("Initializing Quartz Scheduler with cron: {}", cronExpression);
 		try {
 			fileGenerationScheduler.createRecurringSchedule(cronExpression);

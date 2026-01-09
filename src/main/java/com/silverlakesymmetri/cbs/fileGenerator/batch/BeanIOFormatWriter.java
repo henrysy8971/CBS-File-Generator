@@ -27,18 +27,18 @@ import java.util.concurrent.atomic.AtomicLong;
 @StepScope
 public class BeanIOFormatWriter implements OutputFormatWriter {
 	private static final Logger logger = LoggerFactory.getLogger(BeanIOFormatWriter.class);
-
-	// Cache StreamFactories to avoid expensive XML parsing on every step
 	private static final Map<String, StreamFactory> FACTORY_CACHE = new ConcurrentHashMap<>();
-
-	@Autowired
-	private InterfaceConfigLoader interfaceConfigLoader;
+	private final InterfaceConfigLoader interfaceConfigLoader;
+	private final AtomicLong recordCount = new AtomicLong(0);
 
 	private BeanWriter beanIOWriter;
 	private BufferedWriter bufferedWriter;
-
 	private String partFilePath;
-	private final AtomicLong recordCount = new AtomicLong(0);
+
+	@Autowired
+	public BeanIOFormatWriter(InterfaceConfigLoader interfaceConfigLoader) {
+		this.interfaceConfigLoader = interfaceConfigLoader;
+	}
 
 	@Override
 	public void init(String outputFilePath, String interfaceType) throws Exception {
