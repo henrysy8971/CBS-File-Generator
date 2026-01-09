@@ -43,9 +43,9 @@ public class BeanIOFormatWriter implements OutputFormatWriter {
 	@Override
 	public void init(String outputFilePath, String interfaceType) throws Exception {
 
-		InterfaceConfig config = interfaceConfigLoader.getConfig(interfaceType);
-		if (config == null || config.getBeanioMappingFile() == null) {
-			throw new IllegalArgumentException("Invalid BeanIO config for: " + interfaceType);
+		InterfaceConfig interfaceConfig = interfaceConfigLoader.getConfig(interfaceType);
+		if (interfaceConfig == null || interfaceConfig.getBeanioMappingFile() == null) {
+			throw new IllegalArgumentException("Invalid BeanIO interfaceConfig for: " + interfaceType);
 		}
 
 		this.partFilePath = outputFilePath.endsWith(".part") ? outputFilePath : outputFilePath + ".part";
@@ -67,10 +67,10 @@ public class BeanIOFormatWriter implements OutputFormatWriter {
 				new FileOutputStream(outputFile, append), StandardCharsets.UTF_8));
 
 		try {
-			StreamFactory factory = getOrCreateFactory(config.getBeanioMappingFile());
-			String streamName = config.getStreamName();
+			StreamFactory streamFactory = getOrCreateFactory(interfaceConfig.getBeanioMappingFile());
+			String streamName = interfaceConfig.getStreamName();
 
-			this.beanIOWriter = factory.createWriter(streamName, bufferedWriter);
+			this.beanIOWriter = streamFactory.createWriter(streamName, bufferedWriter);
 
 			logger.info("BeanIO initialized [Append={}]: interface={}, file={}", append, interfaceType, partFilePath);
 		} catch (Exception e) {
@@ -92,8 +92,7 @@ public class BeanIOFormatWriter implements OutputFormatWriter {
 				factory.load(in);
 				return factory;
 			} catch (IOException e) {
-				throw new UncheckedIOException(
-						"Failed to load BeanIO mapping file: " + resource.getPath(), e);
+				throw new UncheckedIOException("Failed to load BeanIO mapping file: " + resource.getPath(), e);
 			}
 		});
 	}
