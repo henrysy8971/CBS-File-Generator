@@ -55,83 +55,117 @@ Generic data container that holds:
 - Extracts writer state after step completion
 - Stores part file path and record count in execution context
 - Allows job listener to access this information
+# Dynamic Batch Architecture
+
+## Overview
+
+CBS File Generator uses a **flexible dual-architecture approach**:
+
+1. **Generic Dynamic Processing** (Default): Single configurable batch job that handles any interface type with variable columns and schema.
+2. **Specialized Processing** (Optional): Custom batch jobs for specific interface types requiring hierarchical handling (e.g., `ORDER_INTERFACE` with One-to-Many relationships).
+
+---
+
+## Architecture Components
+
+### 1. Generic Dynamic Architecture
+
+#### DynamicRecord
+Generic data container holding:
+- Columns with names and values (LinkedHashMap for order preservation).
+- Dynamic Column metadata (Names and detected SQL types).
+- No predefined Java schema/DTO required.
+
+#### DynamicItemReader (Keyset Pagination)
+- Uses **Seek/Keyset Pagination** for high-performance reading of large Oracle tables.
+- Avoids `OFFSET` performance degradation by using `WHERE ID > :lastId`.
+- Automatically detects column names/aliases and types from the first result row.
+- Tracks `lastProcessedId` and `totalProcessed` in the Spring Batch `ExecutionContext`.
+
+#### DynamicItemProcessor
+- Generic validation and string trimming.
+- Error handling with graceful skipping (items skipped here are logged to the database metrics).
+
+#### DynamicItemWriter
+- Generates XML via StAX (`XMLStreamWriter`) for a minimal memory footprint.
+- Sanitizes column names for XML tag compliance (e.g., `TOTAL AMOUNT($)` → `total_amount_`).
+- **Restart-Safe**: Detects existing `.part` files and appends data instead of overwriting.
+- Writes XML footers (totals) only upon successful step completion.
+
+#### DynamicBatchConfig
+- Configures `dynamicFileGenerationJob` using `@StepScope` for all stateful components.
+- Uses `RunIdIncrementer` to allow repeated executions of the same interface.
+
+#### DynamicJobExecutionListener (Atomic Finalization)
+- **Atomic State Machine**: Uses `updateStatusAtomic` to prevent race conditions during status transitions.
+- **File Finalization**: Performs an atomic rename of `.part` to the final filename.
+- **Integrity**: Generates a SHA-256 checksum file for every generated output.
+
+---
 
 ### 2. Specialized Architecture (Optional)
 
-For interface types requiring entity relationships and complex logic:
+#### OrderBatchConfig
+- Custom job for `ORDER_INTERFACE` requiring nested XML (Orders → LineItems).
+- Routes via the specialized bean name instead of the generic job.
 
-#### OrderBatchConfig (Example)
-- Custom `orderFileGenerationJob` for ORDER_INTERFACE
-- Wires specialized Order components instead of generic ones
-- Handles Order entity with eager-loaded LineItem relationships
-
-#### OrderItemReader
-- JPA repository-based pagination
-- Executes `OrderRepository.findAllActiveWithLineItems(Pageable)`
-- Handles large datasets with page-based reading
-- Loads Orders with LineItems in single query (JOIN FETCH avoids N+1)
-
-#### OrderItemProcessor
-- Custom validation for Order-specific rules
-- Validates line items within orders
-- Order-specific transformations (date formats, currency)
+#### OrderItemReader (Two-Step Fetch)
+- **Step 1**: Fetches a page of Order IDs using Keyset Pagination.
+- **Step 2**: Performs a **Bulk Fetch** using `JOIN FETCH` for all LineItems associated with those IDs.
+- **Why**: Prevents the "Cartesian Product" and "Memory Paging" issues common in JPA One-to-Many pagination.
 
 #### OrderItemWriter
-- Generates nested XML with Order → LineItem structure
-- BeanIO support for complex hierarchical mapping
-- Order-specific formatting and validation
+- Generates structured, namespaced hierarchical XML.
+- Supports nested elements (e.g., `<lineItems><lineItem>...</lineItem></lineItems>`).
+
+---
+
+## Routing Logic
+
+The `BatchJobLauncher` uses a **Map-based lookup** to select the job. It automatically detects specialized jobs by their Spring Bean name.
+
+```java
+// Logic in BatchJobLauncher
+public Job selectJobByInterfaceType(String interfaceType) {
+    // 1. Check if a bean exists with the interface name (e.g., "ORDER_INTERFACE")
+    if (allJobs.containsKey(interfaceType.toUpperCase())) {
+        return allJobs.get(interfaceType.toUpperCase());
+    }
+    // 2. Fallback to generic dynamic engine
+    return defaultJob; 
+}
+```
+
+**Result**:
+        - ORDER_INTERFACE can use either approach (specialized if available, falls back to generic)
+- All other interfaces automatically use generic approach
 
 ## Data Flow - Generic Approach
 
-```
 1. User sends POST /api/v1/file-generation/generate
    ↓
 2. FileGenerationController:
-   - Validates interface type exists in config
-   - Creates FileGeneration record (status: PENDING)
-   - Calls BatchJobLauncher.launchFileGenerationJob()
-   ↓
-3. BatchJobLauncher (async):
-   - Routes to appropriate job (generic or specialized)
-   - For most interfaces: uses dynamicFileGenerationJob
-   - Builds JobParameters with interfaceType and outputFilePath
-   ↓
-4. DynamicBatchConfig.dynamicFileGenerationJob:
-   - Creates step with generic components
-   - Launches step execution
-   ↓
-5. DynamicItemReader (beforeStep callback):
-   - Gets interfaceType from job parameters
-   - Loads interface config
-   - Gets JPQL query: "SELECT o FROM Order o WHERE ..."
-   - Executes query and loads results
-   - Extracts column metadata from first row
-   ↓
-6. For each chunk of records:
-   a) DynamicItemReader.read():
-      - Returns DynamicRecord with columns and values
-   b) DynamicItemProcessor.process():
-      - Validates record has columns
-      - Applies transformations (trim strings)
-      - Returns processed DynamicRecord
-   c) DynamicItemWriter.write():
-      - On first record: writes XML header
-      - For each record: writes XML element with all columns
-      - Closes with totals on final batch
-   ↓
-7. DynamicStepExecutionListener (afterStep):
-   - Stores part file path in execution context
-   - Stores record count in execution context
-   ↓
-8. DynamicJobExecutionListener (afterJob):
-   - Updates FILE_GENERATION status to COMPLETED
-   - Finalizes file: renames .part to final
-   - Generates SHA checksum file
-   - Updates record count
-   ↓
-9. User polls GET /api/v1/file-generation/status/{jobId}
-   - Returns COMPLETED status with record count
-   - Final XML file available at configured location
+  - Validates interface type and triggers BatchJobLauncher
+    ↓
+3. BatchJobLauncher (Async):
+  - Determines Job (Generic vs Specialized)
+  - Builds JobParameters (jobId, interfaceType, outputFilePath)
+    ↓
+4. DynamicItemReader (open/read):
+  - Resumes from ExecutionContext if this is a Restart
+  - Executes JPQL Keyset Query: "WHERE o.id > :lastId"
+  - Maps Tuple results to DynamicRecord
+    ↓
+5. DynamicItemWriter (write):
+  - Appends records to [fileName].part
+    ↓
+6. FileValidationTasklet (Step 2):
+  - Performs post-generation XSD validation on the full file
+    ↓
+7. DynamicJobExecutionListener (afterJob):
+  - Performs ATOMIC status update (WHERE status = 'PROCESSING')
+  - Renames .part to final filename
+  - Generates SHA-256 checksum
 ```
 
 ## Data Flow - Specialized Approach (ORDER_INTERFACE)
@@ -238,25 +272,6 @@ For interface types requiring entity relationships and complex logic:
 ✅ Special transformations (domain rules)
 ✅ Performance optimization needed
 ✅ Structured XML with hierarchy
-
-## Routing Logic
-
-`BatchJobLauncher.selectJobByInterfaceType()`:
-
-```java
-if ("ORDER_INTERFACE".equals(interfaceType)) {
-    if (orderFileGenerationJob != null) {
-        return orderFileGenerationJob;  // Use specialized
-    }
-    return dynamicFileGenerationJob;    // Fall back to generic
-} else {
-    return dynamicFileGenerationJob;    // Generic for all others
-}
-```
-
-**Result**:
-- ORDER_INTERFACE can use either approach (specialized if available, falls back to generic)
-- All other interfaces automatically use generic approach
 
 ## Query Language: JPQL vs Native SQL
 

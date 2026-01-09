@@ -17,7 +17,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdminController {
 	private final JobLauncher jobLauncher;
 	private final Job cleanupJob;
-	private final Scheduler scheduler; // The Quartz Scheduler bean
+	private final Scheduler scheduler;
 
 	@Autowired
 	public AdminController(JobLauncher jobLauncher, Job cleanupJob, Scheduler scheduler) {

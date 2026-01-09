@@ -20,9 +20,12 @@ import java.util.UUID;
 @Service
 public class FileGenerationService {
 	private static final Logger logger = LoggerFactory.getLogger(FileGenerationService.class);
+	private final FileGenerationRepository fileGenerationRepository;
 
 	@Autowired
-	private FileGenerationRepository fileGenerationRepository;
+	public FileGenerationService(FileGenerationRepository fileGenerationRepository) {
+		this.fileGenerationRepository = fileGenerationRepository;
+	}
 
 	// ==================== Create ====================
 	public FileGeneration createFileGeneration(String fileName, String filePath, String createdBy, String interfaceType) {

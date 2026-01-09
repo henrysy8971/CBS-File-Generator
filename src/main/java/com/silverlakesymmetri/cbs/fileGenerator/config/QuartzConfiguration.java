@@ -15,10 +15,14 @@ import java.util.Properties;
 
 @Configuration
 public class QuartzConfiguration {
+	private final DataSource dataSource;
+	private final ConfigurableEnvironment env;
+
 	@Autowired
-	private DataSource dataSource;
-	@Autowired
-	private ConfigurableEnvironment env;
+	public QuartzConfiguration(DataSource dataSource, ConfigurableEnvironment env) {
+		this.dataSource = dataSource;
+		this.env = env;
+	}
 
 	@Bean
 	public JobFactory jobFactory(ApplicationContext applicationContext) {

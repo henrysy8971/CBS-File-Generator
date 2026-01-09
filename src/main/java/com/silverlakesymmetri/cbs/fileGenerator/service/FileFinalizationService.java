@@ -31,26 +31,6 @@ public class FileFinalizationService {
 		this.fileGenerationService = fileGenerationService;
 	}
 
-	@Async("taskExecutor")
-	public void finalizeFileAsync(String jobId, String partFilePath) {
-		logger.info("Starting async finalization for JobId: {}", jobId);
-		try {
-			fileGenerationService.markFinalizing(jobId);
-
-			boolean success = finalizeFile(partFilePath);
-
-			if (success) {
-				fileGenerationService.markCompleted(jobId);
-				logger.info("Async finalization successful for JobId: {}", jobId);
-			} else {
-				fileGenerationService.markFailed(jobId, "File finalization logic returned false.");
-			}
-		} catch (Exception e) {
-			logger.error("Async finalization crashed for JobId: {}", jobId, e);
-			fileGenerationService.markFailed(jobId, "Async Error: " + e.getMessage());
-		}
-	}
-
 	/**
 	 * Finalize a .part file safely:
 	 * 1. Atomically move .part -> final file

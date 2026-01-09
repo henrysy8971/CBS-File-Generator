@@ -222,7 +222,7 @@ private List<Order> orders;
 private Customer customer;
 
 // For dates
-@Temporal(TemporalType.TIMESTAMP)
+@Temporal(TemporalType.Timestamp)
 @Column(name = "CREATED_DATE")
 private Date createdDate;
 
@@ -343,15 +343,15 @@ private String invoiceId;
 
 ## Data Type Mapping
 
-| Oracle SQL  | Java Type             | JPA Annotation                      |
-|-------------|-----------------------|-------------------------------------|
-| VARCHAR2(n) | String                | `@Column(name = "...")`             |
-| NUMBER(p,s) | BigDecimal            | `@Column(name = "...")`             |
-| INTEGER     | Integer or Long       | `@Column(name = "...")`             |
-| DATE        | Date or LocalDate     | `@Temporal(TemporalType.DATE)`      |
-| TIMESTAMP   | Date or LocalDateTime | `@Temporal(TemporalType.TIMESTAMP)` |
-| CLOB        | String                | `@Lob`                              |
-| BLOB        | byte[]                | `@Lob`                              |
+| Oracle SQL  | Java Type       | JPA Annotation                      |
+|-------------|-----------------|-------------------------------------|
+| VARCHAR2(n) | String          | `@Column(name = "...")`             |
+| NUMBER(p,s) | BigDecimal      | `@Column(name = "...")`             |
+| INTEGER     | Integer or Long | `@Column(name = "...")`             |
+| DATE        | Date            | `@Temporal(TemporalType.DATE)`      |
+| Timestamp   | Timestamp       | `@Temporal(TemporalType.Timestamp)` |
+| CLOB        | String          | `@Lob`                              |
+| BLOB        | byte[]          | `@Lob`                              |
 
 ---
 
@@ -463,7 +463,7 @@ public interface OrderRepository extends JpaRepository<Order, String> {
 
 4. **Use appropriate data types**
    - `BigDecimal` for monetary values
-   - `LocalDate` or `LocalDateTime` for dates (Java 8+)
+   - `Date` or `Timestamp` for dates
    - `String` for VARCHAR2
 
 5. **Keep entities simple**

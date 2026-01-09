@@ -38,7 +38,8 @@ public class OrderBatchConfig {
 			FileGenerationService fileGenerationService,
 			OrderItemReader orderItemReader,
 			OrderItemProcessor orderItemProcessor,
-			OrderItemWriter orderItemWriter, FileValidationTasklet fileValidationTasklet
+			OrderItemWriter orderItemWriter,
+			FileValidationTasklet fileValidationTasklet
 	) {
 		this.jobBuilderFactory = jobBuilderFactory;
 		this.stepBuilderFactory = stepBuilderFactory;

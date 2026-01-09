@@ -8,7 +8,7 @@
 			"chunkSize": 1000,
 			"outputFormat": "XML",
 			"outputFileExtension": "xml",
-			"enabled": true,
+			"enabled": false,
 			"description": "Order interface - uses BeanIO mapping and optional XSD validation"
 		}
 	}

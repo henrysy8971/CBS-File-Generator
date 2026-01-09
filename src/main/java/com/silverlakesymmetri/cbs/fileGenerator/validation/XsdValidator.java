@@ -66,22 +66,6 @@ public class XsdValidator {
 	}
 
 	/**
-	 * Validate XML content against the specified XSD schema.
-	 *
-	 * @param xmlContent     XML payload to validate
-	 * @param schemaFileName XSD filename located under classpath:xsd/
-	 * @return true if valid, or validation is skipped in lenient mode
-	 */
-	public boolean validateRecord(String xmlContent, String schemaFileName) {
-		if (schemaFileName == null || schemaFileName.trim().isEmpty()) {
-			logger.debug("No schema specified - skipping XSD validation");
-			return true;
-		}
-
-		return executeValidation(new StreamSource(new StringReader(xmlContent)), schemaFileName);
-	}
-
-	/**
 	 * Unified private method to handle the validation logic.
 	 */
 	private boolean executeValidation(StreamSource source, String schemaFileName) {
@@ -136,16 +120,6 @@ public class XsdValidator {
 	public void clearCache() {
 		schemaCache.clear();
 		logger.info("XSD schema cache cleared");
-	}
-
-	/**
-	 * Check if a schema exists on the classpath.
-	 */
-	public boolean schemaExists(String schemaFileName) {
-		if (schemaFileName == null || schemaFileName.trim().isEmpty()) {
-			return false;
-		}
-		return new ClassPathResource(XSD_LOCATION + schemaFileName).exists();
 	}
 
 	/**

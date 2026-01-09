@@ -7,6 +7,7 @@ import com.silverlakesymmetri.cbs.fileGenerator.dto.FileGenerationResponse;
 import com.silverlakesymmetri.cbs.fileGenerator.entity.FileGeneration;
 import com.silverlakesymmetri.cbs.fileGenerator.service.BatchJobLauncher;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
+import org.quartz.Scheduler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -22,20 +23,19 @@ import java.util.stream.Collectors;
 @RestController
 @RequestMapping("/api/v1/file-generation")
 public class FileGenerationController {
-
 	private static final Logger logger = LoggerFactory.getLogger(FileGenerationController.class);
 	private static final Pattern INTERFACE_TYPE_PATTERN = Pattern.compile("^[A-Za-z0-9_]+$");
 
 	private final FileGenerationService fileGenerationService;
 	private final BatchJobLauncher batchJobLauncher;
 	private final InterfaceConfigLoader interfaceConfigLoader;
-	private final org.quartz.Scheduler scheduler;
+	private final Scheduler scheduler;
 
 	@Value("${file.generation.output-directory}")
 	private String outputDirectory;
 
 	@Autowired
-	public FileGenerationController(FileGenerationService fileGenerationService, BatchJobLauncher batchJobLauncher, InterfaceConfigLoader interfaceConfigLoader, org.quartz.Scheduler scheduler) {
+	public FileGenerationController(FileGenerationService fileGenerationService, BatchJobLauncher batchJobLauncher, InterfaceConfigLoader interfaceConfigLoader, Scheduler scheduler) {
 		this.fileGenerationService = fileGenerationService;
 		this.batchJobLauncher = batchJobLauncher;
 		this.interfaceConfigLoader = interfaceConfigLoader;
@@ -63,9 +63,9 @@ public class FileGenerationController {
 					));
 		}
 
-		InterfaceConfig config;
+		InterfaceConfig interfaceConfig;
 		try {
-			config = interfaceConfigLoader.getConfig(interfaceType);
+			interfaceConfig = interfaceConfigLoader.getConfig(interfaceType);
 		} catch (IllegalArgumentException ex) {
 			logger.warn("Interface configuration not found: {}", interfaceType);
 			return ResponseEntity.badRequest()
@@ -73,7 +73,7 @@ public class FileGenerationController {
 							"Interface type '" + interfaceType + "' not configured"));
 		}
 
-		if (!config.isEnabled()) {
+		if (!interfaceConfig.isEnabled()) {
 			return ResponseEntity.badRequest()
 					.body(new FileGenerationResponse(
 							"VALIDATION_ERROR",
@@ -93,7 +93,7 @@ public class FileGenerationController {
 				interfaceType,
 				System.currentTimeMillis(),
 				UUID.randomUUID(),
-				config.getOutputFileExtension());
+				interfaceConfig.getOutputFileExtension());
 
 		// ===== Create file generation record =====
 		FileGeneration fileGen = fileGenerationService.createFileGeneration(
@@ -211,10 +211,12 @@ public class FileGenerationController {
 
 	// ==================== Helper Methods ====================
 
-	private FileGenerationResponse buildFileGenerationResponse(FileGeneration fileGen,
-															   String fileName,
-															   String interfaceType,
-															   String message) {
+	private FileGenerationResponse buildFileGenerationResponse(
+			FileGeneration fileGen,
+			String fileName,
+			String interfaceType,
+			String message
+	) {
 		FileGenerationResponse response = new FileGenerationResponse();
 		response.setJobId(fileGen.getJobId());
 		response.setStatus(fileGen.getStatus());

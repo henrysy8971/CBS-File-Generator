@@ -18,7 +18,6 @@ import org.springframework.stereotype.Service;
 import java.nio.file.Paths;
 import java.util.Map;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 
 @Service
 public class BatchJobLauncher {
@@ -46,13 +45,13 @@ public class BatchJobLauncher {
 	}
 
 	@Async
-	public CompletableFuture<Void> launchFileGenerationJob(String jobId, String interfaceType) {
+	public void launchFileGenerationJob(String jobId, String interfaceType) {
 		try {
 			Optional<FileGeneration> currentJob = fileGenerationService.getFileGeneration(jobId);
 
 			if (!currentJob.isPresent()) {
 				logger.error("Job launch aborted: JobId {} not found in database", jobId);
-				return CompletableFuture.completedFuture(null);
+				return;
 			}
 
 			// Only allow PENDING jobs to start.
@@ -60,7 +59,7 @@ public class BatchJobLauncher {
 			if (!FileGenerationStatus.PENDING.name().equals(currentJob.get().getStatus())) {
 				logger.warn("Job launch aborted: JobId {} is already in status {}",
 						jobId, currentJob.get().getStatus());
-				return CompletableFuture.completedFuture(null);
+				return;
 			}
 
 			// Validate interface configuration
@@ -68,7 +67,7 @@ public class BatchJobLauncher {
 				String error = "Interface configuration not found: " + interfaceType;
 				logger.error("Job launch failed: {}", error);
 				fileGenerationService.markFailed(jobId, error);
-				return CompletableFuture.completedFuture(null);
+				return;
 			}
 
 			InterfaceConfig config = interfaceConfigLoader.getConfig(interfaceType);
@@ -102,7 +101,6 @@ public class BatchJobLauncher {
 			fileGenerationService.markFailed(jobId, "Launch Failure: " + e.getMessage());
 		}
 
-		return CompletableFuture.completedFuture(null);
 	}
 
 	/**
