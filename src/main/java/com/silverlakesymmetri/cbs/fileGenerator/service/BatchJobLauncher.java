@@ -15,7 +15,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
-import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Map;
 import java.util.Optional;
@@ -111,20 +110,18 @@ public class BatchJobLauncher {
 	 * Falls back to dynamicFileGenerationJob if no specialized job is configured.
 	 */
 	private Job selectJobByInterfaceType(String interfaceType) {
-		String lookupKey = interfaceType.toUpperCase();
-
-		// Prevent triggering internal maintenance jobs via API
-		if ("CLEANUPJOB".equalsIgnoreCase(lookupKey)) {
-			logger.warn("Access denied to internal job: {}. Falling back to dynamic.", lookupKey);
-			return defaultJob;
+		// 1. Try exact match (Bean name matches interface name)
+		if (allJobs.containsKey(interfaceType)) {
+			return allJobs.get(interfaceType);
 		}
 
-		if (allJobs != null && allJobs.containsKey(lookupKey)) {
-			logger.info("Routing to specialized job bean: {}", lookupKey);
-			return allJobs.get(lookupKey);
+		// 2. Try Case-Insensitive match
+		for (Map.Entry<String, Job> entry : allJobs.entrySet()) {
+			if (entry.getKey().equalsIgnoreCase(interfaceType)) {
+				return entry.getValue();
+			}
 		}
 
-		logger.info("No specialized bean found for {}. Using dynamic generation.", lookupKey);
 		return defaultJob;
 	}
 

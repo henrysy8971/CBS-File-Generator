@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
+import org.xml.sax.SAXParseException;
 
 import javax.xml.XMLConstants;
 import javax.xml.transform.stream.StreamSource;
@@ -14,6 +15,7 @@ import javax.xml.validation.Validator;
 import java.io.File;
 import java.io.InputStream;
 import java.io.StringReader;
+import java.nio.file.Files;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -55,7 +57,12 @@ public class XsdValidator {
 			return false;
 		}
 
-		return executeValidation(new StreamSource(xmlFile), schemaFileName);
+		try (InputStream is = Files.newInputStream(xmlFile.toPath())) {
+			return executeValidation(new StreamSource(xmlFile), schemaFileName);
+		} catch (Exception e) {
+			logger.error("Could not open file for validation: {}", xmlFile.getPath(), e);
+			return !strictMode;
+		}
 	}
 
 	/**
@@ -146,10 +153,15 @@ public class XsdValidator {
 	 */
 	private void validateXml(StreamSource source, Schema schema) throws Exception {
 		Validator validator = schema.newValidator();
-		// Prevent XXE attacks
 		validator.setProperty(XMLConstants.ACCESS_EXTERNAL_DTD, "");
 		validator.setProperty(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
-		validator.validate(source);
+		try {
+			validator.validate(source);
+		} catch (SAXParseException e) {
+			logger.error("XSD Validation Error at Line: {}, Column: {}. Reason: {}",
+					e.getLineNumber(), e.getColumnNumber(), e.getMessage());
+			throw e; // Re-throw so executeValidation can handle strictMode logic
+		}
 	}
 
 }

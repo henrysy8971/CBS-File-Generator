@@ -104,9 +104,6 @@ public class OrderItemReader implements ItemStreamReader<OrderDto> {
 					? Collections.emptyList()
 					: orderRepository.findWithLineItemsByOrderIdIn(orderIds);
 
-			// Sort in-memory to preserve order
-			ordersWithLines.sort(Comparator.comparing(Order::getOrderId));
-
 			logger.debug(
 					"Loaded {} orders with line items after lastProcessedId={}",
 					ordersWithLines.size(),

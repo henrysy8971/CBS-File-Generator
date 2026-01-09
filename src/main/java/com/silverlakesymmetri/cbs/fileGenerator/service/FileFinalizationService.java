@@ -188,16 +188,16 @@ public class FileFinalizationService {
 			}
 
 			String shaContent = new String(Files.readAllBytes(shaPath), StandardCharsets.UTF_8);
-			String expectedHash = shaContent.split("=")[1].trim();
 
-			String actualHash = calculateSha256(filePathStr);
-			if (expectedHash.equals(actualHash)) {
-				logger.info("SHA256 verification successful for: {}", filePathStr);
-				return true;
-			} else {
-				logger.warn("SHA256 verification failed for: {}", filePathStr);
+			// Safety check for the split logic
+			if (!shaContent.contains("=")) {
+				logger.error("Malformed SHA file: {}", shaPath);
 				return false;
 			}
+
+			String expectedHash = shaContent.substring(shaContent.indexOf("=") + 1).trim();
+			String actualHash = calculateSha256(filePathStr);
+			return expectedHash.equalsIgnoreCase(actualHash);
 
 		} catch (Exception e) {
 			logger.error("Error verifying SHA file for: {}", filePathStr, e);

@@ -13,10 +13,7 @@ import org.springframework.stereotype.Component;
 
 import javax.xml.stream.XMLOutputFactory;
 import javax.xml.stream.XMLStreamWriter;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStreamWriter;
+import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
@@ -40,13 +37,14 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto> {
 
 	@Override
 	public void open(ExecutionContext executionContext) throws ItemStreamException {
-		OutputStreamWriter writer = null;
+		BufferedWriter writer = null;
 		try {
 			File file = new File(partFilePath);
 			boolean append = executionContext.containsKey(RESTART_COUNT_KEY);
 			recordCount = append ? executionContext.getLong(RESTART_COUNT_KEY) : 0;
 
-			writer = new OutputStreamWriter(new FileOutputStream(file, append), StandardCharsets.UTF_8);
+			writer = new BufferedWriter(new OutputStreamWriter(
+					new FileOutputStream(file, append), StandardCharsets.UTF_8));
 			xmlStreamWriter = XMLOutputFactory.newInstance().createXMLStreamWriter(writer);
 
 			if (!append) {

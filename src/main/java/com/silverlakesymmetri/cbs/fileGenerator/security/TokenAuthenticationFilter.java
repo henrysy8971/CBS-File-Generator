@@ -5,7 +5,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
-import org.springframework.util.AntPathMatcher;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import javax.servlet.FilterChain;
@@ -26,8 +25,6 @@ public class TokenAuthenticationFilter extends OncePerRequestFilter {
 	@Value("${auth.token.enable-validation:true}")
 	private boolean enableValidation;
 
-	private final AntPathMatcher pathMatcher = new AntPathMatcher();
-
 	@Autowired
 	public TokenAuthenticationFilter(TokenValidator tokenValidator) {
 		this.tokenValidator = tokenValidator;
@@ -44,7 +41,7 @@ public class TokenAuthenticationFilter extends OncePerRequestFilter {
 		}
 
 		// 2. Combined Early Exit (The "Bypass" logic)
-		if (!enableValidation || shouldSkipTokenValidation(requestPath)) {
+		if (!enableValidation) {
 			filterChain.doFilter(request, response);
 			return;
 		}
@@ -68,11 +65,5 @@ public class TokenAuthenticationFilter extends OncePerRequestFilter {
 
 		// 6. Success - Proceed to Controller
 		filterChain.doFilter(request, response);
-	}
-
-	private boolean shouldSkipTokenValidation(String requestPath) {
-		return pathMatcher.match("/actuator/**", requestPath) ||
-				pathMatcher.match("/health/**", requestPath) ||
-				pathMatcher.match("/info", requestPath);
 	}
 }

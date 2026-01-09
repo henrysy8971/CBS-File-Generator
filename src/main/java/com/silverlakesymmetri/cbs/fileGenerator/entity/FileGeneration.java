@@ -9,7 +9,8 @@ import java.sql.Timestamp;
 @Table(name = "FILE_GENERATION")
 public class FileGeneration {
 	@Id
-	@GeneratedValue(strategy = GenerationType.IDENTITY)
+	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "FILE_GEN_SEQ")
+	@SequenceGenerator(name = "FILE_GEN_SEQ", sequenceName = "FILE_GEN_SEQ", allocationSize = 1)
 	@Column(name = "FILE_GEN_ID")
 	private Long fileGenId;
 
@@ -25,7 +26,6 @@ public class FileGeneration {
 	@Column(name = "FILE_PATH", nullable = false)
 	private String filePath;
 
-	@Enumerated(EnumType.STRING)
 	@Column(name = "STATUS", nullable = false, length = 20)
 	private String status; // PENDING, PROCESSING, STOPPED, FINALIZING, COMPLETED, FAILED
 

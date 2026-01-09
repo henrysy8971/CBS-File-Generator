@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.Timestamp;
 import java.util.Optional;
@@ -20,6 +21,7 @@ public class TokenValidator {
 		this.dbTokenRepository = dbTokenRepository;
 	}
 
+	@Transactional // Ensure the update is committed cleanly
 	public boolean validateToken(String token) {
 		if (token == null || token.isEmpty()) {
 			logger.warn("Token validation failed: Token is null or empty");
@@ -47,6 +49,11 @@ public class TokenValidator {
 		if (dbToken.getLastUsedDate() == null || dbToken.getLastUsedDate().getTime() < oneMinuteAgo) {
 			dbToken.setLastUsedDate(new Timestamp(System.currentTimeMillis()));
 			dbTokenRepository.save(dbToken);
+		}
+
+		if (dbToken.getLastUsedDate() == null || dbToken.getLastUsedDate().getTime() < oneMinuteAgo) {
+			dbToken.setLastUsedDate(new Timestamp(System.currentTimeMillis()));
+			dbTokenRepository.saveAndFlush(dbToken); // Flush to ensure DB is updated
 		}
 
 		return true;

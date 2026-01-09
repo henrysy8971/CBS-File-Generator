@@ -119,9 +119,6 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 			extractColumnMetadataFromTuple(results.get(0));
 		}
 
-		// In-memory sort by keyset for deterministic order
-		results.sort(Comparator.comparing(t -> ((Number) t.get(this.interfaceConfig.getKeysetColumn())).longValue()));
-
 		logger.debug("Fetched {} records for interface {} after lastProcessedId={}", results.size(), interfaceType, lastProcessedId);
 		resultIterator = results.isEmpty() ? null : results.iterator();
 	}

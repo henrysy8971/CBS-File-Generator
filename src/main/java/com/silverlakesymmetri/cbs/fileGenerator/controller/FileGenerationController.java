@@ -197,7 +197,7 @@ public class FileGenerationController {
 			health.put("interfaces_loaded", interfaceConfigLoader.getAllConfigs().size());
 
 			// 4. Queue Depth
-			int pending = fileGenerationService.getPendingFileGenerations().size();
+			long pending = fileGenerationService.getPendingCount();
 			health.put("pending_jobs", pending);
 			health.put("system_load", pending > 50 ? "HIGH" : "NORMAL");
 		} catch (Exception e) {

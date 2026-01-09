@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.PostConstruct;
+import java.sql.Timestamp;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
@@ -63,9 +64,9 @@ public class AppConfigService {
 		config.setConfigType(type);
 		config.setDescription(description);
 		config.setActive(true);
-		config.setUpdatedDate(LocalDateTime.now());
+		config.setUpdatedDate(Timestamp.valueOf(LocalDateTime.now()));
 		if (config.getCreatedDate() == null) {
-			config.setCreatedDate(LocalDateTime.now());
+			config.setCreatedDate(Timestamp.valueOf(LocalDateTime.now()));
 		}
 
 		AppConfig saved = repository.save(config);
@@ -81,7 +82,7 @@ public class AppConfigService {
 	public void disableConfig(String key) {
 		repository.findByConfigKey(key).ifPresent(cfg -> {
 			cfg.setActive(false);
-			cfg.setUpdatedDate(LocalDateTime.now());
+			cfg.setUpdatedDate(Timestamp.valueOf(LocalDateTime.now()));
 			repository.save(cfg);
 			cache.remove(key);
 			logger.info("Configuration disabled: key={}", key);

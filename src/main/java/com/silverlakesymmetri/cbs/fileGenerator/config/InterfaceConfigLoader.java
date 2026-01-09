@@ -17,9 +17,7 @@ import java.util.stream.Collectors;
 
 @Component
 public class InterfaceConfigLoader {
-
-	private static final Logger logger =
-			LoggerFactory.getLogger(InterfaceConfigLoader.class);
+	private static final Logger logger = LoggerFactory.getLogger(InterfaceConfigLoader.class);
 
 	@Value("classpath:interface-config.json")
 	private Resource configResource;

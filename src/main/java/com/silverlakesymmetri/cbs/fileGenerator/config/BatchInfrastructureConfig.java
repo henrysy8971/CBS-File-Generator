@@ -23,7 +23,7 @@ public class BatchInfrastructureConfig {
 	@Value("${spring.task.execution.pool.queue-capacity:100}")
 	private int queueCapacity;
 
-	@Value("${spring.task.execution.thread-name-prefix:async-task-}")
+	@Value("${spring.task.execution.thread-name-prefix:batch-exec-}")
 	private String threadNamePrefix;
 
 	@Bean
@@ -42,6 +42,8 @@ public class BatchInfrastructureConfig {
 		executor.setMaxPoolSize(maxPoolSize);
 		executor.setQueueCapacity(queueCapacity);
 		executor.setThreadNamePrefix(threadNamePrefix);
+		executor.setWaitForTasksToCompleteOnShutdown(true);
+		executor.setAwaitTerminationSeconds(60);
 		executor.initialize();
 		return executor;
 	}

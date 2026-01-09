@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface FileGenerationRepository extends JpaRepository<FileGeneration, Long> {
+public interface FileGenerationRepository extends JpaRepository<FileGeneration, String> {
 	// Standard lookup by unique Job ID
 	Optional<FileGeneration> findByJobId(String jobId);
 
@@ -54,6 +54,27 @@ public interface FileGenerationRepository extends JpaRepository<FileGeneration, 
 	);
 
 	/**
+	 * ATOMIC STATUS TRANSITION
+	 * Only updates the record if the current status matches the expectedStatus.
+	 * This prevents race conditions in multi-threaded environments.
+	 */
+	@Modifying(clearAutomatically = true, flushAutomatically = true)
+	@Query("UPDATE FileGeneration f " +
+			"SET f.status = :nextStatus, " +
+			"f.errorMessage = :errorMessage, " +
+			"f.completedDate = :completedDate " +
+			"WHERE f.jobId = :jobId " +
+			"AND f.status = :expectedStatus" // <--- THE ATOMIC CHECK
+	)
+	int updateStatusAtomic(
+			@Param("jobId") String jobId,
+			@Param("nextStatus") String nextStatus,
+			@Param("expectedStatus") String expectedStatus,
+			@Param("errorMessage") String errorMessage,
+			@Param("completedDate") Timestamp completedDate
+	);
+
+	/**
 	 * Update processing metrics in a single DB call.
 	 * Should be called once per Step (not per item).
 	 */
@@ -70,4 +91,6 @@ public interface FileGenerationRepository extends JpaRepository<FileGeneration, 
 			@Param("skipped") long skipped,
 			@Param("invalid") long invalid
 	);
+
+	long countByStatus(String status);
 }

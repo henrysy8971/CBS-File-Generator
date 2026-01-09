@@ -5,6 +5,7 @@ import com.silverlakesymmetri.cbs.fileGenerator.repository.FileGenerationReposit
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Recover;
 import org.springframework.retry.annotation.Retryable;
@@ -21,7 +22,7 @@ public class FileGenerationService {
 	private static final Logger logger = LoggerFactory.getLogger(FileGenerationService.class);
 
 	@Autowired
-	private FileGenerationRepository repository;
+	private FileGenerationRepository fileGenerationRepository;
 
 	// ==================== Create ====================
 	public FileGeneration createFileGeneration(String fileName, String filePath, String createdBy, String interfaceType) {
@@ -34,7 +35,7 @@ public class FileGenerationService {
 		fg.setInterfaceType(interfaceType);
 		fg.setCreatedDate(new Timestamp(System.currentTimeMillis()));
 
-		FileGeneration saved = repository.save(fg);
+		FileGeneration saved = fileGenerationRepository.save(fg);
 		logger.info("File generation record created: jobId={}, fileName={}, interfaceType={}",
 				saved.getJobId(), fileName, interfaceType);
 		return saved;
@@ -85,43 +86,63 @@ public class FileGenerationService {
 		// Here you could send an alert to an IT support Slack channel or email
 	}
 
+	// Recovery for markCompleted
+	@Recover
+	public void recoverCompleted(Exception e, String jobId) {
+		logger.error("CRITICAL: Failed to mark COMPLETED after retries for jobId={}", jobId, e);
+	}
+
+	// Recovery for markFailed (Matches parameters)
+	@Recover
+	public void recoverFailed(Exception e, String jobId, String errorMessage) {
+		logger.error("CRITICAL: Failed to mark FAILED after retries for jobId={}. Original Error: {}", jobId, errorMessage, e);
+	}
+
 	private void transitionStatus(String jobId, FileGenerationStatus nextStatus, String errorMessage) {
-		FileGenerationStatus currentStatus = repository.findStatusByJobId(jobId)
+		// 1. Get the current status for validation
+		FileGenerationStatus currentStatus = fileGenerationRepository.findStatusByJobId(jobId)
 				.orElseThrow(() -> new IllegalStateException("Job not found: " + jobId));
 
 		// Prevent updates to terminal jobs
 		if (currentStatus.isTerminal()) {
-			throw new IllegalStateException(
-					"Cannot update terminal job. jobId=" + jobId +
-							", status=" + currentStatus
-			);
+			throw new IllegalStateException("Cannot update terminal job. jobId=" + jobId + ", status=" + currentStatus);
 		}
 
 		// Enforce lifecycle rules
 		if (!currentStatus.canTransitionTo(nextStatus)) {
-			throw new IllegalStateException(
-					"Invalid status transition: " +
-							currentStatus + " -> " + nextStatus +
-							" for jobId=" + jobId
-			);
+			throw new IllegalStateException("Invalid status transition: " + currentStatus + " -> " + nextStatus + " for jobId=" + jobId);
 		}
 
 		Timestamp completedDate = nextStatus.isTerminal() ? now() : null;
-		int updated = repository.updateStatus(jobId, nextStatus.name(), errorMessage, completedDate);
 
+		// 3. PERFORM ATOMIC UPDATE
+		int updated = fileGenerationRepository.updateStatusAtomic(
+				jobId,
+				nextStatus.name(),
+				currentStatus.name(),
+				errorMessage,
+				completedDate
+		);
+
+		// 4. Handle Race Condition
 		if (updated == 0) {
-			throw new IllegalStateException("Job not found: " + jobId);
+			throw new ObjectOptimisticLockingFailureException(FileGeneration.class, jobId);
 		}
 
-		logger.info("File generation status transitioned: jobId={}, {} -> {}", jobId, currentStatus, nextStatus);
+		logger.info("Status transitioned: jobId={}, {} -> {}", jobId, currentStatus, nextStatus);
 	}
 
 	/* ===================== METRICS ===================== */
 
+	@Retryable(
+			value = {org.springframework.dao.TransientDataAccessException.class},
+			maxAttempts = 3,
+			backoff = @Backoff(delay = 1000)
+	)
 	@Transactional
 	public void updateFileMetrics(String jobId, long processed, long skipped, long invalid) {
 
-		FileGenerationStatus status = repository.findStatusByJobId(jobId)
+		FileGenerationStatus status = fileGenerationRepository.findStatusByJobId(jobId)
 				.orElseThrow(() -> new IllegalStateException("Job not found: " + jobId));
 
 		if (status.isTerminal()) {
@@ -130,7 +151,7 @@ public class FileGenerationService {
 			);
 		}
 
-		repository.updateMetrics(jobId, processed, skipped, invalid);
+		fileGenerationRepository.updateMetrics(jobId, processed, skipped, invalid);
 
 		logger.info(
 				"Metrics updated: jobId={}, processed={}, skipped={}, invalid={}",
@@ -142,17 +163,17 @@ public class FileGenerationService {
 
 	@Transactional(readOnly = true)
 	public Optional<FileGeneration> getFileGeneration(String jobId) {
-		return repository.findByJobId(jobId);
+		return fileGenerationRepository.findByJobId(jobId);
 	}
 
 	@Transactional(readOnly = true)
 	public List<FileGeneration> getPendingFileGenerations() {
-		return repository.findByStatus(FileGenerationStatus.PENDING);
+		return fileGenerationRepository.findByStatus(FileGenerationStatus.PENDING);
 	}
 
 	@Transactional(readOnly = true)
 	public boolean hasRunningJob(String interfaceType) {
-		return repository.existsByInterfaceTypeAndStatus(
+		return fileGenerationRepository.existsByInterfaceTypeAndStatus(
 				interfaceType,
 				FileGenerationStatus.PROCESSING
 		);
@@ -162,5 +183,10 @@ public class FileGenerationService {
 
 	private Timestamp now() {
 		return new Timestamp(System.currentTimeMillis());
+	}
+
+	public long getPendingCount() {
+		// Assuming "PENDING" or "IN_PROGRESS" are your status strings
+		return fileGenerationRepository.countByStatus("PENDING");
 	}
 }

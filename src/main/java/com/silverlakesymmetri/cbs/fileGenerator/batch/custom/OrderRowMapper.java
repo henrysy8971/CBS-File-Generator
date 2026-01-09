@@ -14,7 +14,6 @@ import java.util.Date;
 @Component
 public class OrderRowMapper {
 	private static final Logger logger = LoggerFactory.getLogger(OrderRowMapper.class);
-	private static final SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 
 	/**
 	 * Map Order JPA entity to OrderDto (includes line items)
@@ -33,7 +32,8 @@ public class OrderRowMapper {
 
 			// Convert timestamp to string
 			if (order.getOrderDate() != null) {
-				dto.setOrderDate(dateFormat.format(new Date(order.getOrderDate().getTime())));
+				dto.setOrderDate(order.getOrderDate().toLocalDateTime()
+						.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
 			}
 
 			// Map child line items

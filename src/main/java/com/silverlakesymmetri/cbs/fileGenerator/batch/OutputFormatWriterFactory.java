@@ -5,6 +5,7 @@ import com.silverlakesymmetri.cbs.fileGenerator.config.model.InterfaceConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
 
 /**
@@ -16,17 +17,14 @@ public class OutputFormatWriterFactory {
 	private static final Logger logger = LoggerFactory.getLogger(OutputFormatWriterFactory.class);
 
 	private final InterfaceConfigLoader interfaceConfigLoader;
-	private final BeanIOFormatWriter beanIOFormatWriter;
-	private final GenericXMLWriter genericXMLWriter;
+	private final ApplicationContext applicationContext;
 
 	@Autowired
 	public OutputFormatWriterFactory(
 			InterfaceConfigLoader interfaceConfigLoader,
-			BeanIOFormatWriter beanIOFormatWriter,
-			GenericXMLWriter genericXMLWriter) {
+			ApplicationContext applicationContext) {
 		this.interfaceConfigLoader = interfaceConfigLoader;
-		this.beanIOFormatWriter = beanIOFormatWriter;
-		this.genericXMLWriter = genericXMLWriter;
+		this.applicationContext = applicationContext;
 	}
 
 	/**
@@ -39,26 +37,29 @@ public class OutputFormatWriterFactory {
 		try {
 			InterfaceConfig config = interfaceConfigLoader.getConfig(interfaceType);
 
-			if (config == null) {
+			// 1. Determine which bean type we need
+			Class<? extends OutputFormatWriter> writerClass = GenericXMLWriter.class; // Default
+
+			if (config != null) {
+				String beanioMappingFile = config.getBeanioMappingFile();
+				if (beanioMappingFile != null && !beanioMappingFile.isEmpty()) {
+					logger.info("Selecting BeanIOFormatWriter for interface: {}", interfaceType);
+					writerClass = BeanIOFormatWriter.class;
+				} else {
+					logger.info("Selecting GenericXMLWriter for interface: {}", interfaceType);
+				}
+			} else {
 				logger.warn("Interface configuration not found: {}", interfaceType);
-				return genericXMLWriter; // always .part-aware
 			}
 
-			String beanioMappingFile = config.getBeanioMappingFile();
-			if (beanioMappingFile != null && !beanioMappingFile.isEmpty()) {
-				logger.info("Using BeanIOFormatWriter for interface: {} (mapping: {})",
-						interfaceType, beanioMappingFile);
-				return beanIOFormatWriter;
-			}
-
-			logger.info("Using .part-aware GenericXMLWriter for interface: {} (no mapping configured)",
-					interfaceType);
-			return genericXMLWriter;
+			// 2. Fetch the bean from context
+			// Because these are @StepScope, Spring will provide a thread-safe,
+			// fresh instance for the current Step execution.
+			return applicationContext.getBean(writerClass);
 
 		} catch (Exception e) {
-			logger.error("Error selecting writer for interface: {}", interfaceType, e);
-			logger.warn("Falling back to .part-aware GenericXMLWriter");
-			return genericXMLWriter;
+			logger.error("Error selecting writer for interface: {}. Falling back to a fresh GenericXMLWriter instance.", interfaceType, e);
+			return applicationContext.getBean(GenericXMLWriter.class);
 		}
 	}
 }

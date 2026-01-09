@@ -104,10 +104,10 @@ public class BeanIOFormatWriter implements OutputFormatWriter {
 		if (beanIOWriter == null) throw new IllegalStateException("Writer not initialized");
 
 		for (DynamicRecord record : items) {
-			// BeanIO is excellent at mapping Maps to Flat Files/CSV/XML
 			beanIOWriter.write(record.asValueMap());
-			recordCount.addAndGet(items.size());
 		}
+
+		recordCount.addAndGet(items.size());
 	}
 
 	@Override
