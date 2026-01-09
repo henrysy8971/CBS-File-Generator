@@ -20,7 +20,6 @@ import java.io.File;
 @StepScope
 public class FileValidationTasklet implements Tasklet {
 	private static final Logger logger = LoggerFactory.getLogger(FileValidationTasklet.class);
-
 	private final XsdValidator xsdValidator;
 	private final InterfaceConfigLoader interfaceConfigLoader;
 
