@@ -7,8 +7,6 @@ import org.beanio.BeanWriter;
 import org.beanio.StreamFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.batch.core.StepExecution;
-import org.springframework.batch.core.annotation.BeforeStep;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.ClassPathResource;
@@ -16,9 +14,11 @@ import org.springframework.stereotype.Component;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Enhanced BeanIO Writer with Append-Support (Restart Safety) and Mapping Caching.
@@ -26,7 +26,6 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 @StepScope
 public class BeanIOFormatWriter implements OutputFormatWriter {
-
 	private static final Logger logger = LoggerFactory.getLogger(BeanIOFormatWriter.class);
 
 	// Cache StreamFactories to avoid expensive XML parsing on every step
@@ -37,21 +36,12 @@ public class BeanIOFormatWriter implements OutputFormatWriter {
 
 	private BeanWriter beanIOWriter;
 	private BufferedWriter bufferedWriter;
-	private StepExecution stepExecution;
 
 	private String partFilePath;
-	private long recordCount = 0;
-	private boolean initialized = false;
-
-	@BeforeStep
-	public void beforeStep(StepExecution stepExecution) {
-		this.stepExecution = stepExecution;
-		// Logic handled via OutputFormatWriter.init() call from DynamicItemWriter
-	}
+	private final AtomicLong recordCount = new AtomicLong(0);
 
 	@Override
-	public synchronized void init(String outputFilePath, String interfaceType) throws Exception {
-		if (initialized) return;
+	public void init(String outputFilePath, String interfaceType) throws Exception {
 
 		InterfaceConfig config = interfaceConfigLoader.getConfig(interfaceType);
 		if (config == null || config.getBeanioMappingFile() == null) {
@@ -63,7 +53,14 @@ public class BeanIOFormatWriter implements OutputFormatWriter {
 
 		// RESTART LOGIC: Check if we should append
 		boolean append = outputFile.exists() && outputFile.length() > 0;
-		if (outputFile.getParentFile() != null) outputFile.getParentFile().mkdirs();
+
+		// Reset recordCount for this session
+		recordCount.set(append ? countExistingRecords(outputFile, false) : 0);
+
+		File parent = outputFile.getParentFile();
+		if (parent != null && !parent.exists() && !parent.mkdirs()) {
+			throw new IOException("Failed to create directory: " + parent);
+		}
 
 		// Use BufferedWriter for significantly better I/O performance
 		this.bufferedWriter = new BufferedWriter(new OutputStreamWriter(
@@ -71,10 +68,9 @@ public class BeanIOFormatWriter implements OutputFormatWriter {
 
 		try {
 			StreamFactory factory = getOrCreateFactory(config.getBeanioMappingFile());
-			String streamName = interfaceType.toLowerCase() + "Stream";
+			String streamName = config.getStreamName();
 
 			this.beanIOWriter = factory.createWriter(streamName, bufferedWriter);
-			this.initialized = true;
 
 			logger.info("BeanIO initialized [Append={}]: interface={}, file={}", append, interfaceType, partFilePath);
 		} catch (Exception e) {
@@ -83,31 +79,35 @@ public class BeanIOFormatWriter implements OutputFormatWriter {
 		}
 	}
 
-	private StreamFactory getOrCreateFactory(String mappingFile) throws IOException {
+	private StreamFactory getOrCreateFactory(String mappingFile) {
 		return FACTORY_CACHE.computeIfAbsent(mappingFile, file -> {
-			try {
+			ClassPathResource resource = new ClassPathResource("beanio/" + file);
+
+			if (!resource.exists()) {
+				throw new IllegalArgumentException("BeanIO mapping file not found: " + resource.getPath());
+			}
+
+			try (InputStream in = resource.getInputStream()) {
 				StreamFactory factory = StreamFactory.newInstance();
-				factory.load(new ClassPathResource("beanio/" + file).getInputStream());
+				factory.load(in);
 				return factory;
 			} catch (IOException e) {
-				throw new UncheckedIOException(e);
+				throw new UncheckedIOException(
+						"Failed to load BeanIO mapping file: " + resource.getPath(), e);
 			}
 		});
 	}
 
 	@Override
-	public void write(List<? extends DynamicRecord> items) throws Exception {
+	public void write(List<? extends DynamicRecord> items) {
 		if (items == null || items.isEmpty()) return;
 		if (beanIOWriter == null) throw new IllegalStateException("Writer not initialized");
 
 		for (DynamicRecord record : items) {
 			// BeanIO is excellent at mapping Maps to Flat Files/CSV/XML
 			beanIOWriter.write(record.asValueMap());
-			recordCount++;
+			recordCount.addAndGet(items.size());
 		}
-
-		// Periodically flush to disk to ensure data is persisted in case of crash
-		bufferedWriter.flush();
 	}
 
 	@Override
@@ -119,17 +119,32 @@ public class BeanIOFormatWriter implements OutputFormatWriter {
 		} finally {
 			this.beanIOWriter = null;
 			this.bufferedWriter = null;
-			this.initialized = false;
 		}
 	}
 
 	@Override
 	public long getRecordCount() {
-		return recordCount;
+		return recordCount.get();
 	}
 
 	@Override
 	public String getPartFilePath() {
 		return partFilePath;
+	}
+
+	private long countExistingRecords(File file, boolean hasHeader) throws IOException {
+		if (!file.exists() || file.length() == 0) return 0;
+
+		try (BufferedReader reader = new BufferedReader(
+				new InputStreamReader(Files.newInputStream(file.toPath()), StandardCharsets.UTF_8))) {
+
+			long lines = 0;
+			while (reader.readLine() != null) lines++;
+
+			if (hasHeader && lines > 0) lines--;  // subtract header
+
+			logger.info("Existing records in file {}: {}", file.getPath(), lines);
+			return lines;
+		}
 	}
 }

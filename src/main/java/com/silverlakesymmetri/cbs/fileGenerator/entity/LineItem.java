@@ -13,7 +13,7 @@ public class LineItem implements Serializable {
 	private String lineItemId;
 
 	@Column(name = "ORDER_ID", nullable = false)
-	private String orderId;
+	private Long orderId;
 
 	@Column(name = "PRODUCT_ID")
 	private String productId;
@@ -42,7 +42,7 @@ public class LineItem implements Serializable {
 	public LineItem() {
 	}
 
-	public LineItem(String lineItemId, String orderId, String productId) {
+	public LineItem(String lineItemId, Long orderId, String productId) {
 		this.lineItemId = lineItemId;
 		this.orderId = orderId;
 		this.productId = productId;
@@ -57,11 +57,11 @@ public class LineItem implements Serializable {
 		this.lineItemId = lineItemId;
 	}
 
-	public String getOrderId() {
+	public Long getOrderId() {
 		return orderId;
 	}
 
-	public void setOrderId(String orderId) {
+	public void setOrderId(Long orderId) {
 		this.orderId = orderId;
 	}
 

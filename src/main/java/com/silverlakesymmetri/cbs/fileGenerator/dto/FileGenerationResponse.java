@@ -1,7 +1,6 @@
 package com.silverlakesymmetri.cbs.fileGenerator.dto;
 
 public class FileGenerationResponse {
-
 	private String jobId;
 	private String status;
 	private String interfaceType;

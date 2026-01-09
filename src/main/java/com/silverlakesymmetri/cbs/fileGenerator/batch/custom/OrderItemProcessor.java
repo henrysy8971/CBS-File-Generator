@@ -2,247 +2,146 @@ package com.silverlakesymmetri.cbs.fileGenerator.batch.custom;
 
 import com.silverlakesymmetri.cbs.fileGenerator.config.InterfaceConfigLoader;
 import com.silverlakesymmetri.cbs.fileGenerator.config.model.InterfaceConfig;
-import com.silverlakesymmetri.cbs.fileGenerator.dto.LineItemDto;
+import com.silverlakesymmetri.cbs.fileGenerator.constants.BatchMetricsConstants;
 import com.silverlakesymmetri.cbs.fileGenerator.dto.OrderDto;
 import com.silverlakesymmetri.cbs.fileGenerator.validation.XsdValidator;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.batch.core.StepExecution;
 import org.springframework.batch.core.annotation.BeforeStep;
+import org.springframework.batch.core.configuration.annotation.StepScope;
+import org.springframework.batch.item.ExecutionContext;
 import org.springframework.batch.item.ItemProcessor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
-/**
- * Order-specific item processor.
- * Validates orders and line items, applies transformations.
- * Optional XSD validation based on interface-config.json xsdSchemaFile setting.
- */
 @Component
+@StepScope
 public class OrderItemProcessor implements ItemProcessor<OrderDto, OrderDto> {
-
 	private static final Logger logger = LoggerFactory.getLogger(OrderItemProcessor.class);
 
-	private static final String KEY_PROCESSED = "processedCount";
-	private static final String KEY_SKIPPED = "skippedCount";
-	private static final String KEY_INVALID = "invalidCount";
+	private final InterfaceConfigLoader interfaceConfigLoader;
+	private final XsdValidator xsdValidator;
 
-	@Autowired
-	private InterfaceConfigLoader interfaceConfigLoader;
-
-	@Autowired(required = false)
-	private XsdValidator xsdValidator;
-
-	private String xsdSchemaFile;
 	private StepExecution stepExecution;
+	private String activeXsdSchema;
+
+	public OrderItemProcessor(
+			InterfaceConfigLoader interfaceConfigLoader,
+			@Autowired(required = false) XsdValidator xsdValidator) {
+		this.interfaceConfigLoader = interfaceConfigLoader;
+		this.xsdValidator = xsdValidator;
+	}
 
 	@BeforeStep
 	public void beforeStep(StepExecution stepExecution) {
 		this.stepExecution = stepExecution;
 		String interfaceType = stepExecution.getJobParameters().getString("interfaceType");
 
-		// Initialize counters in ExecutionContext if missing
-		stepExecution.getExecutionContext().putLong(KEY_PROCESSED,
-				stepExecution.getExecutionContext().getLong(KEY_PROCESSED, 0L));
-		stepExecution.getExecutionContext().putLong(KEY_SKIPPED,
-				stepExecution.getExecutionContext().getLong(KEY_SKIPPED, 0L));
-		stepExecution.getExecutionContext().putLong(KEY_INVALID,
-				stepExecution.getExecutionContext().getLong(KEY_INVALID, 0L));
+		// Initialize metrics
+		initializeMetric(BatchMetricsConstants.KEY_PROCESSED);
+		initializeMetric(BatchMetricsConstants.KEY_SKIPPED);
+		initializeMetric(BatchMetricsConstants.KEY_INVALID);
 
 		try {
-			InterfaceConfig config = interfaceConfigLoader.getConfig(interfaceType);
-			if (config != null) {
-				this.xsdSchemaFile = config.getXsdSchemaFile();
+			InterfaceConfig interfaceConfig = interfaceConfigLoader.getConfig(interfaceType);
+			if (interfaceConfig != null) {
+				String xsdSchemaFile = interfaceConfig.getXsdSchemaFile();
 				if (xsdSchemaFile != null && xsdValidator != null && xsdValidator.schemaExists(xsdSchemaFile)) {
-					logger.info("XSD schema validation enabled for ORDER_INTERFACE (schema: {})",
-							xsdSchemaFile);
+					this.activeXsdSchema = xsdSchemaFile;
+					logger.info("XSD validation enabled for interface: {} (schema: {})",
+							interfaceType, xsdSchemaFile);
 				}
 			}
 		} catch (Exception e) {
-			logger.warn("Error loading schema configuration for interface: {}", interfaceType, e);
+			logger.warn("Metadata lookup failed for interface: {}. Proceeding without XSD validation.", interfaceType);
 		}
 	}
 
 	@Override
-	public OrderDto process(OrderDto orderDto) throws Exception {
+	public OrderDto process(OrderDto orderDto) {
 		try {
-			if (!validateOrder(orderDto)) {
-				incrementCount(KEY_SKIPPED);
-				logger.warn("Order validation failed: orderId={}", orderDto.getOrderId());
+			if (!isValidOrder(orderDto)) {
+				incrementMetric(BatchMetricsConstants.KEY_SKIPPED);
+				logger.debug("Skipping empty record");
 				return null;
 			}
 
-			int validLineItems = 0;
-			for (LineItemDto lineItem : orderDto.getLineItems()) {
-				if (validateLineItem(lineItem)) {
-					validLineItems++;
-				} else {
-					logger.warn("Line item validation failed: lineItemId={}", lineItem.getLineItemId());
-				}
-			}
-
-			if (validLineItems == 0 && !orderDto.getLineItems().isEmpty()) {
-				incrementCount(KEY_SKIPPED);
-				logger.warn("All line items failed validation for order: {}", orderDto.getOrderId());
+			if (!hasValidLineItems(orderDto)) {
+				incrementMetric(BatchMetricsConstants.KEY_SKIPPED);
 				return null;
 			}
 
 			applyTransformations(orderDto);
 
-			if (xsdSchemaFile != null && xsdValidator != null) {
-				String xmlContent = convertOrderToXml(orderDto);
-				if (!xsdValidator.validateRecord(xmlContent, xsdSchemaFile)) {
-					incrementCount(KEY_INVALID);
-					logger.warn("XSD validation failed for order: {} - skipping", orderDto.getOrderId());
-					return null;
-				}
-			}
-
-			incrementCount(KEY_PROCESSED);
-			logger.debug("Order processed successfully: orderId={}, lineItems={}",
-					orderDto.getOrderId(), validLineItems);
+			incrementMetric(BatchMetricsConstants.KEY_PROCESSED);
+			logger.debug("Record processed successfully Order: {}", orderDto.getOrderId());
 			return orderDto;
 
 		} catch (Exception e) {
-			incrementCount(KEY_INVALID);
-			logger.error("Error processing order: orderId={}", orderDto.getOrderId(), e);
-			return null;  // Skip on error
+			incrementMetric(BatchMetricsConstants.KEY_INVALID);
+			logger.error("Critical error processing Order: {}", orderDto.getOrderId(), e);
+			return null;
 		}
 	}
 
-	/**
-	 * Validate order data
-	 */
-	private boolean validateOrder(OrderDto orderDto) {
-		// Check required fields
-		if (orderDto.getOrderId() == null || orderDto.getOrderId().isEmpty()) {
-			logger.warn("Order validation failed: orderId is empty");
-			return false;
-		}
+	// ---------------- Helpers ----------------
+	private void applyTransformations(OrderDto order) {
+		if (order.getOrderNumber() != null) order.setOrderNumber(order.getOrderNumber().trim());
+		if (order.getCustomerName() != null) order.setCustomerName(order.getCustomerName().trim());
 
-		if (orderDto.getOrderNumber() == null || orderDto.getOrderNumber().isEmpty()) {
-			logger.warn("Order validation failed: orderNumber is empty");
-			return false;
+		if (order.getLineItems() != null) {
+			order.getLineItems().forEach(item -> {
+				if (item.getProductName() != null) item.setProductName(item.getProductName().trim());
+			});
 		}
-
-		if (orderDto.getOrderAmount() == null) {
-			logger.warn("Order validation failed: orderAmount is null for orderId={}",
-					orderDto.getOrderId());
-			return false;
-		}
-
-		return true;
 	}
 
-	/**
-	 * Validate line item data
-	 */
-	private boolean validateLineItem(LineItemDto lineItem) {
-		if (lineItem.getLineItemId() == null || lineItem.getLineItemId().isEmpty()) {
-			return false;
+	// ================= Metrics =================
+	private void initializeMetric(String key) {
+		if (!stepExecution.getExecutionContext().containsKey(key)) {
+			stepExecution.getExecutionContext().putLong(key, 0L);
 		}
-
-		if (lineItem.getProductId() == null || lineItem.getProductId().isEmpty()) {
-			return false;
-		}
-
-		return lineItem.getQuantity() != null && lineItem.getQuantity() > 0;
 	}
 
-	/**
-	 * Apply transformations to order and line items
-	 */
-	private void applyTransformations(OrderDto orderDto) {
-		// Trim string fields
-		if (orderDto.getOrderNumber() != null) {
-			orderDto.setOrderNumber(orderDto.getOrderNumber().trim());
+	private void incrementMetric(String key) {
+		if (stepExecution == null) {
+			return;
 		}
-
-		if (orderDto.getCustomerName() != null) {
-			orderDto.setCustomerName(orderDto.getCustomerName().trim());
-		}
-
-		// Transform line items
-		for (LineItemDto lineItem : orderDto.getLineItems()) {
-			if (lineItem.getProductName() != null) {
-				lineItem.setProductName(lineItem.getProductName().trim());
-			}
-		}
-
-		logger.debug("Transformations applied to order: {}", orderDto.getOrderId());
+		ExecutionContext ctx = stepExecution.getExecutionContext();
+		ctx.putLong(key, ctx.getLong(key, 0L) + 1);
 	}
 
-	/**
-	 * Convert Order to XML for validation
-	 */
-	private String convertOrderToXml(OrderDto orderDto) {
-		StringBuilder xml = new StringBuilder();
-		xml.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-		xml.append("<order>\n");
-		xml.append("  <orderId>").append(escapeXml(orderDto.getOrderId())).append("</orderId>\n");
-		xml.append("  <orderNumber>").append(escapeXml(orderDto.getOrderNumber())).append("</orderNumber>\n");
-
-		if (orderDto.getOrderAmount() != null) {
-			xml.append("  <orderAmount>").append(orderDto.getOrderAmount()).append("</orderAmount>\n");
-		}
-
-		if (orderDto.getCustomerName() != null) {
-			xml.append("  <customerName>").append(escapeXml(orderDto.getCustomerName()))
-					.append("</customerName>\n");
-		}
-
-		// Add line items
-		if (!orderDto.getLineItems().isEmpty()) {
-			xml.append("  <lineItems>\n");
-			for (LineItemDto lineItem : orderDto.getLineItems()) {
-				xml.append("    <lineItem>\n");
-				xml.append("      <lineItemId>").append(escapeXml(lineItem.getLineItemId()))
-						.append("</lineItemId>\n");
-				xml.append("      <productId>").append(escapeXml(lineItem.getProductId()))
-						.append("</productId>\n");
-				if (lineItem.getQuantity() != null) {
-					xml.append("      <quantity>").append(lineItem.getQuantity()).append("</quantity>\n");
-				}
-				xml.append("    </lineItem>\n");
-			}
-			xml.append("  </lineItems>\n");
-		}
-
-		xml.append("</order>\n");
-		return xml.toString();
+	// ================= Validation =================
+	private boolean isValidOrder(OrderDto order) {
+		return order != null &&
+				order.getOrderId() != null &&
+				order.getOrderNumber() != null &&
+				StringUtils.isNotBlank(order.getOrderNumber()) &&
+				order.getOrderAmount() != null;
 	}
 
-	/**
-	 * Escape XML special characters
-	 */
-	private String escapeXml(String text) {
-		if (text == null) {
-			return "";
+	private boolean hasValidLineItems(OrderDto order) {
+		if (order.getLineItems() == null || order.getLineItems().isEmpty()) {
+			return true;
 		}
-		return text
-				.replace("&", "&amp;")
-				.replace("<", "&lt;")
-				.replace(">", "&gt;")
-				.replace("\"", "&quot;")
-				.replace("'", "&apos;");
+		return order.getLineItems().stream()
+				.anyMatch(item -> item.getLineItemId() != null &&
+						item.getQuantity() != null &&
+						item.getQuantity() > 0);
 	}
 
-	private void incrementCount(String key) {
-		long current = stepExecution.getExecutionContext().getLong(key, 0L);
-		stepExecution.getExecutionContext().putLong(key, current + 1);
-	}
-
-	// ---------------- Public accessors for listeners ----------------
-
+	// ================= Metrics Accessors =================
 	public long getProcessedCount() {
-		return stepExecution.getExecutionContext().getLong(KEY_PROCESSED, 0L);
+		return stepExecution.getExecutionContext().getLong(BatchMetricsConstants.KEY_PROCESSED, 0L);
 	}
 
 	public long getSkippedCount() {
-		return stepExecution.getExecutionContext().getLong(KEY_SKIPPED, 0L);
+		return stepExecution.getExecutionContext().getLong(BatchMetricsConstants.KEY_SKIPPED, 0L);
 	}
 
 	public long getInvalidCount() {
-		return stepExecution.getExecutionContext().getLong(KEY_INVALID, 0L);
+		return stepExecution.getExecutionContext().getLong(BatchMetricsConstants.KEY_INVALID, 0L);
 	}
 }

@@ -182,7 +182,7 @@ validation.xsd.strict-mode=false
 ### Strict Mode
 
 ```properties
-validation.xsd.strict-mode=true
+validation.xsd.strict-mode=false
 ```
 
 **Behavior**:

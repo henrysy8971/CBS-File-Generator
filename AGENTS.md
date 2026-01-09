@@ -15,14 +15,14 @@
 
 **Package**: `com.silverlakesymmetri.cbs.fileGenerator`
 
-**Stack**: Spring Boot 1.5.22, Spring Batch, Spring Data JPA, Oracle JDBC, Quartz 2.3.0, BeanIO 2.1.0, Java 8
+**Stack**: Spring Boot 1.5.22, Spring Batch, Spring Data JPA, Oracle JDBC, Quartz 2.3.2, BeanIO 2.1.0, Java 8
 
 **Key Components**:
 - **Dynamic Batch Processing**: Single configurable batch job handles all interface types via `interface-config.json`
 - **Async API**: REST controller (`FileGenerationController`) triggers batch jobs asynchronously
 - **Database**: Oracle with JPA entities (AppConfig, FileGeneration, DbToken)
 - **Configuration**: Centralized in `interface-config.json` (dataSourceQuery, beanioMappingFile, xsdSchemaFile, transformRules, chunkSize)
-- **Scheduling**: Quartz for persistent job scheduling (JDBC job store)
+- **Scheduling**: Quartz with Autowiring Job Factory & Startup Runner
 - **Authentication**: Token-based via X-DB-Token header, validated against DB_TOKEN table
 
 **Key Classes**: InterfaceConfigLoader, DynamicBatchConfig, DynamicItemReader/Processor/Writer, DynamicJobExecutionListener, BatchJobLauncher, FileGenerationService, AppConfigService

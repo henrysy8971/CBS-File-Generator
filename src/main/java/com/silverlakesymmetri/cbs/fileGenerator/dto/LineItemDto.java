@@ -4,9 +4,8 @@ import java.io.Serializable;
 import java.math.BigDecimal;
 
 public class LineItemDto implements Serializable {
-
 	private String lineItemId;
-	private String orderId;
+	private Long orderId;
 	private String productId;
 	private String productName;
 	private Integer quantity;
@@ -32,11 +31,11 @@ public class LineItemDto implements Serializable {
 		this.lineItemId = lineItemId;
 	}
 
-	public String getOrderId() {
+	public Long getOrderId() {
 		return orderId;
 	}
 
-	public void setOrderId(String orderId) {
+	public void setOrderId(Long orderId) {
 		this.orderId = orderId;
 	}
 

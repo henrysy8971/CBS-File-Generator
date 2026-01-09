@@ -1,7 +1,6 @@
 package com.silverlakesymmetri.cbs.fileGenerator.dto;
 
 public class FileGenerationRequest {
-
 	private String interfaceType; // Required: must match key in interface-config.json
 	private Integer chunkSize;
 	private String dataSourceQuery;

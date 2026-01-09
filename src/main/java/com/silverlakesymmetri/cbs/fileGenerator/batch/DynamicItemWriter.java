@@ -13,13 +13,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 
-/**
- * Production-ready DynamicItemWriter with restart-safety and .part file continuation.
- * Ensures:
- * - Proper flush/close for large files
- * - Restart-safety using ExecutionContext
- * - Compatible with DynamicItemReader for arbitrarily large datasets
- */
 @Component
 @StepScope
 public class DynamicItemWriter implements OutputFormatWriter, ItemStreamWriter<DynamicRecord> {
@@ -34,14 +27,8 @@ public class DynamicItemWriter implements OutputFormatWriter, ItemStreamWriter<D
 	private String interfaceType;
 	private String outputFilePath;
 
-	/**
-	 * Replaces @BeforeStep logic.
-	 * Spring Batch calls this automatically at the start of the Step.
-	 */
 	@Override
 	public void open(ExecutionContext executionContext) throws ItemStreamException {
-		// Note: interfaceType and outputFilePath are still injected via JobParameters
-		// (usually handled via @Value("#{jobParameters['...']}") in StepScope beans)
 
 		if (delegateWriter == null) {
 			try {
@@ -77,12 +64,8 @@ public class DynamicItemWriter implements OutputFormatWriter, ItemStreamWriter<D
 		}
 	}
 
-	/**
-	 * Satisfies the OutputFormatWriter interface.
-	 * In this proxy class, actual initialization is handled in open().
-	 */
 	@Override
-	public void init(String outputFilePath, String interfaceType) throws Exception {
+	public void init(String outputFilePath, String interfaceType) {
 		// No-op: The framework calls open() which handles the delegate setup.
 		// We keep this to satisfy the interface contract.
 	}
@@ -100,17 +83,14 @@ public class DynamicItemWriter implements OutputFormatWriter, ItemStreamWriter<D
 
 	@Override
 	public long getRecordCount() {
-		// Must delegate to get the actual count for the StepListener
 		return delegateWriter != null ? delegateWriter.getRecordCount() : 0;
 	}
 
 	@Override
 	public String getPartFilePath() {
-		// Must delegate so the JobListener knows which file to rename/checksum
 		return delegateWriter != null ? delegateWriter.getPartFilePath() : null;
 	}
 
-	// Standard write method remains the same...
 	@Override
 	public void write(List<? extends DynamicRecord> items) throws Exception {
 		if (delegateWriter == null) {

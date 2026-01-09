@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -18,8 +19,7 @@ import java.nio.file.Paths;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.sql.Timestamp;
 import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.stream.Stream;
 
 @Component
@@ -29,7 +29,7 @@ public class BatchCleanupTasklet implements Tasklet {
 	@Autowired
 	private JdbcTemplate jdbcTemplate;
 
-	@Value("${batch.cleanup.days:30}")
+	@Value("${file.generation.max-file-age-in-days:30}")
 	private int daysToKeep;
 
 	@Value("${file.generation.output-directory}")
@@ -37,39 +37,45 @@ public class BatchCleanupTasklet implements Tasklet {
 
 	@Override
 	public RepeatStatus execute(StepContribution contribution, ChunkContext chunkContext) {
-		LocalDateTime cutoffDate = LocalDateTime.now().minusDays(daysToKeep);
-		Timestamp cutoffTimestamp = Timestamp.valueOf(cutoffDate);
+		Instant now = Instant.now();
+		Instant cutoffInstant = now
+				.minus(daysToKeep, ChronoUnit.DAYS)
+				.minus(1, ChronoUnit.HOURS);
+		Timestamp cutoffTimestamp = Timestamp.from(cutoffInstant);
 
-		logger.info("Starting Batch maintenance. Removing data older than: {}", cutoffDate);
+		logger.info("Starting Batch maintenance. Current Time: {}, Cutoff: {}", now, cutoffInstant);
 
 		// 1. Database Metadata Cleanup
 		cleanupDatabaseMetadata(cutoffTimestamp);
 
 		// 2. Orphaned File System Cleanup
-		cleanupStaleFiles(cutoffDate);
+		cleanupStaleFiles(cutoffInstant);
 
 		return RepeatStatus.FINISHED;
 	}
 
-	private void cleanupStaleFiles(LocalDateTime cutoffDate) {
+	private void cleanupStaleFiles(Instant cutoffInstant) {
 		Path rootPath = Paths.get(storageDirectory);
 		if (!Files.exists(rootPath)) {
 			logger.warn("Storage directory does not exist, skipping file cleanup: {}", storageDirectory);
 			return;
 		}
 
-		Instant cutoffInstant = cutoffDate.atZone(ZoneId.systemDefault()).toInstant();
-		logger.info("Scanning for stale .part files in: {}", storageDirectory);
+		logger.info("Scanning for stale .part files modified before: {}", cutoffInstant);
 
-		try (Stream<Path> paths = Files.walk(rootPath)) {
+		try (Stream<Path> paths = Files.walk(rootPath, 5)) {
 			paths.filter(Files::isRegularFile)
 					.filter(path -> path.toString().endsWith(".part"))
 					.forEach(path -> {
 						try {
+							// Fetch attributes to get the last modified time
 							BasicFileAttributes attrs = Files.readAttributes(path, BasicFileAttributes.class);
-							if (attrs.lastModifiedTime().toInstant().isBefore(cutoffInstant)) {
+							Instant fileLastModified = attrs.lastModifiedTime().toInstant();
+
+							if (fileLastModified.isBefore(cutoffInstant)) {
 								Files.delete(path);
-								logger.info("Deleted stale part file: {}", path.getFileName());
+								logger.info("Deleted stale part file: {} (Modified: {})",
+										path, fileLastModified);
 							}
 						} catch (IOException e) {
 							logger.error("Failed to process file for cleanup: {}", path, e);
@@ -80,21 +86,22 @@ public class BatchCleanupTasklet implements Tasklet {
 		}
 	}
 
-	private void cleanupDatabaseMetadata(Timestamp cutoffTimestamp) {
+	@Transactional
+	public void cleanupDatabaseMetadata(Timestamp cutoffTimestamp) {
 		try {
 			// 1. Delete Step Execution Contexts
 			int rows1 = jdbcTemplate.update(
 					"DELETE FROM BATCH_STEP_EXECUTION_CONTEXT WHERE STEP_EXECUTION_ID IN " +
-							"(SELECT STEP_EXECUTION_ID FROM BATCH_STEP_EXECUTION WHERE START_TIME < ?)", cutoffTimestamp);
+							"(SELECT STEP_EXECUTION_ID FROM BATCH_STEP_EXECUTION WHERE START_TIME < ? AND STATUS NOT IN ('STARTED', 'STARTING', 'STOPPING'))", cutoffTimestamp);
 
 			// 2. Delete Step Executions
 			int rows2 = jdbcTemplate.update(
-					"DELETE FROM BATCH_STEP_EXECUTION WHERE START_TIME < ?", cutoffTimestamp);
+					"DELETE FROM BATCH_STEP_EXECUTION WHERE START_TIME < ? AND STATUS NOT IN ('STARTED', 'STARTING', 'STOPPING')", cutoffTimestamp);
 
 			// 3. Delete Job Execution Contexts
 			int rows3 = jdbcTemplate.update(
 					"DELETE FROM BATCH_JOB_EXECUTION_CONTEXT WHERE JOB_EXECUTION_ID IN " +
-							"(SELECT JOB_EXECUTION_ID FROM BATCH_JOB_EXECUTION WHERE START_TIME < ?)", cutoffTimestamp);
+							"(SELECT JOB_EXECUTION_ID FROM BATCH_JOB_EXECUTION WHERE START_TIME < ? AND STATUS NOT IN ('STARTED', 'STARTING', 'STOPPING'))", cutoffTimestamp);
 
 			// 4. Delete Job Execution Params
 			int rows4 = jdbcTemplate.update(
@@ -103,18 +110,14 @@ public class BatchCleanupTasklet implements Tasklet {
 
 			// 5. Delete Job Executions
 			int rows5 = jdbcTemplate.update(
-					"DELETE FROM BATCH_JOB_EXECUTION WHERE START_TIME < ?", cutoffTimestamp);
+					"DELETE FROM BATCH_JOB_EXECUTION WHERE START_TIME < ? AND STATUS NOT IN ('STARTED', 'STARTING', 'STOPPING')", cutoffTimestamp);
 
-			// 6. Delete Job Instances
-			int rows6 = jdbcTemplate.update(
-					"DELETE FROM BATCH_JOB_INSTANCE WHERE JOB_INSTANCE_ID NOT IN " +
-							"(SELECT JOB_INSTANCE_ID FROM BATCH_JOB_EXECUTION)");
-
-			logger.info("DB Cleanup complete. Summary: {} StepContexts, {} Steps, {} JobContexts, {} Params, {} JobExecs, {} JobInstances deleted.",
-					rows1, rows2, rows3, rows4, rows5, rows6);
+			logger.info("DB Cleanup complete. Summary: {} StepContexts, {} Steps, {} JobContexts, {} Params, {} JobExecs deleted.",
+					rows1, rows2, rows3, rows4, rows5);
 
 		} catch (Exception e) {
 			logger.error("Error occurred during database metadata cleanup", e);
+			throw e;
 		}
 	}
 }

@@ -17,6 +17,7 @@ src/main/java/com/silverlakesymmetri/cbs/fileGenerator/
 │   │   ├── OrderItemWriter.java            ← Example: specialized writer
 │   │   ├── OrderRowMapper.java             ← Example: entity→DTO mapper
 │   │   └── OrderStepExecutionListener.java ← Example: specialized step listener
+│   ├── BatchCleanupTasklet.java            ←
 │   ├── BeanIOFormatWriter.java             ← Generic BeanIO writer
 │   ├── DynamicBatchConfig.java             ← Generic batch config
 │   ├── DynamicItemProcessor.java           ← Generic processor
@@ -24,21 +25,29 @@ src/main/java/com/silverlakesymmetri/cbs/fileGenerator/
 │   ├── DynamicItemWriter.java              ← Generic writer
 │   ├── DynamicJobExecutionListener.java    ← Job listener
 │   ├── DynamicStepExecutionListener.java   ← Step listener
+│   ├── MaintenanceBatchConfig.java         ←
 │   ├── GenericXMLWriter.java               ← Generic XML writer
 │   ├── OutputFormatWriter.java             ← Generic output format writer
 │   └── OutputFormatWriterFactory.java      ← Factory for selecting appropriate output format writer
 ├── config/
 │   ├── model/
-│   │   ├── InterfaceConfig.java            ← Config model
+│   │   ├── InterfaceConfig.java            ← Interface Config model
 │   │   └── InterfaceConfigWrapper.java     ← Wrapper for interface-config.json
+│   ├── AsyncConfig.java                    ←
+│   ├── AutowiringSpringBeanJobFactory.java ←
+│   ├── BatchInfrastructureConfig.java      ←
 │   ├── DatabaseConfig.java                 ← Database configuration
 │   ├── InterfaceConfigLoader.java          ← Interface configuration loader
-│   ├── QuartzConfig.java                   ← Quartz scheduler configuration
+│   ├── QuartzConfiguration.java            ← Quartz scheduler configuration
+│   ├── SecurityConfig.java                 ←
 │   ├── SecurityConfig.java                 ← Security configuration
 │   └── TomcatConfig.java                   ← Tomcat configuration
 ├── controller/
+│   └── AdminController.java                ← REST endpoints
 │   └── FileGenerationController.java       ← REST endpoints
 ├── dto/
+│   ├── ColumnType.java                     ←
+│   ├── DynamicColumn.java                  ←
 │   ├── DynamicRecord.java                  ← Generic record holder for dynamic data
 │   ├── FileGenerationRequest.java          ← API request (interfaceType only)
 │   ├── FileGenerationResponse.java         ← API response
@@ -64,6 +73,7 @@ src/main/java/com/silverlakesymmetri/cbs/fileGenerator/
 │   └── FileGenerationService.java          ← Business logic
 ├── scheduler/
 │   └── FileGenerationScheduler.java        ← Job scheduling
+│   └── MaintenanceScheduler.java           ←
 ├── security/
 │   ├── TokenAuthenticationFilter.java      ← Token authentication filter
 │   └── TokenValidator.java                 ← Token validator

@@ -1,28 +1,48 @@
 package com.silverlakesymmetri.cbs.fileGenerator.service;
 
-public enum FileGenerationStatus {
-	PENDING,        // queued but not started
-	PROCESSING,     // batch running
-	STOPPED,        // batch stopped
-	FINALIZING,     // renaming, checksum, post-processing
-	COMPLETED,      // file fully ready
-	FAILED;         // terminal failure
+import java.util.EnumMap;
+import java.util.EnumSet;
+import java.util.Map;
+import java.util.Set;
 
-	/**
-	 * Optional: Check if the status is terminal.
-	 * Useful for preventing updates to jobs that are already finished.
-	 */
+public enum FileGenerationStatus {
+	PENDING,
+	PROCESSING,
+	STOPPED,
+	FINALIZING,
+	COMPLETED,
+	FAILED;
+
+	private static final Map<FileGenerationStatus, Set<FileGenerationStatus>> TRANSITIONS =
+			new EnumMap<>(FileGenerationStatus.class);
+
+	static {
+		TRANSITIONS.put(PENDING,
+				EnumSet.of(PROCESSING, STOPPED));
+
+		TRANSITIONS.put(PROCESSING,
+				EnumSet.of(FINALIZING, STOPPED, FAILED));
+
+		TRANSITIONS.put(FINALIZING,
+				EnumSet.of(COMPLETED, FAILED));
+
+		TRANSITIONS.put(STOPPED,
+				EnumSet.of(PROCESSING, FAILED));
+
+		TRANSITIONS.put(COMPLETED,
+				EnumSet.noneOf(FileGenerationStatus.class));
+
+		TRANSITIONS.put(FAILED,
+				EnumSet.noneOf(FileGenerationStatus.class));
+	}
+
 	public boolean isTerminal() {
 		return this == COMPLETED || this == FAILED;
 	}
 
-	/**
-	 * Optional: Check if a transition is valid.
-	 */
 	public boolean canTransitionTo(FileGenerationStatus nextStatus) {
-		if (this.isTerminal()) return false;
-
-		// Example logic: cannot go from PENDING straight to COMPLETED
-		return this != PENDING || nextStatus != COMPLETED;
+		return TRANSITIONS
+				.getOrDefault(this, EnumSet.noneOf(FileGenerationStatus.class))
+				.contains(nextStatus);
 	}
 }

@@ -1,5 +1,6 @@
 package com.silverlakesymmetri.cbs.fileGenerator.batch.custom;
 
+import com.silverlakesymmetri.cbs.fileGenerator.constants.BatchMetricsConstants;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -8,12 +9,7 @@ import org.springframework.batch.core.StepExecution;
 import org.springframework.batch.core.listener.StepExecutionListenerSupport;
 import org.springframework.batch.item.ExecutionContext;
 
-/**
- * Step execution listener for Order batch processing.
- * Captures order writer state (record count, file path) for job listener.
- */
 public class OrderStepExecutionListener extends StepExecutionListenerSupport {
-
 	private static final Logger logger =
 			LoggerFactory.getLogger(OrderStepExecutionListener.class);
 
@@ -29,13 +25,14 @@ public class OrderStepExecutionListener extends StepExecutionListenerSupport {
 
 	@Override
 	public void beforeStep(StepExecution stepExecution) {
-		logger.debug("Order step execution started: {}", stepExecution.getStepName());
+		logger.info("Starting specialized Order Step: {}", stepExecution.getStepName());
 	}
 
 	@Override
 	public ExitStatus afterStep(StepExecution stepExecution) {
 		String jobId = stepExecution.getJobParameters().getString("jobId");
 		ExecutionContext stepContext = stepExecution.getExecutionContext();
+		ExecutionContext jobContext = stepExecution.getJobExecution().getExecutionContext();
 
 		// Determine Step Success
 		// A step is successful if its status is COMPLETED and no exceptions occurred.
@@ -43,40 +40,41 @@ public class OrderStepExecutionListener extends StepExecutionListenerSupport {
 				&& stepExecution.getFailureExceptions().isEmpty();
 
 		try {
-			// Notify Writer of success status
-			// This allows the writer to decide whether to write XML footers and finalize the file.
 			if (orderItemWriter != null) {
+				// Inform writer of success, so it can write XML footers during close()
 				orderItemWriter.setStepSuccessful(isSuccess);
 
-				String partFilePath = orderItemWriter.getPartFilePath();
-				if (partFilePath != null) {
-					// Store in job execution context (accessible to job listener)
-					stepExecution.getJobExecution().getExecutionContext()
-							.put("partFilePath", partFilePath);
-
-					// Store record count
-					long recordCount = orderItemWriter.getRecordCount();
-					stepExecution.getJobExecution().getExecutionContext()
-							.put("recordCount", recordCount);
-
-					logger.info("Order step execution completed. Part file path stored: {}, Record count: {}",
-							partFilePath, recordCount);
+				// Hand off .part file path to Job Execution Context
+				// for SHA-256 calculation
+				// This is critical for DynamicJobExecutionListener to find the file
+				String partPath = orderItemWriter.getPartFilePath();
+				if (partPath != null) {
+					jobContext.putString("partFilePath", partPath);
+					logger.debug("Handed off partFilePath to JobContext: {}", partPath);
 				}
 			}
 
-			// Extract metrics (Keys must match DynamicItemProcessor constants)
-			long processed = stepContext.getLong("processedCount", 0L);
-			long skipped = stepContext.getLong("skippedCount", 0L);
-			long invalid = stepContext.getLong("invalidCount", 0L);
+			// Extract and Persist Standardized Metrics
+			// Keys here MUST match OrderItemProcessor/DynamicItemProcessor constants
+			long processed = stepContext.getLong(BatchMetricsConstants.KEY_PROCESSED, 0L);
+			long skipped = stepContext.getLong(BatchMetricsConstants.KEY_SKIPPED, 0L);
+			long invalid = stepContext.getLong(BatchMetricsConstants.KEY_INVALID, 0L);
 
 			if (jobId != null) {
 				fileGenerationService.updateFileMetrics(jobId, processed, skipped, invalid);
 				logger.info("Step metrics persisted: jobId={}, processed={}, skipped={}, invalid={}",
 						jobId, processed, skipped, invalid);
+
+				// Store total record count at job level for logging/summary
+				jobContext.putLong("totalRecordCount", processed);
+
+				logger.info("Order metrics synced: jobId={}, processed={}, skipped={}, invalid={}",
+						jobId, processed, skipped, invalid);
 			}
 
 		} catch (Exception e) {
-			logger.error("Error capturing part file path in order step listener", e);
+			// We catch but don't fail the job, as the file is likely already written
+			logger.error("Non-critical error in OrderStepListener for jobId: {}", jobId, e);
 		}
 
 		return stepExecution.getExitStatus();

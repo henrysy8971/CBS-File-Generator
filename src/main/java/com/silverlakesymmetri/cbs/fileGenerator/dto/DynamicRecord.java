@@ -6,7 +6,6 @@ import java.util.Map;
 import java.util.Set;
 
 public class DynamicRecord {
-
 	private final LinkedHashMap<String, DynamicColumn> columns = new LinkedHashMap<>();
 
 	public void addColumn(String name, Object value, ColumnType type) {

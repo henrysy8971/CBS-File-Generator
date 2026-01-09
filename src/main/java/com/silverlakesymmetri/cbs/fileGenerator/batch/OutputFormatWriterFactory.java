@@ -13,7 +13,6 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class OutputFormatWriterFactory {
-
 	private static final Logger logger = LoggerFactory.getLogger(OutputFormatWriterFactory.class);
 
 	private final InterfaceConfigLoader interfaceConfigLoader;
@@ -39,6 +38,7 @@ public class OutputFormatWriterFactory {
 	public OutputFormatWriter selectWriter(String interfaceType) {
 		try {
 			InterfaceConfig config = interfaceConfigLoader.getConfig(interfaceType);
+
 			if (config == null) {
 				logger.warn("Interface configuration not found: {}", interfaceType);
 				return genericXMLWriter; // always .part-aware

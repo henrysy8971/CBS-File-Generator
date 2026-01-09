@@ -35,6 +35,9 @@ public class FileGenerationController {
 	@Autowired
 	private InterfaceConfigLoader interfaceConfigLoader;
 
+	@Autowired
+	private org.quartz.Scheduler scheduler; // To check background poller status
+
 	@Value("${file.generation.output-directory}")
 	private String outputDirectory;
 
@@ -177,9 +180,31 @@ public class FileGenerationController {
 	@GetMapping("/health")
 	public ResponseEntity<Map<String, Object>> health() {
 		Map<String, Object> health = new HashMap<>();
-		health.put("status", "UP");
-		health.put("interfaces_loaded", interfaceConfigLoader.getAllConfigs().size());
-		health.put("pending_jobs", fileGenerationService.getPendingFileGenerations().size());
+		try {
+			// 1. Basic App Status
+			health.put("status", "UP");
+			health.put("timestamp", new java.util.Date());
+
+			// 2. Quartz Scheduler Status (Critical for automation)
+			Map<String, Object> schedulerDetails = new HashMap<>();
+			schedulerDetails.put("running", scheduler.isStarted());
+			schedulerDetails.put("in_standby", scheduler.isInStandbyMode());
+			schedulerDetails.put("job_name", "fileGenPollJob");
+			health.put("scheduler", schedulerDetails);
+
+			// 3. Batch & Config Status
+			health.put("interfaces_loaded", interfaceConfigLoader.getAllConfigs().size());
+
+			// 4. Queue Depth
+			int pending = fileGenerationService.getPendingFileGenerations().size();
+			health.put("pending_jobs", pending);
+			health.put("system_load", pending > 50 ? "HIGH" : "NORMAL");
+		} catch (Exception e) {
+			health.put("status", "DOWN");
+			health.put("error", e.getMessage());
+			return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(health);
+		}
+
 		return ResponseEntity.ok(health);
 	}
 

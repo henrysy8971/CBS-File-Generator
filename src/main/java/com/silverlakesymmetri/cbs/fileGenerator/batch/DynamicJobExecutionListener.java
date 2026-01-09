@@ -17,25 +17,12 @@ import org.springframework.batch.core.JobExecutionListener;
  * - Backward-compatible constructors
  */
 public class DynamicJobExecutionListener implements JobExecutionListener {
-
 	private static final Logger logger = LoggerFactory.getLogger(DynamicJobExecutionListener.class);
 
 	private final FileFinalizationService fileFinalizationService;
 	private final FileGenerationService fileGenerationService;
 
-	/**
-	 * Preferred constructor (new code)
-	 */
 	public DynamicJobExecutionListener(FileFinalizationService fileFinalizationService, FileGenerationService fileGenerationService) {
-		this.fileFinalizationService = fileFinalizationService;
-		this.fileGenerationService = fileGenerationService;
-	}
-
-	/**
-	 * Legacy constructor for backward compatibility
-	 */
-	public DynamicJobExecutionListener(FileGenerationService fileGenerationService,
-									   FileFinalizationService fileFinalizationService) {
 		this.fileFinalizationService = fileFinalizationService;
 		this.fileGenerationService = fileGenerationService;
 	}
@@ -64,7 +51,6 @@ public class DynamicJobExecutionListener implements JobExecutionListener {
 		try {
 			logger.info("Finalizing part file: {}", partFilePath);
 
-			// Atomic rename: .part → final
 			boolean finalized = fileFinalizationService.finalizeFile(partFilePath);
 
 			if (!finalized) {

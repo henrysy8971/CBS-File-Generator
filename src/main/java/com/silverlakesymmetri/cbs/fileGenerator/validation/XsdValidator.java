@@ -5,13 +5,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
-import org.xml.sax.SAXException;
 
 import javax.xml.XMLConstants;
 import javax.xml.transform.stream.StreamSource;
 import javax.xml.validation.Schema;
 import javax.xml.validation.SchemaFactory;
 import javax.xml.validation.Validator;
+import java.io.File;
 import java.io.InputStream;
 import java.io.StringReader;
 import java.util.Map;
@@ -29,7 +29,6 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @Component
 public class XsdValidator {
-
 	private static final Logger logger = LoggerFactory.getLogger(XsdValidator.class);
 	private static final String XSD_LOCATION = "xsd/";
 
@@ -41,6 +40,23 @@ public class XsdValidator {
 	 * Optional is used to avoid null caching.
 	 */
 	private final Map<String, Optional<Schema>> schemaCache = new ConcurrentHashMap<>();
+
+	/**
+	 * Validates a full file on disk.
+	 * Use this in your Tasklet for post-generation validation.
+	 */
+	public boolean validateFullFile(File xmlFile, String schemaFileName) {
+		if (schemaFileName == null || schemaFileName.trim().isEmpty()) {
+			return true;
+		}
+
+		if (!xmlFile.exists()) {
+			logger.error("Validation failed: File not found at {}", xmlFile.getAbsolutePath());
+			return false;
+		}
+
+		return executeValidation(new StreamSource(xmlFile), schemaFileName);
+	}
 
 	/**
 	 * Validate XML content against the specified XSD schema.
@@ -55,24 +71,24 @@ public class XsdValidator {
 			return true;
 		}
 
+		return executeValidation(new StreamSource(new StringReader(xmlContent)), schemaFileName);
+	}
+
+	/**
+	 * Unified private method to handle the validation logic.
+	 */
+	private boolean executeValidation(StreamSource source, String schemaFileName) {
 		try {
 			Optional<Schema> schemaOpt = getOrLoadSchema(schemaFileName);
-
-			if (schemaOpt.isPresent()) {
-				logger.warn("Schema not found: {} (strictMode={})", schemaFileName, strictMode);
+			if (!schemaOpt.isPresent()) {
+				logger.warn("Schema not found: {}. StrictMode: {}", schemaFileName, strictMode);
 				return !strictMode;
 			}
 
-			validateXml(xmlContent, schemaOpt.get());
-			logger.debug("XML successfully validated against schema: {}", schemaFileName);
+			validateXml(source, schemaOpt.get());
 			return true;
-
-		} catch (SAXException e) {
-			logger.error("XML validation failed against schema {}: {}", schemaFileName, e.getMessage());
-			return !strictMode;
-
 		} catch (Exception e) {
-			logger.error("Unexpected error during XSD validation for schema {}", schemaFileName, e);
+			logger.error("XSD validation failed for schema {}: {}", schemaFileName, e.getMessage());
 			return !strictMode;
 		}
 	}
@@ -96,33 +112,15 @@ public class XsdValidator {
 		}
 
 		try (InputStream is = resource.getInputStream()) {
-			SchemaFactory factory =
-					SchemaFactory.newInstance(XMLConstants.W3C_XML_SCHEMA_NS_URI);
-
-			// Secure processing
+			SchemaFactory factory = SchemaFactory.newInstance(XMLConstants.W3C_XML_SCHEMA_NS_URI);
 			factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
-
 			Schema schema = factory.newSchema(new StreamSource(is));
 			logger.info("XSD schema loaded and cached: {}", schemaFileName);
 			return Optional.of(schema);
-
 		} catch (Exception e) {
 			logger.error("Failed to load XSD schema: {}{}", XSD_LOCATION, schemaFileName, e);
 			return Optional.empty();
 		}
-	}
-
-	/**
-	 * Perform stream-based XML validation.
-	 */
-	private void validateXml(String xmlContent, Schema schema) throws Exception {
-		Validator validator = schema.newValidator();
-
-		// Secure validator configuration
-		validator.setProperty(XMLConstants.ACCESS_EXTERNAL_DTD, "");
-		validator.setProperty(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
-
-		validator.validate(new StreamSource(new StringReader(xmlContent)));
 	}
 
 	/**
@@ -142,4 +140,16 @@ public class XsdValidator {
 		}
 		return new ClassPathResource(XSD_LOCATION + schemaFileName).exists();
 	}
+
+	/**
+	 * Internal core validation logic using JAXP Source.
+	 */
+	private void validateXml(StreamSource source, Schema schema) throws Exception {
+		Validator validator = schema.newValidator();
+		// Prevent XXE attacks
+		validator.setProperty(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+		validator.setProperty(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
+		validator.validate(source);
+	}
+
 }

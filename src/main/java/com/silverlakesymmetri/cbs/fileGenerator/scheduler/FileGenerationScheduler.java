@@ -1,6 +1,6 @@
 package com.silverlakesymmetri.cbs.fileGenerator.scheduler;
 
-import com.silverlakesymmetri.cbs.fileGenerator.service.AppConfigService;
+import com.silverlakesymmetri.cbs.fileGenerator.service.BatchJobLauncher;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
 import org.quartz.*;
 import org.slf4j.Logger;
@@ -9,54 +9,63 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.quartz.QuartzJobBean;
 import org.springframework.stereotype.Component;
 
-import java.util.Date;
-
 @Component
 @DisallowConcurrentExecution
 public class FileGenerationScheduler extends QuartzJobBean {
-
 	private static final Logger logger = LoggerFactory.getLogger(FileGenerationScheduler.class);
-
-	@Autowired
-	private AppConfigService appConfigService;
 
 	@Autowired
 	private FileGenerationService fileGenerationService;
 
+	@Autowired
+	private BatchJobLauncher batchJobLauncher;
+
+	@Autowired
+	private Scheduler scheduler; // Injected to actually perform the scheduling
+
 	@Override
 	protected void executeInternal(JobExecutionContext context) throws JobExecutionException {
-		logger.info("File generation scheduled job started at: {}", new Date());
+		logger.info("Quartz checking for pending file generation requests...");
 
 		try {
-			// Get job configuration from database
-			String jobType = appConfigService.getConfigValue("JOB_TYPE").orElse("DEFAULT");
-			String batchSize = appConfigService.getConfigValue("BATCH_SIZE").orElse("1000");
-
-			logger.info("Executing job - type: {}, batchSize: {}", jobType, batchSize);
-
-			// Process pending file generations
+			// 1. Fetch pending requests from DB
 			fileGenerationService.getPendingFileGenerations().forEach(fileGen -> {
-				logger.info("Processing file generation: {}", fileGen.getJobId());
-				// Actual processing logic would be implemented here
-			});
+				try {
+					logger.info("Scheduling Batch Job for request: {}", fileGen.getJobId());
 
-			logger.info("File generation scheduled job completed successfully");
+					// 2. Hand off to the Batch Launcher
+					// This triggers the full Spring Batch lifecycle (Reader -> Processor -> Writer -> Listener)
+					batchJobLauncher.launchFileGenerationJob(
+							fileGen.getJobId(),
+							fileGen.getInterfaceType()
+					);
+				} catch (Exception e) {
+					logger.error("Failed to hand off JobId {} to Batch Launcher", fileGen.getJobId(), e);
+				}
+			});
 		} catch (Exception e) {
-			logger.error("Error in file generation scheduled job: {}", e.getMessage(), e);
-			throw new JobExecutionException(e);
+			throw new JobExecutionException("Failed to retrieve pending jobs from database", e);
 		}
 	}
 
-	public void scheduleJob(String jobName, String cronExpression) throws SchedulerException {
+	/**
+	 * Call this from a Startup Runner or API to initialize the recurring trigger
+	 */
+	public void createRecurringSchedule(String cronExpression) throws SchedulerException {
 		JobDetail jobDetail = JobBuilder.newJob(FileGenerationScheduler.class)
-				.withIdentity(jobName, "file-generation-group")
+				.withIdentity("fileGenPollJob", "file-generation-group")
+				.storeDurably() // Important for QuartzJobBean
 				.build();
 
-		CronTrigger trigger = TriggerBuilder.newTrigger()
-				.withIdentity(jobName + "-trigger", "file-generation-group")
-				.withSchedule(CronScheduleBuilder.cronSchedule(cronExpression))
+		Trigger trigger = TriggerBuilder.newTrigger()
+				.withIdentity("fileGenPollTrigger", "file-generation-group")
+				.withSchedule(CronScheduleBuilder.cronSchedule(cronExpression)
+						.withMisfireHandlingInstructionDoNothing()) // Don't pile up jobs if server was down
 				.build();
 
-		logger.info("Job scheduled - name: {}, cron: {}", jobName, cronExpression);
+		if (!scheduler.checkExists(jobDetail.getKey())) {
+			scheduler.scheduleJob(jobDetail, trigger);
+			logger.info("Recurring File Generation Poller scheduled with cron: {}", cronExpression);
+		}
 	}
 }

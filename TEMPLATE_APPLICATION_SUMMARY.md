@@ -8,11 +8,11 @@ This is a **production-ready template application** for batch file generation fr
 
 ### Core Documentation
 
-- **README.md** - Overview and technology stack
-  - High-level architecture
-  - Technology stack (Spring Boot 1.5.22, Quartz, Spring Batch, Oracle)
-  - Key features explained
-  - Links to additional resources
+- **AGENTS.md** - Developer guidelines
+  - Build commands (JAR, WAR, with/without tests)
+  - Code style guidelines
+  - Architecture and codebase structure
+  - Key components and classes
 
 - **BATCH_ARCHITECTURE.md** - Deep dive into batch processing
   - Generic vs Specialized architecture explained
@@ -30,6 +30,20 @@ This is a **production-ready template application** for batch file generation fr
   - Real example with ORDER_INTERFACE
   - Data type mapping table
 
+- **OUTPUT_FORMATS.md** - Output format configuration
+  - XML as default format (no config needed)
+  - BeanIO mapping for custom formats (CSV, fixed-length, delimited)
+  - Format examples and configurations
+  - Stream naming conventions
+  - Field type support
+  - Troubleshooting guide
+
+- **README.md** - Overview and technology stack
+  - High-level architecture
+  - Technology stack (Spring Boot 1.5.22, Quartz, Spring Batch, Oracle)
+  - Key features explained
+  - Links to additional resources
+
 - **DEPLOYMENT.md** - Build and deployment guide
   - Prerequisites (Java 8, Maven 3.6+, Oracle 11g+)
   - Building JAR (embedded Tomcat) and WAR (external Tomcat)
@@ -39,14 +53,6 @@ This is a **production-ready template application** for batch file generation fr
   - Testing examples with curl
   - Monitoring and troubleshooting
 
-- **OUTPUT_FORMATS.md** - Output format configuration
-  - XML as default format (no config needed)
-  - BeanIO mapping for custom formats (CSV, fixed-length, delimited)
-  - Format examples and configurations
-  - Stream naming conventions
-  - Field type support
-  - Troubleshooting guide
-
 - **XSD_VALIDATION.md** - Optional schema validation
   - Configuration setup
   - Strict vs lenient modes
@@ -54,12 +60,6 @@ This is a **production-ready template application** for batch file generation fr
   - Performance considerations
   - Integration with processors
   - Best practices
-
-- **AGENTS.md** - Developer guidelines
-  - Build commands (JAR, WAR, with/without tests)
-  - Code style guidelines
-  - Architecture and codebase structure
-  - Key components and classes
 
 ---
 

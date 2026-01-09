@@ -10,6 +10,7 @@ import org.springframework.batch.core.JobParameters;
 import org.springframework.batch.core.JobParametersBuilder;
 import org.springframework.batch.core.launch.JobLauncher;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -22,38 +23,33 @@ import java.util.concurrent.CompletableFuture;
 
 @Service
 public class BatchJobLauncher {
-
 	private static final Logger logger = LoggerFactory.getLogger(BatchJobLauncher.class);
 
 	private final JobLauncher jobLauncher;
-	private final Job dynamicFileGenerationJob;
+	private final Job defaultJob;
 	private final InterfaceConfigLoader interfaceConfigLoader;
 	private final FileGenerationService fileGenerationService;
-	private final Map<String, Job> specializedJobs; // Keyed by interfaceType
+	private final Map<String, Job> allJobs; // Keyed by interfaceType
 
-	@Value("${file.generation.output-directory:./generated-files/}")
+	@Value("${file.generation.output-directory}")
 	private String outputDirectory;
 
 	@Autowired
 	public BatchJobLauncher(JobLauncher jobLauncher,
-							Job dynamicFileGenerationJob,
+							@Qualifier("dynamicFileGenerationJob") Job defaultJob, // Explicitly pick the generic job
 							InterfaceConfigLoader interfaceConfigLoader,
 							FileGenerationService fileGenerationService,
-							Map<String, Job> specializedJobs) {
+							Map<String, Job> allJobs) {
 		this.jobLauncher = jobLauncher;
-		this.dynamicFileGenerationJob = dynamicFileGenerationJob;
+		this.defaultJob = defaultJob;
 		this.interfaceConfigLoader = interfaceConfigLoader;
 		this.fileGenerationService = fileGenerationService;
-		this.specializedJobs = specializedJobs;
+		this.allJobs = allJobs;
 	}
 
-	/**
-	 * Launch file generation job asynchronously.
-	 */
 	@Async
 	public CompletableFuture<Void> launchFileGenerationJob(String jobId, String interfaceType) {
 		try {
-			// Check current status before launching
 			Optional<FileGeneration> currentJob = fileGenerationService.getFileGeneration(jobId);
 
 			if (!currentJob.isPresent()) {
@@ -78,11 +74,8 @@ public class BatchJobLauncher {
 			}
 
 			InterfaceConfig config = interfaceConfigLoader.getConfig(interfaceType);
-
 			// Determine file extension, defaulting to 'txt'
-			String extension = (config.getOutputFileExtension() != null && !config.getOutputFileExtension().isEmpty())
-					? config.getOutputFileExtension() : "txt";
-
+			String extension = Optional.ofNullable(config.getOutputFileExtension()).orElse("txt");
 			// Build output file path with .part during processing
 			String outputFilePath = buildOutputFilePath(jobId, interfaceType, extension);
 
@@ -100,7 +93,8 @@ public class BatchJobLauncher {
 			// Select appropriate job (specialized or dynamic)
 			Job jobToRun = selectJobByInterfaceType(interfaceType);
 
-			logger.info("Starting Batch Job for JobId: {}", jobId);
+			logger.info("Starting Batch Job [{}] for interface [{}]", jobToRun.getName(), interfaceType);
+
 			fileGenerationService.markProcessing(jobId); // Update status to IN_PROGRESS before launch
 
 			// Launch the job
@@ -118,19 +112,28 @@ public class BatchJobLauncher {
 	 * Falls back to dynamicFileGenerationJob if no specialized job is configured.
 	 */
 	private Job selectJobByInterfaceType(String interfaceType) {
-		if (specializedJobs != null && specializedJobs.containsKey(interfaceType)) {
-			logger.info("Using specialized job for interfaceType: {}", interfaceType);
-			return specializedJobs.get(interfaceType);
+		String lookupKey = interfaceType.toUpperCase();
+
+		// Prevent triggering internal maintenance jobs via API
+		if ("CLEANUPJOB".equalsIgnoreCase(lookupKey)) {
+			logger.warn("Access denied to internal job: {}. Falling back to dynamic.", lookupKey);
+			return defaultJob;
 		}
-		logger.info("Using dynamicFileGenerationJob for interfaceType: {}", interfaceType);
-		return dynamicFileGenerationJob;
+
+		if (allJobs != null && allJobs.containsKey(lookupKey)) {
+			logger.info("Routing to specialized job bean: {}", lookupKey);
+			return allJobs.get(lookupKey);
+		}
+
+		logger.info("No specialized bean found for {}. Using dynamic generation.", lookupKey);
+		return defaultJob;
 	}
 
 	/**
 	 * Builds a safe output file path with .part extension for in-progress files.
 	 */
 	private String buildOutputFilePath(String jobId, String interfaceType, String extension) {
-		Path fullPath = Paths.get(outputDirectory, interfaceType + "_" + jobId + "." + extension + ".part");
-		return fullPath.toAbsolutePath().toString();
+		return Paths.get(outputDirectory, interfaceType + "_" + jobId + "." + extension + ".part")
+				.toAbsolutePath().toString();
 	}
 }

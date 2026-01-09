@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
@@ -69,13 +70,19 @@ public class FileFinalizationService {
 		Path finalPath = Paths.get(partPathStr.replaceAll("\\.part$", ""));
 
 		try {
-			// Step 1: Atomic Move
-			moveFileSafely(partPath, finalPath);
-			applyPosixPermissions(finalPath, "rw-r--r--");
+			// Generate SHA while it's still a .part to ensure integrity before rename
+			String shaPath = generateShaFile(partPath);
+			if (shaPath == null) return false;
 
-			// Step 2: Generate SHA (Failure here shouldn't necessarily undo Step 1)
-			String shaPath = generateShaFile(finalPath);
-			return shaPath != null;
+			moveFileSafely(partPath, finalPath);
+
+			// Rename the .sha file to match the new final filename
+			Path oldSha = Paths.get(shaPath);
+			Path newSha = Paths.get(finalPath.toString() + ".sha");
+			Files.move(oldSha, newSha, StandardCopyOption.REPLACE_EXISTING);
+
+			applyPosixPermissions(finalPath, "rw-r--r--");
+			return true;
 		} catch (Exception e) {
 			logger.error("Fatal error during finalization of {}", partFilePath, e);
 			return false;

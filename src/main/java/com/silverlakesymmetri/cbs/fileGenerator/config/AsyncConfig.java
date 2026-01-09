@@ -11,7 +11,6 @@ import java.util.concurrent.Executor;
 @Configuration
 @EnableAsync
 public class AsyncConfig {
-
 	@Value("${spring.task.execution.pool.core-size:5}")
 	private int corePoolSize;
 
@@ -25,7 +24,7 @@ public class AsyncConfig {
 	private String threadNamePrefix;
 
 	/**
-	 * This bean replaces the auto-configuration missing in Spring Boot 1.5.x.
+	 * This bean replaces the autoconfiguration missing in Spring Boot 1.5.x.
 	 * It handles asynchronous tasks like triggering the FileFinalizationService
 	 * or sending email alerts without blocking the main Batch thread.
 	 */

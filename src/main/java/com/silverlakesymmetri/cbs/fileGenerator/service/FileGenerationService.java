@@ -17,9 +17,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Service
-@Transactional
 public class FileGenerationService {
-
 	private static final Logger logger = LoggerFactory.getLogger(FileGenerationService.class);
 
 	@Autowired
@@ -42,24 +40,23 @@ public class FileGenerationService {
 		return saved;
 	}
 
-	// ==================== Status ====================
+	/* ===================== STATUS ===================== */
 
+	@Transactional
 	public void markProcessing(String jobId) {
-		updateStatus(jobId, FileGenerationStatus.PROCESSING, null);
+		transitionStatus(jobId, FileGenerationStatus.PROCESSING, null);
 	}
 
+	@Transactional
 	public void markStopped(String jobId) {
-		updateStatus(jobId, FileGenerationStatus.STOPPED, null);
+		transitionStatus(jobId, FileGenerationStatus.STOPPED, null);
 	}
 
+	@Transactional
 	public void markFinalizing(String jobId) {
-		updateStatus(jobId, FileGenerationStatus.FINALIZING, null);
+		transitionStatus(jobId, FileGenerationStatus.FINALIZING, null);
 	}
 
-	/**
-	 * Mark job as completed with a retry policy.
-	 * Retries up to 3 times with a 2-second delay if a transient DB error occurs.
-	 */
 	@Retryable(
 			value = {
 					org.springframework.dao.TransientDataAccessException.class,
@@ -68,59 +65,77 @@ public class FileGenerationService {
 			maxAttempts = 3,
 			backoff = @Backoff(delay = 2000)
 	)
+	@Transactional
 	public void markCompleted(String jobId) {
-		updateStatus(jobId, FileGenerationStatus.COMPLETED, null);
+		transitionStatus(jobId, FileGenerationStatus.COMPLETED, null);
 	}
 
 	@Retryable(
-			value = {org.springframework.dao.TransientDataAccessException.class},
+			value = {
+					org.springframework.dao.TransientDataAccessException.class,
+					org.springframework.orm.ObjectOptimisticLockingFailureException.class
+			},
 			maxAttempts = 3,
 			backoff = @Backoff(delay = 2000)
 	)
+	@Transactional
 	public void markFailed(String jobId, String errorMessage) {
-		updateStatus(jobId, FileGenerationStatus.FAILED, errorMessage);
-		logger.error("File generation failed: jobId={}, error={}", jobId, errorMessage);
+		transitionStatus(jobId, FileGenerationStatus.FAILED, errorMessage);
+		logger.warn("File generation failed: jobId={}, error={}", jobId, errorMessage);
 	}
 
-	/**
-	 * Recover method: This runs if all 3 retry attempts fail.
-	 */
 	@Recover
 	public void recover(Exception e, String jobId) {
-		logger.error("CRITICAL: Final database update failed after retries for JobId: {}. Manual intervention required.", jobId, e);
+		logger.error("CRITICAL: Failed after retries for jobId={}", jobId, e);
 		// Here you could send an alert to an IT support Slack channel or email
 	}
 
-	private void updateStatus(String jobId, FileGenerationStatus status, String errorMessage) {
-		FileGeneration fg = getRequired(jobId);
-		fg.setStatus(status.name());
+	private void transitionStatus(String jobId, FileGenerationStatus nextStatus, String errorMessage) {
+		FileGenerationStatus currentStatus = repository.findStatusByJobId(jobId)
+				.orElseThrow(() -> new IllegalStateException("Job not found: " + jobId));
 
-		if (errorMessage != null) {
-			fg.setErrorMessage(errorMessage);
+		// Prevent updates to terminal jobs
+		if (currentStatus.isTerminal()) {
+			throw new IllegalStateException(
+					"Cannot update terminal job. jobId=" + jobId +
+							", status=" + currentStatus
+			);
 		}
 
-		if (status == FileGenerationStatus.COMPLETED
-				|| status == FileGenerationStatus.FAILED) {
-			fg.setCompletedDate(now());
+		// Enforce lifecycle rules
+		if (!currentStatus.canTransitionTo(nextStatus)) {
+			throw new IllegalStateException(
+					"Invalid status transition: " +
+							currentStatus + " → " + nextStatus +
+							" for jobId=" + jobId
+			);
 		}
 
-		repository.save(fg);
-		logger.info("File generation status updated: jobId={}, status={}", jobId, status);
+		Timestamp completedDate = nextStatus.isTerminal() ? now() : null;
+		int updated = repository.updateStatus(jobId, nextStatus.name(), errorMessage, completedDate);
+
+		if (updated == 0) {
+			throw new IllegalStateException("Job not found: " + jobId);
+		}
+
+		logger.info("File generation status transitioned: jobId={}, {} -> {}", jobId, currentStatus, nextStatus);
 	}
 
-	// ==================== Metrics ====================
+	/* ===================== METRICS ===================== */
 
-	public void updateFileMetrics(
-			String jobId,
-			long processed,
-			long skipped,
-			long invalid) {
+	@Transactional
+	public void updateFileMetrics(String jobId, long processed, long skipped, long invalid) {
 
-		FileGeneration fg = getRequired(jobId);
-		fg.setRecordCount(processed);
-		fg.setSkippedRecordCount(skipped);
-		fg.setInvalidRecordCount(invalid);
-		repository.save(fg);
+		FileGenerationStatus status = repository.findStatusByJobId(jobId)
+				.orElseThrow(() -> new IllegalStateException("Job not found: " + jobId));
+
+		if (status.isTerminal()) {
+			throw new IllegalStateException(
+					"Cannot update metrics for terminal job: " + jobId
+			);
+		}
+
+		repository.updateMetrics(jobId, processed, skipped, invalid);
 
 		logger.info(
 				"Metrics updated: jobId={}, processed={}, skipped={}, invalid={}",
@@ -128,7 +143,7 @@ public class FileGenerationService {
 		);
 	}
 
-	// ==================== Queries ====================
+	/* ===================== Queries ===================== */
 
 	@Transactional(readOnly = true)
 	public Optional<FileGeneration> getFileGeneration(String jobId) {
@@ -148,13 +163,7 @@ public class FileGenerationService {
 		);
 	}
 
-	// ==================== Helpers ====================
-
-	private FileGeneration getRequired(String jobId) {
-		return repository.findByJobId(jobId)
-				.orElseThrow(() ->
-						new IllegalStateException("Job not found: " + jobId));
-	}
+	/* ===================== Helpers ===================== */
 
 	private Timestamp now() {
 		return new Timestamp(System.currentTimeMillis());

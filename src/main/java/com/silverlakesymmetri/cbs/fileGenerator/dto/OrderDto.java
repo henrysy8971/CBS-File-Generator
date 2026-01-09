@@ -6,8 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class OrderDto implements Serializable {
-
-	private String orderId;
+	private Long orderId;
 	private String orderNumber;
 	private BigDecimal orderAmount;
 	private String orderDate;
@@ -23,18 +22,18 @@ public class OrderDto implements Serializable {
 		this.lineItems = new ArrayList<>();
 	}
 
-	public OrderDto(String orderId, String orderNumber) {
+	public OrderDto(Long orderId, String orderNumber) {
 		this();
 		this.orderId = orderId;
 		this.orderNumber = orderNumber;
 	}
 
 	// Getters and Setters
-	public String getOrderId() {
+	public Long getOrderId() {
 		return orderId;
 	}
 
-	public void setOrderId(String orderId) {
+	public void setOrderId(Long orderId) {
 		this.orderId = orderId;
 	}
 

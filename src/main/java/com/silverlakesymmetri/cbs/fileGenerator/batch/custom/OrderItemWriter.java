@@ -2,193 +2,155 @@ package com.silverlakesymmetri.cbs.fileGenerator.batch.custom;
 
 import com.silverlakesymmetri.cbs.fileGenerator.dto.LineItemDto;
 import com.silverlakesymmetri.cbs.fileGenerator.dto.OrderDto;
-import org.beanio.BeanWriter;
-import org.beanio.StreamFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.batch.core.StepExecution;
-import org.springframework.batch.core.annotation.BeforeStep;
 import org.springframework.batch.core.configuration.annotation.StepScope;
-import org.springframework.batch.item.ItemWriter;
-import org.springframework.core.io.ClassPathResource;
+import org.springframework.batch.item.ExecutionContext;
+import org.springframework.batch.item.ItemStreamException;
+import org.springframework.batch.item.ItemStreamWriter;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import javax.xml.stream.XMLOutputFactory;
+import javax.xml.stream.XMLStreamWriter;
 import java.io.File;
-import java.io.FileWriter;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 @Component
 @StepScope
-public class OrderItemWriter implements ItemWriter<OrderDto> {
+public class OrderItemWriter implements ItemStreamWriter<OrderDto> {
 	private static final Logger logger = LoggerFactory.getLogger(OrderItemWriter.class);
+	private static final String RESTART_COUNT_KEY = "order.writer.recordCount";
+	private static final String NS_URI = "http://www.example.com/order";
+	private static final String NS_PREFIX = "tns";
 
-	private BeanWriter writer;
-	private FileWriter fileWriter;
+	private XMLStreamWriter xmlStreamWriter;
+	private boolean stepSuccessful = false;
 	private long recordCount = 0;
 	private String partFilePath;
-	private StepExecution stepExecution;
-	private boolean stepSuccessful = false;
 
-	/**
-	 * Called before step execution to get job parameters
-	 */
-	@BeforeStep
-	public void beforeStep(StepExecution stepExecution) {
-		this.stepExecution = stepExecution;
-		String outputFilePath = stepExecution.getJobParameters().getString("outputFilePath");
-		try {
-			init(outputFilePath);
-		} catch (Exception e) {
-			logger.error("Error initializing OrderItemWriter", e);
-			throw new RuntimeException("Error initializing OrderItemWriter", e);
-		}
+	@Value("#{jobParameters['outputFilePath']}")
+	public void setPartFilePath(String partFilePath) {
+		this.partFilePath = partFilePath;
 	}
 
-	/**
-	 * Initialize writer with output file path
-	 */
-	public void init(String outputFilePath) throws Exception {
-		this.partFilePath = outputFilePath + ".part";
-		File outputFile = new File(partFilePath);
-		outputFile.getParentFile().mkdirs();
-
-		this.fileWriter = new FileWriter(outputFile, false);
-
-		// Initialize BeanIO writer with order mapping
-		try {
-			ClassPathResource resource = new ClassPathResource("beanio/order-mapping.xml");
-			StreamFactory factory = StreamFactory.newInstance();
-			factory.load(resource.getInputStream());
-			this.writer = factory.createWriter("interfaceStream", fileWriter);
-			logger.info("BeanIO writer initialized for orders with mapping: order-mapping.xml");
-		} catch (Exception e) {
-			logger.warn("Failed to load BeanIO mapping file for orders, using fallback XML format", e);
-		}
-
-		logger.info("OrderItemWriter initialized - temp file: {}", partFilePath);
-	}
-
-	/**
-	 * Write chunk of orders to file
-	 */
 	@Override
-	public void write(List<? extends OrderDto> items) throws Exception {
-		if (items == null || items.isEmpty()) {
-			return;
-		}
-
-		for (OrderDto orderDto : items) {
-			try {
-				if (writer != null) {
-					writer.write(orderDto);
-				} else {
-					writeSimpleXml(orderDto);
-				}
-				recordCount++;
-			} catch (Exception e) {
-				logger.error("Error writing order: orderId={}", orderDto.getOrderId(), e);
-				throw e;
-			}
-		}
-
-		logger.debug("Wrote {} orders to file", items.size());
-	}
-
-	/**
-	 * Fallback XML writer (without BeanIO)
-	 */
-	private void writeSimpleXml(OrderDto orderDto) throws Exception {
-		if (recordCount == 0) {
-			fileWriter.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
-			fileWriter.write("<orderInterface xmlns=\"http://www.example.com/order\">\n");
-			fileWriter.write("  <orders>\n");
-		}
-
-		fileWriter.write("    <order>\n");
-		fileWriter.write(String.format("      <orderId>%s</orderId>\n",
-				escapeXml(orderDto.getOrderId())));
-		fileWriter.write(String.format("      <orderNumber>%s</orderNumber>\n",
-				escapeXml(orderDto.getOrderNumber())));
-
-		if (orderDto.getOrderAmount() != null) {
-			fileWriter.write(String.format("      <orderAmount>%s</orderAmount>\n",
-					orderDto.getOrderAmount()));
-		}
-
-		if (orderDto.getOrderDate() != null) {
-			fileWriter.write(String.format("      <orderDate>%s</orderDate>\n",
-					orderDto.getOrderDate()));
-		}
-
-		if (orderDto.getCustomerName() != null) {
-			fileWriter.write(String.format("      <customerName>%s</customerName>\n",
-					escapeXml(orderDto.getCustomerName())));
-		}
-
-		// Write line items
-		if (!orderDto.getLineItems().isEmpty()) {
-			fileWriter.write("      <lineItems>\n");
-			for (int i = 0; i < orderDto.getLineItems().size(); i++) {
-				LineItemDto lineItem = orderDto.getLineItems().get(i);
-				fileWriter.write("        <lineItem>\n");
-				fileWriter.write(String.format("          <lineItemId>%s</lineItemId>\n",
-						escapeXml(lineItem.getLineItemId())));
-				fileWriter.write(String.format("          <productId>%s</productId>\n",
-						escapeXml(lineItem.getProductId())));
-				if (lineItem.getProductName() != null) {
-					fileWriter.write(String.format("          <productName>%s</productName>\n",
-							escapeXml(lineItem.getProductName())));
-				}
-				if (lineItem.getQuantity() != null) {
-					fileWriter.write(String.format("          <quantity>%d</quantity>\n",
-							lineItem.getQuantity()));
-				}
-				if (lineItem.getUnitPrice() != null) {
-					fileWriter.write(String.format("          <unitPrice>%s</unitPrice>\n",
-							lineItem.getUnitPrice()));
-				}
-				if (lineItem.getLineAmount() != null) {
-					fileWriter.write(String.format("          <lineAmount>%s</lineAmount>\n",
-							lineItem.getLineAmount()));
-				}
-				fileWriter.write("        </lineItem>\n");
-			}
-			fileWriter.write("      </lineItems>\n");
-		}
-
-		fileWriter.write("    </order>\n");
-	}
-
-	/**
-	 * Close writer and finalize file
-	 */
-	public void close() throws Exception {
+	public void open(ExecutionContext executionContext) throws ItemStreamException {
+		OutputStreamWriter writer = null;
 		try {
-			if (recordCount > 0 && writer == null) {
-				fileWriter.write("  </orders>\n");
-				fileWriter.write(String.format("  <totalRecords>%d</totalRecords>\n", recordCount));
-				fileWriter.write("</orderInterface>\n");
+			File file = new File(partFilePath);
+			boolean append = executionContext.containsKey(RESTART_COUNT_KEY);
+			recordCount = append ? executionContext.getLong(RESTART_COUNT_KEY) : 0;
+
+			writer = new OutputStreamWriter(new FileOutputStream(file, append), StandardCharsets.UTF_8);
+			xmlStreamWriter = XMLOutputFactory.newInstance().createXMLStreamWriter(writer);
+
+			if (!append) {
+				xmlStreamWriter.writeStartDocument("UTF-8", "1.0");
+				xmlStreamWriter.writeStartElement(NS_PREFIX, "orderInterface", NS_URI);
+				xmlStreamWriter.writeNamespace(NS_PREFIX, NS_URI);
+				xmlStreamWriter.writeStartElement(NS_PREFIX, "orders", NS_URI);
 			}
 
-			if (writer != null) {
-				writer.close();
-			}
-
-			if (fileWriter != null) {
-				fileWriter.close();
-			}
-
-			// Store part file path and record count in execution context for job listener
-			if (stepExecution != null) {
-				stepExecution.getJobExecution().getExecutionContext().put("partFilePath", partFilePath);
-				stepExecution.getJobExecution().getExecutionContext().put("recordCount", recordCount);
-			}
-
-			logger.info("OrderItemWriter closed. Total records written: {}", recordCount);
+			logger.info("XML writer initialized for file {}. Restart: {}", partFilePath, append);
 		} catch (Exception e) {
-			logger.error("Error closing OrderItemWriter", e);
-			throw e;
+			// Close writer if initialization failed
+			if (writer != null) {
+				try {
+					writer.close();
+				} catch (IOException ioEx) { /* ignore */ }
+			}
+			throw new ItemStreamException("Failed to initialize XML writer", e);
 		}
+	}
+
+	@Override
+	public void write(List<? extends OrderDto> items) throws ItemStreamException {
+		if (xmlStreamWriter == null) {
+			throw new ItemStreamException("XML writer is not initialized");
+		}
+
+		try {
+			for (OrderDto order : items) {
+				xmlStreamWriter.writeStartElement(NS_PREFIX, "order", NS_URI);
+
+				writeSimpleElement("orderId", order.getOrderId());
+				writeSimpleElement("orderNumber", order.getOrderNumber());
+				writeSimpleElement("orderAmount", order.getOrderAmount());
+				writeSimpleElement("orderDate", order.getOrderDate());
+				writeSimpleElement("customerId", order.getCustomerId());
+				writeSimpleElement("customerName", order.getCustomerName());
+				writeSimpleElement("status", order.getStatus());
+
+				if (order.getLineItems() != null && !order.getLineItems().isEmpty()) {
+					xmlStreamWriter.writeStartElement(NS_PREFIX, "lineItems", NS_URI);
+					for (LineItemDto item : order.getLineItems()) {
+						xmlStreamWriter.writeStartElement(NS_PREFIX, "lineItem", NS_URI);
+						writeSimpleElement("lineItemId", item.getLineItemId());
+						writeSimpleElement("productId", item.getProductId());
+						writeSimpleElement("productName", item.getProductName());
+						writeSimpleElement("quantity", item.getQuantity());
+						writeSimpleElement("unitPrice", item.getUnitPrice());
+						writeSimpleElement("lineAmount", item.getLineAmount());
+						writeSimpleElement("status", item.getStatus());
+						xmlStreamWriter.writeEndElement(); // lineItem
+					}
+					xmlStreamWriter.writeEndElement(); // lineItems
+				}
+
+				xmlStreamWriter.writeEndElement(); // order
+				recordCount++;
+			}
+			xmlStreamWriter.flush(); // flush per chunk
+		} catch (Exception e) {
+			throw new ItemStreamException("Failed to write XML records", e);
+		}
+	}
+
+	// Helper to write an element safely
+	private void writeSimpleElement(String name, Object value) throws Exception {
+		xmlStreamWriter.writeStartElement(NS_PREFIX, name, NS_URI);
+		xmlStreamWriter.writeCharacters(value != null ? value.toString() : "");
+		xmlStreamWriter.writeEndElement();
+	}
+
+	@Override
+	public void update(ExecutionContext executionContext) throws ItemStreamException {
+		executionContext.putLong(RESTART_COUNT_KEY, recordCount);
+	}
+
+	@Override
+	public void close() throws ItemStreamException {
+		if (xmlStreamWriter != null) {
+			try {
+				if (stepSuccessful) {
+					// Close XML properly only if step finished successfully
+					xmlStreamWriter.writeEndElement(); // orders
+					writeSimpleElement("totalRecords", recordCount);
+					xmlStreamWriter.writeEndElement(); // orderInterface
+					xmlStreamWriter.writeEndDocument();
+					xmlStreamWriter.flush();
+				}
+			} catch (Exception e) {
+				throw new ItemStreamException("Failed to close XML writer properly", e);
+			} finally {
+				try {
+					xmlStreamWriter.close();
+				} catch (Exception e) {
+					logger.warn("Failed to close XMLStreamWriter", e);
+				}
+				xmlStreamWriter = null;
+			}
+		}
+	}
+
+	// Setter used by the Listener to mark step success
+	public void setStepSuccessful(boolean stepSuccessful) {
+		this.stepSuccessful = stepSuccessful;
 	}
 
 	public long getRecordCount() {
@@ -197,20 +159,5 @@ public class OrderItemWriter implements ItemWriter<OrderDto> {
 
 	public String getPartFilePath() {
 		return partFilePath;
-	}
-
-	private String escapeXml(String text) {
-		if (text == null) {
-			return "";
-		}
-		return text.replace("&", "&amp;")
-				.replace("<", "&lt;")
-				.replace(">", "&gt;")
-				.replace("\"", "&quot;")
-				.replace("'", "&apos;");
-	}
-
-	public void setStepSuccessful(boolean success) {
-		this.stepSuccessful = success;
 	}
 }

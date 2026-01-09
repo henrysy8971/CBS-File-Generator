@@ -185,6 +185,8 @@ For interface types requiring entity relationships and complex logic:
     "ORDER_INTERFACE": {
       "name": "ORDER_INTERFACE",
       "dataSourceQuery": "SELECT o FROM Order o LEFT JOIN FETCH o.lineItems WHERE o.status = 'ACTIVE'",
+      "beanioMappingFile": "customer-mapping.xml",
+      "xsdSchemaFile": "order_schema.xsd",
       "chunkSize": 1000,
       "outputFormat": "XML",
       "outputFileExtension": "xml",
@@ -214,6 +216,8 @@ For interface types requiring entity relationships and complex logic:
 - `outputFileExtension`: File extension
 
 **Optional Fields**:
+- `beanioMappingFile`: BeanIO mapping file for output format (If `beanioMappingFile` is NOT specified in interface-config.json, output defaults to XML regardless of `outputFormat` value.)
+- `xsdSchemaFile`: XSD Validation file used to validate xml output
 - `description`: Human-readable description
 - `enabled`: Enable/disable interface (default true)
 
@@ -585,5 +589,4 @@ grep "DynamicItemReader\|DynamicItemWriter" logs/cbs-file-generator.log
 - **Change Data Capture**: Incremental file generation
 - **Format Support**: Add CSV, JSON output generators
 - **Streaming XML**: Reduce memory footprint for huge datasets
-- **Scheduling**: Integrate Quartz for periodic generation
 - **REST Hooks**: Webhook notifications on completion

@@ -12,36 +12,25 @@ import java.util.Optional;
 
 @Repository
 public interface OrderRepository extends JpaRepository<Order, String> {
-
 	/**
-	 * Find all active orders with eagerly loaded line items
-	 * Uses JOIN FETCH to avoid N+1 query problem
+	 * First page of ACTIVE orders (no fetch join, paging-safe)
 	 */
-	@Query("SELECT DISTINCT o FROM Order o " +
-			"LEFT JOIN FETCH o.lineItems li " +
+	@Query("SELECT o FROM Order o " +
 			"WHERE o.status = 'ACTIVE' " +
-			"ORDER BY o.orderId")
-	Page<Order> findAllActiveWithLineItems(Pageable pageable);
+			"ORDER BY o.orderId ASC")
+	Page<Order> findFirstActive(Pageable pageable);
 
 	/**
-	 * Find orders by status with line items
+	 * Restart-safe keyset pagination
 	 */
+	@Query("SELECT o FROM Order o " +
+			"WHERE o.status = 'ACTIVE' " +
+			"AND o.orderId > :lastId " +
+			"ORDER BY o.orderId ASC")
+	Page<Order> findActiveAfterId(long lastId, Pageable pageable);
+
 	@Query("SELECT DISTINCT o FROM Order o " +
-			"LEFT JOIN FETCH o.lineItems li " +
-			"WHERE o.status = :status " +
-			"ORDER BY o.orderId")
-	List<Order> findByStatusWithLineItems(String status);
-
-	/**
-	 * Find order by ID with line items
-	 */
-	@Query("SELECT DISTINCT o FROM Order o " +
-			"LEFT JOIN FETCH o.lineItems li " +
-			"WHERE o.orderId = :orderId")
-	Optional<Order> findByIdWithLineItems(String orderId);
-
-	/**
-	 * Count active orders
-	 */
-	long countByStatus(String status);
+			"LEFT JOIN FETCH o.lineItems " +
+			"WHERE o.orderId IN :orderIds")
+	List<Order> findWithLineItemsByOrderIdIn(List<Long> orderIds);
 }
