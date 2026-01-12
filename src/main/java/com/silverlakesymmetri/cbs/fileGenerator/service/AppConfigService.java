@@ -21,18 +21,18 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 public class AppConfigService {
 	private static final Logger logger = LoggerFactory.getLogger(AppConfigService.class);
-	private final AppConfigRepository repository;
 	private final Map<String, String> cache = new ConcurrentHashMap<>();
+	private final AppConfigRepository appConfigRepository;
 	private LocalDateTime lastRefresh = LocalDateTime.MIN;
 
 	@Autowired
-	public AppConfigService(AppConfigRepository repository) {
-		this.repository = repository;
+	public AppConfigService(AppConfigRepository appConfigRepository) {
+		this.appConfigRepository = appConfigRepository;
 	}
 
 	@PostConstruct
 	public void initCache() {
-		List<AppConfig> configs = repository.findByActiveTrue();
+		List<AppConfig> configs = appConfigRepository.findByActiveTrue();
 		configs.forEach(cfg -> cache.put(cfg.getConfigKey(), cfg.getConfigValue()));
 		lastRefresh = LocalDateTime.now();
 		logger.info("AppConfig cache initialized with {} entries", cache.size());
@@ -48,7 +48,7 @@ public class AppConfigService {
 		}
 
 		// fallback to DB
-		Optional<AppConfig> dbValue = repository.findByConfigKey(key)
+		Optional<AppConfig> dbValue = appConfigRepository.findByConfigKey(key)
 				.filter(AppConfig::isActive);
 		dbValue.ifPresent(cfg -> cache.put(cfg.getConfigKey(), cfg.getConfigValue()));
 		return dbValue.map(AppConfig::getConfigValue);
@@ -59,7 +59,7 @@ public class AppConfigService {
 	 */
 	@Transactional
 	public AppConfig saveConfig(String key, String value, String type, String description) {
-		AppConfig config = repository.findByConfigKey(key).orElse(new AppConfig(key, value));
+		AppConfig config = appConfigRepository.findByConfigKey(key).orElse(new AppConfig(key, value));
 		config.setConfigValue(value);
 		config.setConfigType(type);
 		config.setDescription(description);
@@ -69,7 +69,7 @@ public class AppConfigService {
 			config.setCreatedDate(Timestamp.valueOf(LocalDateTime.now()));
 		}
 
-		AppConfig saved = repository.save(config);
+		AppConfig saved = appConfigRepository.save(config);
 		cache.put(saved.getConfigKey(), saved.getConfigValue());
 		logger.info("Configuration saved: key={}, value={}", saved.getConfigKey(), saved.getConfigValue());
 		return saved;
@@ -80,10 +80,10 @@ public class AppConfigService {
 	 */
 	@Transactional
 	public void disableConfig(String key) {
-		repository.findByConfigKey(key).ifPresent(cfg -> {
+		appConfigRepository.findByConfigKey(key).ifPresent(cfg -> {
 			cfg.setActive(false);
 			cfg.setUpdatedDate(Timestamp.valueOf(LocalDateTime.now()));
-			repository.save(cfg);
+			appConfigRepository.save(cfg);
 			cache.remove(key);
 			logger.info("Configuration disabled: key={}", key);
 		});
@@ -98,7 +98,7 @@ public class AppConfigService {
 		LocalDateTime startTime = LocalDateTime.now(); // Capture start time
 
 		// Get all changes (both newly active and newly inactive)
-		List<AppConfig> changes = repository.findByActiveTrueAndUpdatedDateAfter(lastRefresh);
+		List<AppConfig> changes = appConfigRepository.findByActiveTrueAndUpdatedDateAfter(lastRefresh);
 
 		for (AppConfig cfg : changes) {
 			if (cfg.isActive()) {

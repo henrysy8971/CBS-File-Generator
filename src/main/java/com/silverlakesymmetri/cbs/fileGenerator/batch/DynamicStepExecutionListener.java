@@ -47,7 +47,7 @@ public class DynamicStepExecutionListener extends StepExecutionListenerSupport {
 			if (dynamicItemWriter != null) {
 				dynamicItemWriter.setStepSuccessful(isSuccess);
 
-				// Hand off the .part file path to the Job Execution Contex
+				// Hand off the .part file path to the Job Execution Context
 				// for SHA-256 calculation
 				// This is critical for DynamicJobExecutionListener to find the file
 				String partPath = dynamicItemWriter.getPartFilePath();

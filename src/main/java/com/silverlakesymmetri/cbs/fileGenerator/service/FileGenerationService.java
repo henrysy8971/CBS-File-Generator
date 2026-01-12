@@ -175,6 +175,26 @@ public class FileGenerationService {
 	}
 
 	@Transactional(readOnly = true)
+	public List<FileGeneration> getProcessingFileGenerations() {
+		return fileGenerationRepository.findByStatus(FileGenerationStatus.PROCESSING);
+	}
+
+	@Transactional(readOnly = true)
+	public List<FileGeneration> getStoppedFileGenerations() {
+		return fileGenerationRepository.findByStatus(FileGenerationStatus.STOPPED);
+	}
+
+	@Transactional(readOnly = true)
+	public List<FileGeneration> getFailedFileGenerations() {
+		return fileGenerationRepository.findByStatus(FileGenerationStatus.FAILED);
+	}
+
+	@Transactional(readOnly = true)
+	public List<FileGeneration> getCompletedFileGenerations() {
+		return fileGenerationRepository.findByStatus(FileGenerationStatus.COMPLETED);
+	}
+
+	@Transactional(readOnly = true)
 	public boolean hasRunningJob(String interfaceType) {
 		return fileGenerationRepository.existsByInterfaceTypeAndStatus(
 				interfaceType,

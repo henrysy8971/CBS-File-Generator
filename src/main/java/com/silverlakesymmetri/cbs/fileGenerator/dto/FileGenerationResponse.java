@@ -4,10 +4,16 @@ public class FileGenerationResponse {
 	private String jobId;
 	private String status;
 	private String interfaceType;
+
+	public Long getSkippedRecordCount() {
+		return skippedRecordCount;
+	}
+
 	private String fileName;
 	private Long recordCount;
 	private Long skippedRecordCount;
 	private Long invalidRecordCount;
+
 	private String message;
 
 	public FileGenerationResponse() {
@@ -60,6 +66,10 @@ public class FileGenerationResponse {
 
 	public void setSkippedRecordCount(Long skippedRecordCount) {
 		this.skippedRecordCount = skippedRecordCount;
+	}
+
+	public Long getInvalidRecordCount() {
+		return invalidRecordCount;
 	}
 
 	public void setInvalidRecordCount(Long invalidRecordCount) {

@@ -148,6 +148,62 @@ public class FileGenerationController {
 		return ResponseEntity.ok(responseList);
 	}
 
+	// ==================== Processing Jobs ====================
+
+	@GetMapping("/processing")
+	public ResponseEntity<List<FileGenerationResponse>> getProcessingFileGenerations() {
+		List<FileGeneration> pendingFiles = fileGenerationService.getProcessingFileGenerations();
+
+		List<FileGenerationResponse> responseList = pendingFiles.stream()
+				.map(fileGen -> buildFileGenerationResponse(fileGen, fileGen.getFileName(),
+						fileGen.getInterfaceType(), fileGen.getErrorMessage()))
+				.collect(Collectors.toList());
+
+		return ResponseEntity.ok(responseList);
+	}
+
+	// ==================== Stopped Jobs ====================
+
+	@GetMapping("/stopped")
+	public ResponseEntity<List<FileGenerationResponse>> getStoppedFileGenerations() {
+		List<FileGeneration> pendingFiles = fileGenerationService.getStoppedFileGenerations();
+
+		List<FileGenerationResponse> responseList = pendingFiles.stream()
+				.map(fileGen -> buildFileGenerationResponse(fileGen, fileGen.getFileName(),
+						fileGen.getInterfaceType(), fileGen.getErrorMessage()))
+				.collect(Collectors.toList());
+
+		return ResponseEntity.ok(responseList);
+	}
+
+	// ==================== Completed Jobs ====================
+
+	@GetMapping("/completed")
+	public ResponseEntity<List<FileGenerationResponse>> getCompletedFileGenerations() {
+		List<FileGeneration> pendingFiles = fileGenerationService.getCompletedFileGenerations();
+
+		List<FileGenerationResponse> responseList = pendingFiles.stream()
+				.map(fileGen -> buildFileGenerationResponse(fileGen, fileGen.getFileName(),
+						fileGen.getInterfaceType(), fileGen.getErrorMessage()))
+				.collect(Collectors.toList());
+
+		return ResponseEntity.ok(responseList);
+	}
+
+	// ==================== Failed Jobs ====================
+
+	@GetMapping("/failed")
+	public ResponseEntity<List<FileGenerationResponse>> getFailedFileGenerations() {
+		List<FileGeneration> pendingFiles = fileGenerationService.getFailedFileGenerations();
+
+		List<FileGenerationResponse> responseList = pendingFiles.stream()
+				.map(fileGen -> buildFileGenerationResponse(fileGen, fileGen.getFileName(),
+						fileGen.getInterfaceType(), fileGen.getErrorMessage()))
+				.collect(Collectors.toList());
+
+		return ResponseEntity.ok(responseList);
+	}
+
 	// ==================== Available Interfaces ====================
 
 	@GetMapping("/interfaces")
@@ -166,9 +222,9 @@ public class FileGenerationController {
 	@GetMapping("/interfaces/{interfaceType}")
 	public ResponseEntity<?> getInterfaceConfiguration(@PathVariable String interfaceType) {
 		try {
-			InterfaceConfig config = interfaceConfigLoader.getConfig(interfaceType);
-			config.setDataSourceQuery(null);
-			return ResponseEntity.ok(config);
+			InterfaceConfig interfaceConfig = interfaceConfigLoader.getConfig(interfaceType);
+			interfaceConfig.setDataSourceQuery(null);
+			return ResponseEntity.ok(interfaceConfig);
 		} catch (IllegalArgumentException ex) {
 			return ResponseEntity.status(HttpStatus.NOT_FOUND)
 					.body(new FileGenerationResponse("NOT_FOUND",

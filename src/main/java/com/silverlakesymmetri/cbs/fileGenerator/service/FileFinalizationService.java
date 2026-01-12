@@ -2,8 +2,6 @@ package com.silverlakesymmetri.cbs.fileGenerator.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
 import java.io.BufferedWriter;
@@ -24,12 +22,6 @@ public class FileFinalizationService {
 	private static final Logger logger = LoggerFactory.getLogger(FileFinalizationService.class);
 	private static final String SHA256_ALGORITHM = "SHA-256";
 	private static final int BUFFER_SIZE = 8192;
-	private final FileGenerationService fileGenerationService;
-
-	@Autowired
-	public FileFinalizationService(FileGenerationService fileGenerationService) {
-		this.fileGenerationService = fileGenerationService;
-	}
 
 	/**
 	 * Finalize a .part file safely:

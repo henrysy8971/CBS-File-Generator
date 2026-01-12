@@ -33,7 +33,7 @@ public class Order implements Serializable {
 
 	// Child relationship - eagerly loaded
 	@OneToMany(mappedBy = "order", fetch = FetchType.EAGER, cascade = CascadeType.ALL, orphanRemoval = true)
-	private List<LineItem> lineItems = new ArrayList<>();
+	private List<LineItem> lineItems;
 
 	// Constructors
 	public Order() {

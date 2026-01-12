@@ -8,9 +8,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import java.text.SimpleDateFormat;
-import java.util.Date;
-
 @Component
 public class OrderRowMapper {
 	private static final Logger logger = LoggerFactory.getLogger(OrderRowMapper.class);
