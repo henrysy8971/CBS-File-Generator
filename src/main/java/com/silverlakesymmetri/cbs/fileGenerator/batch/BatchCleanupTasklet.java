@@ -68,7 +68,6 @@ public class BatchCleanupTasklet implements Tasklet {
 
 		try (Stream<Path> paths = Files.walk(rootPath, 5)) {
 			paths.filter(Files::isRegularFile)
-					.filter(path -> path.toString().endsWith(".part"))
 					.forEach(path -> {
 						try {
 							// Fetch attributes to get the last modified time
@@ -77,8 +76,7 @@ public class BatchCleanupTasklet implements Tasklet {
 
 							if (fileLastModified.isBefore(cutoffInstant)) {
 								Files.delete(path);
-								logger.info("Deleted stale part file: {} (Modified: {})",
-										path, fileLastModified);
+								logger.info("Deleted stale file: {} (Modified: {})", path.getFileName(), fileLastModified);
 							}
 						} catch (IOException e) {
 							logger.error("Failed to process file for cleanup: {}", path, e);
@@ -114,6 +112,20 @@ public class BatchCleanupTasklet implements Tasklet {
 			// 5. Delete Job Executions
 			int rows5 = jdbcTemplate.update(
 					"DELETE FROM BATCH_JOB_EXECUTION WHERE START_TIME < ? AND STATUS NOT IN ('STARTED', 'STARTING', 'STOPPING')", cutoffTimestamp);
+
+			// 6. Delete Job Instances (The parent of Executions)
+			// Only delete instances that no longer have any executions
+			jdbcTemplate.update(
+					"DELETE FROM BATCH_JOB_INSTANCE WHERE JOB_INSTANCE_ID NOT IN " +
+							"(SELECT JOB_INSTANCE_ID FROM BATCH_JOB_EXECUTION)"
+			);
+
+			// 7. Application-specific FileGeneration table cleanup
+			// Optional: Keep this if you want to purge history as well
+			int appRows = jdbcTemplate.update(
+					"DELETE FROM FILE_GENERATION WHERE CREATED_DATE < ? AND STATUS IN ('COMPLETED', 'FAILED')",
+					cutoffTimestamp
+			);
 
 			logger.info("DB Cleanup complete. Summary: {} StepContexts, {} Steps, {} JobContexts, {} Params, {} JobExecs deleted.",
 					rows1, rows2, rows3, rows4, rows5);

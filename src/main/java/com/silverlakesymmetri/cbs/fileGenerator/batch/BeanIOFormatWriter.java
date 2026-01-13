@@ -103,7 +103,7 @@ public class BeanIOFormatWriter implements OutputFormatWriter {
 		if (beanIOWriter == null) throw new IllegalStateException("Writer not initialized");
 
 		for (DynamicRecord record : items) {
-			beanIOWriter.write(record.asValueMap());
+			beanIOWriter.write(record.asMap());
 		}
 
 		recordCount.addAndGet(items.size());

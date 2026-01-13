@@ -18,7 +18,7 @@ public enum FileGenerationStatus {
 
 	static {
 		TRANSITIONS.put(PENDING,
-				EnumSet.of(PROCESSING, STOPPED));
+				EnumSet.of(PROCESSING, STOPPED, FAILED));
 
 		TRANSITIONS.put(PROCESSING,
 				EnumSet.of(FINALIZING, STOPPED, FAILED));
@@ -27,7 +27,7 @@ public enum FileGenerationStatus {
 				EnumSet.of(COMPLETED, FAILED));
 
 		TRANSITIONS.put(STOPPED,
-				EnumSet.of(PROCESSING, FAILED));
+				EnumSet.of(PROCESSING, FAILED, PENDING));
 
 		TRANSITIONS.put(COMPLETED,
 				EnumSet.noneOf(FileGenerationStatus.class));

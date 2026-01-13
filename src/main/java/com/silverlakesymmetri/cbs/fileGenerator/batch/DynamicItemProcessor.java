@@ -31,17 +31,16 @@ public class DynamicItemProcessor implements ItemProcessor<DynamicRecord, Dynami
 	@Override
 	public DynamicRecord process(DynamicRecord record) {
 		try {
-			if (record == null || record.size() == 0) {
+			if (record == null || record.isEmpty()) {
 				incrementMetric(BatchMetricsConstants.KEY_SKIPPED);
 				logger.debug("Skipping empty record");
 				return null;
 			}
 
-			Set<String> columns = record.getColumnNames();
+			Set<String> columns = record.keySet();
 			applyTransformations(record, columns);
 
 			incrementMetric(BatchMetricsConstants.KEY_PROCESSED);
-			logger.debug("Record processed successfully: {} columns", record.size());
 			return record;
 
 		} catch (Exception e) {
@@ -54,9 +53,9 @@ public class DynamicItemProcessor implements ItemProcessor<DynamicRecord, Dynami
 	// ---------------- Helpers ----------------
 	private void applyTransformations(DynamicRecord record, Set<String> columns) {
 		for (String columnName : columns) {
-			Object value = record.getValue(columnName);
+			Object value = record.get(columnName);
 			if (value instanceof String) {
-				record.updateValue(columnName, ((String) value).trim());
+				record.setValue(columnName, ((String) value).trim());
 			}
 		}
 	}

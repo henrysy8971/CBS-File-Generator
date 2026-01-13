@@ -1,53 +1,103 @@
 package com.silverlakesymmetri.cbs.fileGenerator.dto;
 
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
-public class DynamicRecord {
-	private final LinkedHashMap<String, DynamicColumn> columns = new LinkedHashMap<>();
+public class DynamicRecord extends AbstractMap<String, Object> {
+	private final RecordSchema schema;
+	private final Object[] values;
 
-	public void addColumn(String name, Object value, ColumnType type) {
-		if (columns.containsKey(name)) {
-			throw new IllegalArgumentException("Duplicate column: " + name);
-		}
-		columns.put(name, new DynamicColumn(name, value, type));
+	public DynamicRecord(RecordSchema schema) {
+		this.schema = schema;
+		this.values = new Object[schema.size()];
 	}
 
-	public Object getValue(String name) {
-		DynamicColumn col = columns.get(name);
-		return col != null ? col.getValue() : null;
+	public void setValue(String name, Object value) {
+		int idx = schema.getIndex(name);
+		if (idx != -1) {
+			values[idx] = value;
+		}
+	}
+
+	public void setValue(int index, Object value) {
+		if (index >= 0 && index < values.length) {
+			values[index] = value;
+		}
+	}
+
+	@Override
+	public Object put(String key, Object value) {
+		int idx = schema.getIndex(key);
+		if (idx != -1) {
+			Object old = values[idx];
+			values[idx] = value;
+			return old;
+		}
+		return null;
+	}
+
+	@Override
+	public Object get(Object key) {
+		if (!(key instanceof String)) return null;
+		int idx = schema.getIndex((String) key);
+		return (idx != -1) ? values[idx] : null;
+	}
+
+	@Override
+	public int size() {
+		return schema.size();
+	}
+
+	@Override
+	public boolean containsKey(Object key) {
+		if (!(key instanceof String)) return false;
+		return schema.getIndex((String) key) != -1;
+	}
+
+	@Override
+	public Set<String> keySet() {
+		// Return a fixed view of the names to prevent unnecessary object creation
+		return new LinkedHashSet<>(Arrays.asList(schema.getNames()));
 	}
 
 	public ColumnType getType(String name) {
-		DynamicColumn col = columns.get(name);
-		return col != null ? col.getType() : ColumnType.STRING;
+		int idx = schema.getIndex(name);
+		return (idx != -1) ? schema.getType(idx) : ColumnType.STRING;
 	}
 
-	public Map<String, Object> asValueMap() {
-		LinkedHashMap<String, Object> map = new LinkedHashMap<>();
-		columns.values().forEach(c -> map.put(c.getName(), c.getValue()));
-		return map;
+	/**
+	 * Implementing AbstractMap requires implementing entrySet.
+	 * BeanIO and Writers use this to iterate.
+	 */
+	@Override
+	public Set<Entry<String, Object>> entrySet() {
+		return new AbstractSet<Entry<String, Object>>() {
+			@Override
+			public Iterator<Entry<String, Object>> iterator() {
+				return new Iterator<Entry<String, Object>>() {
+					private int index = 0;
+
+					@Override
+					public boolean hasNext() {
+						return index < schema.size();
+					}
+
+					@Override
+					public Entry<String, Object> next() {
+						if (!hasNext()) throw new NoSuchElementException();
+						int i = index++;
+						return new SimpleImmutableEntry<>(schema.getName(i), values[i]);
+					}
+				};
+			}
+
+			@Override
+			public int size() {
+				return schema.size();
+			}
+		};
 	}
 
-	public Set<String> getColumnNames() {
-		return Collections.unmodifiableSet(columns.keySet());
-	}
-
-	public int size() {
-		return columns.size();
-	}
-
-	public void updateValue(String name, Object newValue) {
-		DynamicColumn existing = columns.get(name);
-		if (existing == null) {
-			throw new IllegalArgumentException("Column does not exist: " + name);
-		}
-
-		columns.put(
-				name,
-				new DynamicColumn(name, newValue, existing.getType())
-		);
+	public Map<String, Object> asMap() {
+		return this;
 	}
 }

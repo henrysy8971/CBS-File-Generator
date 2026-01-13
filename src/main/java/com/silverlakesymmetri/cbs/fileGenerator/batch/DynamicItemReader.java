@@ -3,6 +3,7 @@ package com.silverlakesymmetri.cbs.fileGenerator.batch;
 import com.silverlakesymmetri.cbs.fileGenerator.config.model.InterfaceConfig;
 import com.silverlakesymmetri.cbs.fileGenerator.dto.ColumnType;
 import com.silverlakesymmetri.cbs.fileGenerator.dto.DynamicRecord;
+import com.silverlakesymmetri.cbs.fileGenerator.dto.RecordSchema;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.batch.core.configuration.annotation.StepScope;
@@ -13,11 +14,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.persistence.EntityManager;
-import javax.persistence.Tuple;
-import javax.persistence.TupleElement;
-import javax.persistence.TypedQuery;
+import javax.persistence.Query;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 @Component
 @StepScope
@@ -27,17 +28,15 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 	private static final String CONTEXT_KEY_LAST_ID = "dynamic.reader.lastProcessedId";
 
 	private final int pageSize;
-
-	private final InterfaceConfig interfaceConfig;
 	private final String interfaceType;
 	private final String queryString;
 	private final EntityManager entityManager;
-	private String[] columnNames;
-	private ColumnType[] columnTypes;
-
-	private Iterator<Tuple> resultIterator;
+	private RecordSchema sharedSchema;
+	private Iterator<Map<String, Object>> resultIterator;
 	private Long lastProcessedId = null;
 	private long totalProcessed = 0;
+	private String keySetColumnName = null;
+	private String actualKeySetColumnName = null;
 
 	@Autowired
 	public DynamicItemReader(
@@ -45,7 +44,6 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 			EntityManager entityManager,
 			@Value("${file.generation.chunk-size:1000}") int pageSize
 	) {
-		this.interfaceConfig = interfaceConfig;
 		this.entityManager = entityManager;
 		this.pageSize = pageSize;
 
@@ -63,6 +61,10 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 
 		this.interfaceType = interfaceConfig.getName();
 		this.queryString = interfaceConfig.getDataSourceQuery();
+
+		if (interfaceConfig.getKeysetColumn() != null) {
+			this.keySetColumnName = interfaceConfig.getKeysetColumn();
+		}
 	}
 
 	@Override
@@ -77,15 +79,20 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 				return null;
 			}
 
-			Tuple tuple = resultIterator.next();
-			DynamicRecord record = convertRowToRecord(tuple);
+			Map<String, Object> rowMap = resultIterator.next();
+			DynamicRecord record = convertRowToRecord(rowMap);
 
-			if (interfaceConfig.getKeysetColumn() != null) {
-				Object idValue = tuple.get(interfaceConfig.getKeysetColumn());
-				if (!(idValue instanceof Number)) {
-					throw new IllegalStateException("Keyset column must be numeric");
+			if (actualKeySetColumnName != null) {
+				Object idValue = rowMap.get(actualKeySetColumnName);
+				if (idValue instanceof Number) {
+					lastProcessedId = ((Number) idValue).longValue();
+				} else if (idValue instanceof String) {
+					try {
+						lastProcessedId = Long.parseLong((String) idValue);
+					} catch (NumberFormatException e) {
+						logger.warn("Key set column is not a valid number: {}", idValue);
+					}
 				}
-				lastProcessedId = ((Number) idValue).longValue();
 			}
 
 			totalProcessed++;
@@ -105,27 +112,68 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 	 * Fetch the next batch of records from the database using paging.
 	 */
 	private void fetchNextBatch() {
-		TypedQuery<Tuple> query = entityManager.createQuery(queryString, Tuple.class);
+		Query query = entityManager.createNativeQuery(queryString);
+		query.unwrap(org.hibernate.Query.class).setResultTransformer(org.hibernate.transform.AliasToEntityMapResultTransformer.INSTANCE);
+
 		query.setMaxResults(pageSize);
 
 		if (lastProcessedId != null && queryString.contains(":lastId")) {
 			query.setParameter("lastId", lastProcessedId);
 		}
 
-		List<Tuple> results = query.getResultList();
+		@SuppressWarnings("unchecked")
+		List<Map<String, Object>> results = (List<Map<String, Object>>) query.getResultList();
 
-		if (results.isEmpty()) {
+		if (results == null || results.isEmpty()) {
 			resultIterator = null;
 			return;
 		}
 
-		// Extract column metadata only once
-		if (columnNames == null) {
-			extractColumnMetadataFromTuple(results.get(0));
+		// Initialize schema ONLY ONCE upon the first batch
+		if (sharedSchema == null) {
+			initializeSchemaFromMap(results.get(0));
 		}
 
 		logger.debug("Fetched {} records for interface {} after lastProcessedId={}", results.size(), interfaceType, lastProcessedId);
-		resultIterator = results.isEmpty() ? null : results.iterator();
+		resultIterator = results.iterator();
+	}
+
+	private void initializeSchemaFromMap(Map<String, Object> firstRow) {
+		List<String> names = new ArrayList<>(firstRow.keySet());
+		List<ColumnType> types = new ArrayList<>();
+
+		for (String name : names) {
+			types.add(ColumnType.fromJavaValue(firstRow.get(name)));
+		}
+
+		this.sharedSchema = new RecordSchema(names, types);
+
+		if (keySetColumnName != null) {
+			int idx = sharedSchema.getIndex(keySetColumnName);
+
+			if (idx != -1) {
+				// Get the actual case-sensitive name from the schema
+				this.actualKeySetColumnName = sharedSchema.getName(idx);
+				logger.info("Key set column mapped to DB field: {}", actualKeySetColumnName);
+			} else {
+				logger.warn("Key set column [{}] not found in result set!", keySetColumnName);
+			}
+		}
+
+		logger.info("Initialized shared schema for interface {} with {} columns",
+				interfaceType, sharedSchema.size());
+	}
+
+	private DynamicRecord convertRowToRecord(Map<String, Object> rowMap) {
+		DynamicRecord record = new DynamicRecord(sharedSchema);
+		String[] names = sharedSchema.getNames();
+
+		// Set values by index (much faster than string-based map lookup)
+		for (int i = 0; i < sharedSchema.size(); i++) {
+			record.setValue(i, rowMap.get(names[i]));
+		}
+
+		return record;
 	}
 
 	@Override
@@ -154,32 +202,5 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 		// Cleanup resources like the resultIterator or temporary files
 		this.resultIterator = null;
 		logger.info("DynamicItemReader closed. Total records read: {}", totalProcessed);
-	}
-
-	private void extractColumnMetadataFromTuple(Tuple tuple) {
-		List<TupleElement<?>> elements = tuple.getElements();
-		columnNames = new String[elements.size()];
-		columnTypes = new ColumnType[elements.size()];
-
-		for (int i = 0; i < elements.size(); i++) {
-			TupleElement<?> element = elements.get(i);
-			// This captures the "AS alias" from your JPQL
-			columnNames[i] = element.getAlias();
-			columnTypes[i] = ColumnType.fromJavaValue(tuple.get(i));
-		}
-
-		logger.debug("Extracted actual aliases: {} for interface {}",
-				java.util.Arrays.toString(columnNames), interfaceType);
-	}
-
-	/**
-	 * Convert a row to a DynamicRecord.
-	 */
-	private DynamicRecord convertRowToRecord(Tuple tuple) {
-		DynamicRecord record = new DynamicRecord();
-		for (int i = 0; i < columnNames.length; i++) {
-			record.addColumn(columnNames[i], tuple.get(columnNames[i]), columnTypes[i]);
-		}
-		return record;
 	}
 }

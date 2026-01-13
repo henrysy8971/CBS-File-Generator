@@ -45,7 +45,7 @@ public class DynamicJobExecutionListener implements JobExecutionListener {
 
 		// Handle FAILED or STOPPED jobs
 		if (jobExecution.getStatus() != BatchStatus.COMPLETED) {
-			handleJobFailure(jobId, jobExecution, partFilePath);
+			handleJobFailure(jobId, jobExecution);
 			return;
 		}
 
@@ -82,8 +82,11 @@ public class DynamicJobExecutionListener implements JobExecutionListener {
 		}
 	}
 
-	private void handleJobFailure(String jobId, JobExecution jobExecution, String partFilePath) {
-		// Sync DB status with Spring Batch status
-		fileGenerationService.markFailed(jobId, "Batch execution status: " + jobExecution.getStatus());
+	private void handleJobFailure(String jobId, JobExecution jobExecution) {
+		try {
+			fileGenerationService.markFailed(jobId, "Batch execution status: " + jobExecution.getStatus());
+		} catch (IllegalStateException e) {
+			logger.debug("Job {} was already marked as FAILED by a Step or Tasklet.", jobId);
+		}
 	}
 }

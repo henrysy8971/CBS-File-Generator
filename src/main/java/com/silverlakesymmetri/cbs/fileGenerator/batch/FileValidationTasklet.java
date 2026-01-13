@@ -49,19 +49,23 @@ public class FileValidationTasklet implements Tasklet {
 			File file = new File(partFilePath);
 
 			if (!file.exists()) {
-				throw new RuntimeException("File not found for validation: " + partFilePath);
+				throw new RuntimeException("Validation Error: File missing at " + partFilePath);
 			}
 
-			logger.info("Starting XSD validation for: {} using schema: {}",
-					partFilePath, interfaceConfig.getXsdSchemaFile());
+			if (!file.canRead()) {
+				throw new RuntimeException("Validation Error: File is not readable (Permissions?) at " + partFilePath);
+			}
 
-			boolean isValid = xsdValidator.validateFullFile(file, interfaceConfig.getXsdSchemaFile());
+			String xsdSchema = interfaceConfig.getXsdSchemaFile();
+			logger.info("Validating file [{}] against schema [{}]", file.getName(), xsdSchema);
+
+			boolean isValid = xsdValidator.validateFullFile(file, xsdSchema);
 
 			if (!isValid) {
-				throw new RuntimeException("XSD Validation failed for file: " + partFilePath);
+				throw new RuntimeException("XSD Validation failed for file: " + partFilePath + " interface: " + interfaceType);
 			}
 
-			logger.info("XSD Validation successful for: {}", partFilePath);
+			logger.info("XSD Validation successful for file: {}, interface: {}", partFilePath, interfaceType);
 		} else {
 			logger.info("No XSD schema configured for interface {}. Skipping validation.", interfaceType);
 		}

@@ -2,6 +2,7 @@ package com.silverlakesymmetri.cbs.fileGenerator.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.BufferedWriter;
@@ -22,6 +23,8 @@ public class FileFinalizationService {
 	private static final Logger logger = LoggerFactory.getLogger(FileFinalizationService.class);
 	private static final String SHA256_ALGORITHM = "SHA-256";
 	private static final int BUFFER_SIZE = 8192;
+	@Value("${file.generation.permissions:rw-r--r--}")
+	private String filePermissions;
 
 	/**
 	 * Finalize a .part file safely:
@@ -183,9 +186,9 @@ public class FileFinalizationService {
 	private void applyPosixPermissions(Path path) {
 		try {
 			if (path.getFileSystem().supportedFileAttributeViews().contains("posix")) {
-				Set<PosixFilePermission> perms = PosixFilePermissions.fromString("rw-r--r--");
+				Set<PosixFilePermission> perms = PosixFilePermissions.fromString(filePermissions);
 				Files.setPosixFilePermissions(path, perms);
-				logger.debug("Applied POSIX permissions {} to {}", "rw-r--r--", path);
+				logger.debug("Applied POSIX permissions {} to {}", filePermissions, path);
 			}
 		} catch (Exception e) {
 			logger.warn("Failed to set POSIX permissions for {}: {}", path, e.getMessage());

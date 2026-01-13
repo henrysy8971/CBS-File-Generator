@@ -70,9 +70,6 @@ public class DynamicStepExecutionListener extends StepExecutionListenerSupport {
 
 				// Store total record count at job level for logging/summary
 				jobContext.putLong("totalRecordCount", processed);
-
-				logger.info("Order metrics synced: jobId={}, processed={}, skipped={}, invalid={}",
-						jobId, processed, skipped, invalid);
 			}
 
 		} catch (Exception e) {

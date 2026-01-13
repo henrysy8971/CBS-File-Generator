@@ -89,8 +89,8 @@ public class GenericXMLWriter implements OutputFormatWriter {
 		String itemElement = resolveRootElement() + "Item";
 		xmlStreamWriter.writeStartElement(itemElement);
 
-		for (String column : record.getColumnNames()) {
-			Object value = record.getValue(column);
+		for (String column : record.keySet()) {
+			Object value = record.get(column);
 			if (value != null) {
 				String element = sanitizeElementName(column);
 				xmlStreamWriter.writeStartElement(element);
