@@ -6,11 +6,11 @@ import javax.persistence.*;
 import java.sql.Timestamp;
 
 @Entity
-@Table(name = "FILE_GENERATION")
+@Table(name = "IF_FILE_GENERATION")
 public class FileGeneration {
 	@Id
-	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "FILE_GEN_SEQ")
-	@SequenceGenerator(name = "FILE_GEN_SEQ", sequenceName = "FILE_GEN_SEQ", allocationSize = 1)
+	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "IF_FILE_GEN_SEQ")
+	@SequenceGenerator(name = "IF_FILE_GEN_SEQ", sequenceName = "IF_FILE_GEN_SEQ", allocationSize = 1)
 	@Column(name = "FILE_GEN_ID")
 	private Long fileGenId;
 

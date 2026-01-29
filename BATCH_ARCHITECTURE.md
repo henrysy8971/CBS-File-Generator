@@ -47,7 +47,7 @@ Generic data container that holds:
 
 #### DynamicJobExecutionListener
 - Tracks job status transitions (PROCESSING → COMPLETED/FAILED)
-- Updates FILE_GENERATION table with results
+- Updates IF_FILE_GENERATION table with results
 - Finalizes files: renames .part to final name, generates SHA
 - Captures error messages on failure
 
@@ -557,7 +557,7 @@ curl http://localhost:8080/api/v1/file-generation/status/a1b2c3d4-e5f6-7890-abcd
 
 ### Query Execution Error
 - Status = FAILED
-- Error message captured in FILE_GENERATION.ERROR_MESSAGE
+- Error message captured in IF_FILE_GENERATION.ERROR_MESSAGE
 - Check logs for SQL/JPQL syntax errors
 
 ### Record Processing Error
@@ -576,10 +576,10 @@ curl http://localhost:8080/api/v1/file-generation/status/a1b2c3d4-e5f6-7890-abcd
 
 ```sql
 -- Pending jobs
-SELECT * FROM FILE_GENERATION WHERE STATUS = 'PENDING';
+SELECT * FROM IF_FILE_GENERATION WHERE STATUS = 'PENDING';
 
 -- Failed jobs with errors
-SELECT JOB_ID, INTERFACE_TYPE, ERROR_MESSAGE FROM FILE_GENERATION
+SELECT JOB_ID, INTERFACE_TYPE, ERROR_MESSAGE FROM IF_FILE_GENERATION
 WHERE STATUS = 'FAILED'
 ORDER BY CREATED_DATE DESC;
 
@@ -587,7 +587,7 @@ ORDER BY CREATED_DATE DESC;
 SELECT INTERFACE_TYPE, COUNT(*) AS TOTAL,
        SUM(CASE WHEN STATUS = 'COMPLETED' THEN 1 ELSE 0 END) AS COMPLETED,
        SUM(CASE WHEN STATUS = 'FAILED' THEN 1 ELSE 0 END) AS FAILED
-FROM FILE_GENERATION
+FROM IF_FILE_GENERATION
 GROUP BY INTERFACE_TYPE;
 ```
 

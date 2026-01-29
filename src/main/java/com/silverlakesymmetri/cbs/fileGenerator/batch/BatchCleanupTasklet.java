@@ -123,7 +123,7 @@ public class BatchCleanupTasklet implements Tasklet {
 			// 7. Application-specific FileGeneration table cleanup
 			// Optional: Keep this if you want to purge history as well
 			int appRows = jdbcTemplate.update(
-					"DELETE FROM FILE_GENERATION WHERE CREATED_DATE < ? AND STATUS IN ('COMPLETED', 'FAILED')",
+					"DELETE FROM IF_FILE_GENERATION WHERE CREATED_DATE < ? AND STATUS IN ('COMPLETED', 'FAILED')",
 					cutoffTimestamp
 			);
 

@@ -22,7 +22,7 @@
 - **Database**: Oracle with JPA entities (AppConfig, FileGeneration, DbToken)
 - **Configuration**: Centralized in `interface-config.json` (dataSourceQuery, beanioMappingFile, xsdSchemaFile, transformRules, chunkSize)
 - **Scheduling**: Quartz with Autowiring Job Factory & Startup Runner
-- **Authentication**: Token-based via X-DB-Token header, validated against DB_TOKEN table
+- **Authentication**: Token-based via X-DB-Token header, validated against IF_DB_TOKEN table
 
 **Key Classes**: InterfaceConfigLoader, DynamicBatchConfig, DynamicItemReader/Processor/Writer, DynamicJobExecutionListener, BatchJobLauncher, FileGenerationService, AppConfigService
 

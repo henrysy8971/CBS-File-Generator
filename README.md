@@ -9,14 +9,8 @@ A Spring Boot microservice application for generating XML interface files from O
 
 ```
 src/main/java/com/silverlakesymmetri/cbs/fileGenerator/
+├── FileGeneratorApplication.java           ← Main entry point
 ├── batch/
-│   ├── custom/
-│   │   ├── OrderBatchConfig.java           ← Example: specialized batch config
-│   │   ├── OrderItemProcessor.java         ← Example: specialized processor
-│   │   ├── OrderItemReader.java            ← Example: specialized reader
-│   │   ├── OrderItemWriter.java            ← Example: specialized writer
-│   │   ├── OrderRowMapper.java             ← Example: entity→DTO mapper
-│   │   └── OrderStepExecutionListener.java ← Example: specialized step listener
 │   ├── BatchCleanupTasklet.java            ←
 │   ├── BeanIOFormatWriter.java             ← Generic BeanIO writer
 │   ├── DynamicBatchConfig.java             ← Generic batch config
@@ -25,23 +19,33 @@ src/main/java/com/silverlakesymmetri/cbs/fileGenerator/
 │   ├── DynamicItemWriter.java              ← Generic writer
 │   ├── DynamicJobExecutionListener.java    ← Job listener
 │   ├── DynamicStepExecutionListener.java   ← Step listener
-│   ├── MaintenanceBatchConfig.java         ←
+│   ├── FileValidationTasklet.java          ←
 │   ├── GenericXMLWriter.java               ← Generic XML writer
+│   ├── MaintenanceBatchConfig.java         ←
 │   ├── OutputFormatWriter.java             ← Generic output format writer
-│   └── OutputFormatWriterFactory.java      ← Factory for selecting appropriate output format writer
+│   ├── OutputFormatWriterFactory.java      ← Factory for selecting appropriate output format writer
+│   └── custom/
+│       ├── OrderBatchConfig.java           ← Example: specialized batch config
+│       ├── OrderItemProcessor.java         ← Example: specialized processor
+│       ├── OrderItemReader.java            ← Example: specialized reader
+│       ├── OrderItemWriter.java            ← Example: specialized writer
+│       ├── OrderRowMapper.java             ← Example: entity→DTO mapper
+│       └── OrderStepExecutionListener.java ← Example: specialized step listener
 ├── config/
-│   ├── model/
-│   │   ├── InterfaceConfig.java            ← Interface Config model
-│   │   └── InterfaceConfigWrapper.java     ← Wrapper for interface-config.json
 │   ├── AsyncConfig.java                    ←
 │   ├── AutowiringSpringBeanJobFactory.java ←
 │   ├── BatchInfrastructureConfig.java      ←
 │   ├── DatabaseConfig.java                 ← Database configuration
 │   ├── InterfaceConfigLoader.java          ← Interface configuration loader
 │   ├── QuartzConfiguration.java            ← Quartz scheduler configuration
-│   ├── SecurityConfig.java                 ←
+│   ├── SchedulerStartupRunner.jav          ←
 │   ├── SecurityConfig.java                 ← Security configuration
-│   └── TomcatConfig.java                   ← Tomcat configuration
+│   ├── TomcatConfig.java                   ← Tomcat configuration
+│   └── model/
+│       ├── InterfaceConfig.java            ← Interface Config model
+│       └── InterfaceConfigWrapper.java     ← Wrapper for interface-config.json
+├── constants/
+│   └── BatchMetricsConstants.java          ← REST endpoints
 ├── controller/
 │   └── AdminController.java                ← REST endpoints
 │   └── FileGenerationController.java       ← REST endpoints
@@ -52,7 +56,8 @@ src/main/java/com/silverlakesymmetri/cbs/fileGenerator/
 │   ├── FileGenerationRequest.java          ← API request (interfaceType only)
 │   ├── FileGenerationResponse.java         ← API response
 │   ├── LineItemDto.java                    ← Example: nested DTO
-│   └── OrderDto.java                       ← Example: complex DTO
+│   ├── OrderDto.java                       ← Example: complex DTO
+│   └── RecordSchema.java                   ←
 ├── entity/
 │   ├── AppConfig.java                      ← Application config
 │   ├── DbToken.java                        ← Auth tokens
@@ -77,18 +82,16 @@ src/main/java/com/silverlakesymmetri/cbs/fileGenerator/
 ├── security/
 │   ├── TokenAuthenticationFilter.java      ← Token authentication filter
 │   └── TokenValidator.java                 ← Token validator
-├── validation/
-│   └── XsdValidator.java                   ← Optional XSD validation
-└── FileGeneratorApplication.java           ← Main entry point
+└── validation/
+    └── XsdValidator.java                   ← Optional XSD validation
 
 src/main/resources/
 ├── application.properties                  ← App configuration
 ├── interface-config.json                   ← Interface definitions
+├── beanio/
+│   └── (mapping files)
 ├── db/
 │   └── schema.sql                          ← Database schema
-├── beanio/
-│   ├── order-mapping.xml                   ← Example: BeanIO mapping
-│   └── (other format mappings)
 └── xsd/
     ├── order_schema.xsd                    ← Example: XSD schema
     └── (other schemas)
@@ -114,13 +117,13 @@ src/test/java/com/silverlakesymmetri/cbs/fileGenerator/  ← Unit tests
 
 ### 1. Database Token Authentication
 - Custom token-based authentication mechanism
-- Tokens stored in `DB_TOKEN` table
+- Tokens stored in `IF_DB_TOKEN` table
 - Token validation via `TokenValidator` component
 - Automatic token expiry checking
 - Last used date tracking
 
 ### 2. Application Configuration Registry
-- Configuration stored in `APP_CONFIG` table
+- Configuration stored in `IF_APP_CONFIG` table
 - Dynamic configuration loading
 - Support for different configuration types
 - Audit trail with created/updated dates
@@ -173,7 +176,7 @@ All endpoints (except health) require a valid `X-DB-Token` in the header.
 
 ## Database Schema
 
-### APP_CONFIG Table
+### IF_APP_CONFIG Table
 Stores application configuration parameters
 - CONFIG_ID (Primary Key)
 - CONFIG_KEY (Unique)
@@ -184,7 +187,7 @@ Stores application configuration parameters
 - CREATED_DATE
 - UPDATED_DATE
 
-### DB_TOKEN Table
+### IF_DB_TOKEN Table
 Manages authentication tokens
 - TOKEN_ID (Primary Key)
 - TOKEN_VALUE (Unique)
@@ -195,7 +198,7 @@ Manages authentication tokens
 - ACTIVE flag
 - LAST_USED_DATE
 
-### FILE_GENERATION Table
+### IF_FILE_GENERATION Table
 Tracks file generation job execution
 - FILE_GEN_ID (Primary Key)
 - JOB_ID (Unique UUID for tracking.)
@@ -250,7 +253,7 @@ logging.level.com.silverlakesymmetri.cbs.fileGenerator=DEBUG
 ## Security Considerations
 
 1. All API endpoints (except /health, /info) require valid DB token
-2. Tokens are validated against DB_TOKEN table
+2. Tokens are validated against IF_DB_TOKEN table
 3. Token expiry is enforced
 4. CORS is enabled for cross-origin requests
 5. Character encoding filter configured for UTF-8

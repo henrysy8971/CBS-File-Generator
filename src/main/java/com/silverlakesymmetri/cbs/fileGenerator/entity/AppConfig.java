@@ -5,11 +5,11 @@ import java.sql.Timestamp;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "APP_CONFIG")
+@Table(name = "IF_APP_CONFIG")
 public class AppConfig {
 	@Id
-	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "APP_CONFIG_SEQ")
-	@SequenceGenerator(name = "APP_CONFIG_SEQ", sequenceName = "APP_CONFIG_SEQ", allocationSize = 1)
+	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "IF_APP_CONFIG_SEQ")
+	@SequenceGenerator(name = "IF_APP_CONFIG_SEQ", sequenceName = "IF_APP_CONFIG_SEQ", allocationSize = 1)
 	@Column(name = "CONFIG_ID")
 	private Long id;
 
