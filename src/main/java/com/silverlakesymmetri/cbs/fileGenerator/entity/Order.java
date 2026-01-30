@@ -32,7 +32,7 @@ public class Order implements Serializable {
 	private String status;
 
 	// Child relationship - eagerly loaded
-	@OneToMany(mappedBy = "order", fetch = FetchType.EAGER, cascade = CascadeType.ALL, orphanRemoval = true)
+	@OneToMany(mappedBy = "order", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
 	private List<LineItem> lineItems;
 
 	// Constructors

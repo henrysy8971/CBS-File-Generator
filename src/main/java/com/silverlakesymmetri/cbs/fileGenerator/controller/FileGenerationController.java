@@ -11,12 +11,24 @@ import org.quartz.Scheduler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -30,16 +42,20 @@ public class FileGenerationController {
 	private final BatchJobLauncher batchJobLauncher;
 	private final InterfaceConfigLoader interfaceConfigLoader;
 	private final Scheduler scheduler;
+	private final Executor taskExecutor;
 
 	@Value("${file.generation.output-directory}")
 	private String outputDirectory;
 
 	@Autowired
-	public FileGenerationController(FileGenerationService fileGenerationService, BatchJobLauncher batchJobLauncher, InterfaceConfigLoader interfaceConfigLoader, Scheduler scheduler) {
+	public FileGenerationController(FileGenerationService fileGenerationService, BatchJobLauncher batchJobLauncher,
+									InterfaceConfigLoader interfaceConfigLoader, Scheduler scheduler,
+									@Qualifier("taskExecutor") Executor taskExecutor) {
 		this.fileGenerationService = fileGenerationService;
 		this.batchJobLauncher = batchJobLauncher;
 		this.interfaceConfigLoader = interfaceConfigLoader;
 		this.scheduler = scheduler;
+		this.taskExecutor = taskExecutor;
 	}
 
 	// ==================== Generate File ====================
@@ -236,35 +252,97 @@ public class FileGenerationController {
 
 	@GetMapping("/health")
 	public ResponseEntity<Map<String, Object>> health() {
-		Map<String, Object> health = new HashMap<>();
+		CompletableFuture<ResponseEntity<Map<String, Object>>> healthTask = CompletableFuture.supplyAsync(() -> {
+			Map<String, Object> health = new HashMap<>();
+			try {
+				// 1. Basic App Status
+				health.put("status", "UP");
+				health.put("timestamp", new java.util.Date());
+
+				// 2. Quartz Scheduler Status (Critical for automation)
+				Map<String, Object> schedulerDetails = new HashMap<>();
+				schedulerDetails.put("running", scheduler.isStarted());
+				schedulerDetails.put("in_standby", scheduler.isInStandbyMode());
+				schedulerDetails.put("job_name", "fileGenPollJob");
+				health.put("scheduler", schedulerDetails);
+
+				// 3. Batch & Config Status
+				health.put("interfaces_loaded", interfaceConfigLoader.getAllConfigs().size());
+
+				// 4. Queue Depth
+				long pending = fileGenerationService.getPendingCount();
+				health.put("pending_jobs", pending);
+				health.put("system_load", pending > 50 ? "HIGH" : "NORMAL");
+
+				return ResponseEntity.ok(health);
+			} catch (Exception e) {
+				health.put("status", "DOWN");
+				health.put("error", e.getMessage());
+				return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(health);
+			}
+		}, taskExecutor);
+
 		try {
-			// 1. Basic App Status
-			health.put("status", "UP");
-			health.put("timestamp", new java.util.Date());
-
-			// 2. Quartz Scheduler Status (Critical for automation)
-			Map<String, Object> schedulerDetails = new HashMap<>();
-			schedulerDetails.put("running", scheduler.isStarted());
-			schedulerDetails.put("in_standby", scheduler.isInStandbyMode());
-			schedulerDetails.put("job_name", "fileGenPollJob");
-			health.put("scheduler", schedulerDetails);
-
-			// 3. Batch & Config Status
-			health.put("interfaces_loaded", interfaceConfigLoader.getAllConfigs().size());
-
-			// 4. Queue Depth
-			long pending = fileGenerationService.getPendingCount();
-			health.put("pending_jobs", pending);
-			health.put("system_load", pending > 50 ? "HIGH" : "NORMAL");
+			return healthTask.get(5, TimeUnit.SECONDS);
+		} catch (TimeoutException e) {
+			logger.error("Health check timed out after 5 seconds - system likely under heavy load");
+			Map<String, Object> timeoutResponse = new HashMap<>();
+			timeoutResponse.put("status", "DEGRADED");
+			timeoutResponse.put("error", "Health check timeout (DB or Scheduler unresponsive)");
+			return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(timeoutResponse);
 		} catch (Exception e) {
-			health.put("status", "DOWN");
-			health.put("error", e.getMessage());
-			return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(health);
+			logger.error("Health check execution failed", e);
+			return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
 		}
-
-		return ResponseEntity.ok(health);
 	}
 
+	@GetMapping("/download/{jobId}")
+	public ResponseEntity<Resource> downloadFile(@PathVariable String jobId) {
+		// 1. Retrieve metadata from Database
+		Optional<FileGeneration> fileGenOpt = fileGenerationService.getFileGeneration(jobId);
+
+		if (!fileGenOpt.isPresent()) {
+			return ResponseEntity.notFound().build();
+		}
+
+		FileGeneration fileGen = fileGenOpt.get();
+
+		// 2. Security/State Check: Only allow download if the status is COMPLETED
+		if (!"COMPLETED".equals(fileGen.getStatus())) {
+			return ResponseEntity.status(HttpStatus.FORBIDDEN)
+					.header("Reason", "File is not ready or generation failed")
+					.build();
+		}
+
+		try {
+			// 3. Construct file path
+			Path path = Paths.get(fileGen.getFilePath(), fileGen.getFileName());
+
+			if (!Files.exists(path)) {
+				logger.error("Physical file missing at: {}", path.toAbsolutePath());
+				return ResponseEntity.status(HttpStatus.GONE).build();
+			}
+
+			// 4. Detect Content Type (MIME)
+			String contentType = Files.probeContentType(path);
+			if (contentType == null) {
+				contentType = "application/octet-stream";
+			}
+
+			// 5. Prepare streaming resource
+			InputStreamResource resource = new InputStreamResource(Files.newInputStream(path));
+
+			return ResponseEntity.ok()
+					.header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + path.getFileName().toString() + "\"")
+					.contentType(MediaType.parseMediaType(contentType))
+					.contentLength(Files.size(path))
+					.body(resource);
+
+		} catch (Exception e) {
+			logger.error("Error while preparing file download for ID: {}", jobId, e);
+			return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+		}
+	}
 	// ==================== Helper Methods ====================
 
 	private FileGenerationResponse buildFileGenerationResponse(

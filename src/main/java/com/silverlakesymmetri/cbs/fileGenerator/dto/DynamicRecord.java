@@ -55,8 +55,7 @@ public class DynamicRecord extends AbstractMap<String, Object> {
 
 	@Override
 	public Set<String> keySet() {
-		// Return a fixed view of the names to prevent unnecessary object creation
-		return new LinkedHashSet<>(Arrays.asList(schema.getNames()));
+		return schema.getKeySet();
 	}
 
 	public ColumnType getType(String name) {

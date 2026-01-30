@@ -15,6 +15,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import java.io.File;
+import java.io.IOException;
 import java.nio.file.Paths;
 import java.util.Map;
 import java.util.Optional;
@@ -47,6 +49,7 @@ public class BatchJobLauncher {
 	@Async
 	public void launchFileGenerationJob(String jobId, String interfaceType) {
 		try {
+			ensureOutputDirectoryExists();
 			Optional<FileGeneration> currentJob = fileGenerationService.getFileGeneration(jobId);
 
 			if (!currentJob.isPresent()) {
@@ -129,5 +132,19 @@ public class BatchJobLauncher {
 	private String buildOutputFilePath(String jobId, String interfaceType, String extension) {
 		return Paths.get(outputDirectory, interfaceType + "_" + jobId + "." + extension + ".part")
 				.toAbsolutePath().toString();
+	}
+
+	/**
+	 * Helper to ensure the physical directory exists on the disk/NFS.
+	 */
+	private void ensureOutputDirectoryExists() throws IOException {
+		File folder = new File(outputDirectory);
+		if (!folder.exists()) {
+			logger.info("Creating missing output directory: {}", outputDirectory);
+			// mkdirs() creates the entire path including parent folders if they are missing
+			if (!folder.mkdirs()) {
+				throw new IOException("Could not create directory structure for: " + outputDirectory);
+			}
+		}
 	}
 }

@@ -37,8 +37,9 @@ public class SecurityConfig extends WebMvcConfigurerAdapter {
 		registry.addMapping("/api/**")
 				// Change "*" to specific internal domains if possible
 				.allowedOrigins("*")
-				.allowedMethods("GET", "POST")
-				.allowedHeaders(tokenHeaderName, "Content-Type")
+				.allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+				.allowedHeaders("X-DB-Token", "Content-Type", "X-User-Name")
+				.exposedHeaders("Content-Disposition") // Critical for downloads
 				.allowCredentials(false)
 				.maxAge(3600);
 	}

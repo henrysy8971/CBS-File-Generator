@@ -27,7 +27,7 @@ public class InterfaceConfigLoader {
 	/**
 	 * Immutable map of interfaceType -> InterfaceConfig
 	 */
-	private Map<String, InterfaceConfig> configs = Collections.emptyMap();
+	private volatile Map<String, InterfaceConfig> configs = Collections.emptyMap();
 
 	public InterfaceConfigLoader(ObjectMapper objectMapper) {
 		this.objectMapper = objectMapper;

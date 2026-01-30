@@ -13,6 +13,7 @@ import org.springframework.data.domain.*;
 import org.springframework.stereotype.Component;
 
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -102,6 +103,8 @@ public class OrderItemReader implements ItemStreamReader<OrderDto> {
 			List<Order> ordersWithLines = orderIds.isEmpty()
 					? Collections.emptyList()
 					: orderRepository.findWithLineItemsByOrderIdIn(orderIds);
+
+			ordersWithLines.sort(Comparator.comparing(Order::getOrderId));
 
 			logger.debug(
 					"Loaded {} orders with line items after lastProcessedId={}",

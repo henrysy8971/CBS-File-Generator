@@ -1,8 +1,6 @@
 package com.silverlakesymmetri.cbs.fileGenerator.dto;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * Shared metadata for all records in a batch.
@@ -12,6 +10,7 @@ public class RecordSchema {
 	private final String[] names;
 	private final ColumnType[] types;
 	private final Map<String, Integer> nameToIndex;
+	private final Set<String> immutableKeySet; // Add this field
 
 	public RecordSchema(List<String> columnNames, List<ColumnType> columnTypes) {
 		if (columnNames.size() != columnTypes.size()) {
@@ -28,6 +27,7 @@ public class RecordSchema {
 				nameToIndex.put(name.toLowerCase(), i);
 			}
 		}
+		this.immutableKeySet = Collections.unmodifiableSet(new LinkedHashSet<>(columnNames));
 	}
 
 	public int getIndex(String name) {
@@ -50,5 +50,9 @@ public class RecordSchema {
 
 	public String[] getNames() {
 		return names;
+	}
+
+	public Set<String> getKeySet() {
+		return immutableKeySet;
 	}
 }
