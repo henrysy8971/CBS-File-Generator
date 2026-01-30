@@ -9,10 +9,7 @@ import java.io.BufferedWriter;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
+import java.nio.file.*;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
@@ -32,6 +29,13 @@ public class FileFinalizationService {
 	 * 2. Generate SHA256 checksum file (.sha)
 	 */
 	public boolean finalizeFile(String partFilePath) {
+		partFilePath = this.safeTrim(partFilePath);
+
+		if (partFilePath.isEmpty()) {
+			logger.error("Finalization failed: partFilePath is empty");
+			return false;
+		}
+
 		Path partPath = Paths.get(partFilePath);
 		if (!Files.exists(partPath)) {
 			logger.error("Finalization failed: Part file missing at {}", partFilePath);
@@ -44,8 +48,7 @@ public class FileFinalizationService {
 			return false;
 		}
 
-		// Strip .part (5 characters)
-		Path finalPath = Paths.get(partPathStr.replaceAll("\\.part$", ""));
+		Path finalPath = partPath.resolveSibling(partPath.getFileName().toString().replaceFirst("\\.part$", ""));
 
 		try {
 			// Generate SHA while it's still a .part to ensure integrity before rename
@@ -56,8 +59,9 @@ public class FileFinalizationService {
 
 			// Rename the .sha file to match the new final filename
 			Path oldSha = Paths.get(shaPath);
-			Path newSha = Paths.get(finalPath + ".sha");
+			Path newSha = oldSha.resolveSibling(finalPath.getFileName().toString() + ".sha");
 			Files.move(oldSha, newSha, StandardCopyOption.REPLACE_EXISTING);
+			logger.info("SHA file renamed from {} to {}", oldSha, newSha);
 
 			applyPosixPermissions(finalPath);
 			return true;
@@ -71,17 +75,25 @@ public class FileFinalizationService {
 	 * Generate SHA256 checksum file safely (.sha.part -> .sha)
 	 */
 	private String generateShaFile(Path filePath) {
-		Path shaPartPath = Paths.get(filePath.toString() + ".sha.part");
-		Path finalShaPath = Paths.get(filePath + ".sha");
+		if (filePath == null) {
+			logger.error("Cannot generate SHA file: filePath is null");
+			return null;
+		}
+
+		String fileName = filePath.getFileName().toString();
+		Path shaPartPath = filePath.resolveSibling(fileName + ".sha.part");
+		Path finalShaPath = filePath.resolveSibling(fileName + ".sha");
 
 		try {
 			String hash = calculateSha256(filePath);
-			if (hash == null) return null;
+			if (hash == null) {
+				logger.warn("SHA calculation returned null for {}", filePath);
+				return null;
+			}
 
 			// Write SHA to .sha.part using UTF-8
 			try (BufferedWriter writer = Files.newBufferedWriter(shaPartPath, StandardCharsets.UTF_8)) {
 				writer.write(String.format("SHA256(%s)= %s", filePath.getFileName(), hash));
-				writer.flush();
 			}
 
 			moveFileSafely(shaPartPath, finalShaPath);
@@ -97,9 +109,24 @@ public class FileFinalizationService {
 	private void moveFileSafely(Path source, Path target) throws IOException {
 		try {
 			Files.move(source, target, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
-		} catch (Exception e) {
-			logger.warn("Atomic move failed for {}, using REPLACE_EXISTING", source.getFileName());
+			logger.info("Atomically moved file from {} to {}", source, target);
+		} catch (AtomicMoveNotSupportedException e) {
+			logger.warn("Atomic move not supported for {}: {}. Using REPLACE_EXISTING",
+					source.getFileName(), e.getMessage());
 			Files.move(source, target, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+			logger.info("File moved using REPLACE_EXISTING from {} to {}", source, target);
+		} catch (FileAlreadyExistsException e) {
+			logger.error("Target file already exists: {}", target);
+			throw e;
+		} catch (DirectoryNotEmptyException e) {
+			logger.error("Target directory is not empty: {}", target);
+			throw e;
+		} catch (IOException e) {
+			logger.error("I/O error while moving file from {} to {}", source, target, e);
+			throw e;
+		} catch (SecurityException e) {
+			logger.error("Security manager denied move from {} to {}", source, target, e);
+			throw e;
 		}
 	}
 
@@ -122,6 +149,10 @@ public class FileFinalizationService {
 	}
 
 	public String calculateSha256(String filePathStr) {
+		filePathStr = this.safeTrim(filePathStr);
+		if (filePathStr.isEmpty()) {
+			return null;
+		}
 		return calculateSha256(Paths.get(filePathStr));
 	}
 
@@ -139,7 +170,14 @@ public class FileFinalizationService {
 	 * Cleanup .part file safely
 	 */
 	public void cleanupPartFile(String partFilePath) {
+		partFilePath = this.safeTrim(partFilePath);
+
+		if (partFilePath.isEmpty()) {
+			return;
+		}
+
 		Path partPath = Paths.get(partFilePath);
+
 		try {
 			if (Files.exists(partPath)) {
 				Files.delete(partPath);
@@ -154,8 +192,12 @@ public class FileFinalizationService {
 	 * Verify a file against its SHA256 .sha file
 	 */
 	public boolean verifyShaFile(String filePathStr) {
+		filePathStr = this.safeTrim(filePathStr);
+		if (filePathStr.isEmpty()) return false;
+
 		try {
-			Path shaPath = Paths.get(filePathStr + ".sha");
+			Path filePath = Paths.get(filePathStr);
+			Path shaPath = filePath.resolveSibling(filePath.getFileName().toString() + ".sha");
 
 			if (!Files.exists(shaPath)) {
 				logger.warn("SHA file not found: {}", shaPath);
@@ -170,10 +212,27 @@ public class FileFinalizationService {
 				return false;
 			}
 
-			String expectedHash = shaContent.substring(shaContent.indexOf("=") + 1).trim();
-			String actualHash = calculateSha256(filePathStr);
-			return expectedHash.equalsIgnoreCase(actualHash);
+			String[] parts = shaContent.split("=", 2);
 
+			if (parts.length != 2) {
+				logger.warn("Malformed SHA file content: '{}'", shaContent);
+				return false;
+			}
+
+			String expectedHash = parts[1].trim();
+			String actualHash = calculateSha256(filePathStr);
+
+			if (actualHash == null) {
+				logger.warn("Failed to calculate SHA for {}", filePathStr);
+				return false;
+			}
+
+			if (!expectedHash.equalsIgnoreCase(actualHash)) {
+				logger.warn("SHA mismatch for {}: expected {}, actual {}", filePathStr, expectedHash, actualHash);
+				return false;
+			}
+
+			return true;
 		} catch (Exception e) {
 			logger.error("Error verifying SHA file for: {}", filePathStr, e);
 			return false;
@@ -184,14 +243,42 @@ public class FileFinalizationService {
 	 * Helper to apply permissions only if the OS supports them.
 	 */
 	private void applyPosixPermissions(Path path) {
+		if (path == null) {
+			logger.warn("Cannot apply POSIX permissions: path is null");
+			return;
+		}
+
+		String permsStr = this.safeTrim(filePermissions);
+
+		if (permsStr.isEmpty()) {
+			logger.warn("Cannot apply POSIX permissions: filePermissions is null or empty");
+			return;
+		}
+
 		try {
-			if (path.getFileSystem().supportedFileAttributeViews().contains("posix")) {
-				Set<PosixFilePermission> perms = PosixFilePermissions.fromString(filePermissions);
-				Files.setPosixFilePermissions(path, perms);
-				logger.debug("Applied POSIX permissions {} to {}", filePermissions, path);
+			if (!path.getFileSystem().supportedFileAttributeViews().contains("posix")) {
+				logger.debug("POSIX file attributes not supported for path {}", path);
+				return;
 			}
+
+			// Validate permission string format
+			Set<PosixFilePermission> perms;
+			try {
+				perms = PosixFilePermissions.fromString(permsStr);
+			} catch (IllegalArgumentException e) {
+				logger.warn("Invalid POSIX permission string '{}', skipping for {}", permsStr, path);
+				return;
+			}
+
+			// Apply permissions
+			Files.setPosixFilePermissions(path, perms);
+			logger.debug("Applied POSIX permissions {} to {}", permsStr, path);
 		} catch (Exception e) {
 			logger.warn("Failed to set POSIX permissions for {}: {}", path, e.getMessage());
 		}
+	}
+
+	private String safeTrim(String s) {
+		return s == null ? "" : s.trim();
 	}
 }
