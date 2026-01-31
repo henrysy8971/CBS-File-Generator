@@ -39,7 +39,7 @@ public class AsyncConfig {
 		// Critical for Banking: Ensure threads wait for tasks to finish on shutdown
 		executor.setWaitForTasksToCompleteOnShutdown(true);
 		executor.setAwaitTerminationSeconds(60);
-
+		executor.setTaskDecorator(new MdcTaskDecorator()); // The Magic Line
 		executor.initialize();
 		return executor;
 	}

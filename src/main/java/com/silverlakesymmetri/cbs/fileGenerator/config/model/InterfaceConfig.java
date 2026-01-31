@@ -19,7 +19,7 @@ public class InterfaceConfig {
 	private String beanioMappingFile;
 	private String streamName;
 	private String xsdSchemaFile;
-	private int chunkSize = DEFAULT_CHUNK_SIZE;
+	private Integer chunkSize = DEFAULT_CHUNK_SIZE;
 	private OutputFormat outputFormat = DEFAULT_OUTPUT_FORMAT;
 	private String outputFileExtension = DEFAULT_FILE_EXTENSION;
 	private String rootElement;
@@ -54,11 +54,11 @@ public class InterfaceConfig {
 		this.enabled = enabled;
 	}
 
-	public int getChunkSize() {
+	public Integer getChunkSize() {
 		return chunkSize;
 	}
 
-	public void setChunkSize(int chunkSize) {
+	public void setChunkSize(Integer chunkSize) {
 		if (chunkSize <= 0) {
 			throw new IllegalArgumentException("chunkSize must be > 0");
 		}

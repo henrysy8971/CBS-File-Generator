@@ -26,8 +26,9 @@ public class FileGeneration {
 	@Column(name = "FILE_PATH", nullable = false)
 	private String filePath;
 
+	@Enumerated(EnumType.STRING)
 	@Column(name = "STATUS", nullable = false, length = 20)
-	private String status; // PENDING, PROCESSING, STOPPED, FINALIZING, COMPLETED, FAILED
+	private FileGenerationStatus status;
 
 	@Column(name = "RECORD_COUNT")
 	private Long recordCount;
@@ -77,7 +78,7 @@ public class FileGeneration {
 		this.jobId = jobId;
 		this.fileName = fileName;
 		this.filePath = filePath;
-		this.status = FileGenerationStatus.PENDING.name();
+		this.status = FileGenerationStatus.PENDING;
 		this.createdDate = new Timestamp(System.currentTimeMillis());
 	}
 
@@ -122,11 +123,11 @@ public class FileGeneration {
 		this.filePath = filePath;
 	}
 
-	public String getStatus() {
+	public FileGenerationStatus getStatus() {
 		return status;
 	}
 
-	public void setStatus(String status) {
+	public void setStatus(FileGenerationStatus status) {
 		this.status = status;
 	}
 

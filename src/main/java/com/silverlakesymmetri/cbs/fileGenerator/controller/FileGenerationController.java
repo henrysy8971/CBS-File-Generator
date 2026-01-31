@@ -2,47 +2,58 @@ package com.silverlakesymmetri.cbs.fileGenerator.controller;
 
 import com.silverlakesymmetri.cbs.fileGenerator.config.InterfaceConfigLoader;
 import com.silverlakesymmetri.cbs.fileGenerator.config.model.InterfaceConfig;
-import com.silverlakesymmetri.cbs.fileGenerator.dto.FileGenerationRequest;
-import com.silverlakesymmetri.cbs.fileGenerator.dto.FileGenerationResponse;
+import com.silverlakesymmetri.cbs.fileGenerator.dto.*;
 import com.silverlakesymmetri.cbs.fileGenerator.entity.FileGeneration;
+import com.silverlakesymmetri.cbs.fileGenerator.exception.*;
 import com.silverlakesymmetri.cbs.fileGenerator.service.BatchJobLauncher;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
+import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationStatus;
 import org.quartz.Scheduler;
+import org.quartz.SchedulerException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.InputStreamResource;
+import org.springframework.context.event.ContextRefreshedEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.core.io.Resource;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.context.request.async.DeferredResult;
 
+import javax.validation.Valid;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-import java.util.regex.Pattern;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
+
+import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.*;
 
 @RestController
 @RequestMapping("/api/v1/file-generation")
 public class FileGenerationController {
 	private static final Logger logger = LoggerFactory.getLogger(FileGenerationController.class);
-	private static final Pattern INTERFACE_TYPE_PATTERN = Pattern.compile("^[A-Za-z0-9_]+$");
 
 	private final FileGenerationService fileGenerationService;
 	private final BatchJobLauncher batchJobLauncher;
 	private final InterfaceConfigLoader interfaceConfigLoader;
 	private final Scheduler scheduler;
 	private final Executor taskExecutor;
+	private volatile boolean outputDirValid;
+	private volatile Path outputDirPath = null;
+	private final AtomicBoolean initialized = new AtomicBoolean(false);
 
 	@Value("${file.generation.output-directory}")
 	private String outputDirectory;
@@ -58,48 +69,57 @@ public class FileGenerationController {
 		this.taskExecutor = taskExecutor;
 	}
 
-	// ==================== Generate File ====================
+	// ==================== Startup Initialization ====================
+	@EventListener(ContextRefreshedEvent.class)
+	public void init() {
+		if (!initialized.compareAndSet(false, true)) return;
 
+		String dir = outputDirectory == null ? "" : outputDirectory.trim();
+		if (dir.isEmpty()) {
+			logger.error("Output directory not configured");
+			outputDirValid = false;
+		} else {
+			outputDirPath = Paths.get(dir).toAbsolutePath().normalize();
+			try {
+				Files.createDirectories(outputDirPath);
+				outputDirValid = Files.isWritable(outputDirPath);
+			} catch (Exception e) {
+				outputDirValid = false;
+				logger.error("Failed to initialize output directory", e);
+			}
+		}
+	}
+
+	// ==================== Generate File ====================
 	@PostMapping("/generate")
 	public ResponseEntity<FileGenerationResponse> generateFile(
+			@Valid
 			@RequestBody FileGenerationRequest request,
-			@RequestHeader(value = "X-User-Name", required = false) String userName) {
+			@RequestHeader(value = HTTP_HEADER_METADATA_KEY_USER_NAME, required = false) String userName) {
 
-		String interfaceType = request.getInterfaceType();
-		if (interfaceType == null || interfaceType.trim().isEmpty()) {
-			return ResponseEntity.badRequest()
-					.body(new FileGenerationResponse("VALIDATION_ERROR", "interfaceType is required"));
+		if (!outputDirValid) {
+			if (outputDirPath == null) {
+				throw new ConfigurationException("Output directory is not set");
+			} else {
+				throw new ConfigurationException("Output directory is unavailable");
+			}
 		}
 
-		if (!INTERFACE_TYPE_PATTERN.matcher(interfaceType).matches()) {
-			return ResponseEntity.badRequest()
-					.body(new FileGenerationResponse(
-							"VALIDATION_ERROR",
-							"interfaceType must contain only alphanumeric characters or underscores"
-					));
-		}
+		String interfaceType = Optional.ofNullable(request.getInterfaceType()).orElse("").trim();
 
-		InterfaceConfig interfaceConfig;
-		try {
-			interfaceConfig = interfaceConfigLoader.getConfig(interfaceType);
-		} catch (IllegalArgumentException ex) {
-			logger.warn("Interface configuration not found: {}", interfaceType);
-			return ResponseEntity.badRequest()
-					.body(new FileGenerationResponse("VALIDATION_ERROR",
-							"Interface type '" + interfaceType + "' not configured"));
+		// ===== Interface configuration validation =====
+		InterfaceConfig interfaceConfig = interfaceConfigLoader.getConfig(interfaceType);
+		if (interfaceConfig == null) {
+			throw new NotFoundException("Interface type '" + interfaceType + "' not configured");
 		}
 
 		if (!interfaceConfig.isEnabled()) {
-			return ResponseEntity.badRequest()
-					.body(new FileGenerationResponse(
-							"VALIDATION_ERROR",
-							"Interface '" + interfaceType + "' is disabled"
-					));
+			throw new ConfigurationException("Interface '" + interfaceType + "' is disabled");
 		}
 
+		// ===== Check for running job =====
 		if (fileGenerationService.hasRunningJob(interfaceType)) {
-			return ResponseEntity.status(HttpStatus.CONFLICT)
-					.body(new FileGenerationResponse("CONFLICT", "A job for this interface is already running."));
+			throw new ConflictException("A job for this interface is already running.");
 		}
 
 		logger.info("File generation request received - Interface: {}, User: {}", interfaceType, userName);
@@ -114,237 +134,205 @@ public class FileGenerationController {
 		// ===== Create file generation record =====
 		FileGeneration fileGen = fileGenerationService.createFileGeneration(
 				fileName,
-				outputDirectory,
-				userName != null ? userName : "SYSTEM",
+				outputDirPath.toString(),
+				Optional.ofNullable(userName).orElse(HTTP_HEADER_METADATA_USER_NAME_DEFAULT),
 				interfaceType
 		);
+
+		logger.info("File generation job created - JobId: {}, Interface: {}",
+				fileGen.getJobId(), interfaceType);
 
 		// ===== Launch batch job asynchronously =====
 		batchJobLauncher.launchFileGenerationJob(fileGen.getJobId(), interfaceType);
 
-		FileGenerationResponse response = buildFileGenerationResponse(fileGen, fileName, interfaceType,
-				"File generation job queued successfully");
-
 		logger.info("File generation job queued - JobId: {}, Interface: {}",
 				fileGen.getJobId(), interfaceType);
+
+		FileGenerationResponse response = buildFileGenerationResponse(fileGen, fileName, interfaceType,
+				"File generation job queued successfully");
 
 		return ResponseEntity.status(HttpStatus.ACCEPTED).body(response);
 	}
 
 	// ==================== File Status ====================
-
 	@GetMapping("/status/{jobId}")
 	public ResponseEntity<FileGenerationResponse> getFileGenerationStatus(@PathVariable String jobId) {
-		Optional<FileGeneration> fileGenOpt = fileGenerationService.getFileGeneration(jobId);
-
-		if (!fileGenOpt.isPresent()) {
-			return ResponseEntity.status(HttpStatus.NOT_FOUND)
-					.body(new FileGenerationResponse("NOT_FOUND", "Job not found"));
-		}
-
-		FileGeneration fileGen = fileGenOpt.get();
-
-		FileGenerationResponse response = buildFileGenerationResponse(fileGen, fileGen.getFileName(),
-				fileGen.getInterfaceType(), fileGen.getErrorMessage());
-
-		return ResponseEntity.ok(response);
+		FileGeneration fileGen = fileGenerationService.getFileGeneration(jobId)
+				.orElseThrow(() -> new NotFoundException("Job not found"));
+		return ResponseEntity.ok(buildFileGenerationResponse(fileGen, fileGen.getFileName(),
+				fileGen.getInterfaceType(), fileGen.getErrorMessage()));
 	}
 
-	// ==================== Pending Jobs ====================
+	@GetMapping("/status")
+	public ResponseEntity<PagedResponse<FileGenerationResponse>> getFileGenerationsByStatus(
+			@RequestParam("status") String statusParam,
+			@RequestParam(value = "order", defaultValue = "desc") String order,
+			@RequestParam(value = "page", defaultValue = "0") int page,
+			@RequestParam(value = "size", defaultValue = "20") int size) {
 
-	@GetMapping("/pending")
-	public ResponseEntity<List<FileGenerationResponse>> getPendingFileGenerations() {
-		List<FileGeneration> pendingFiles = fileGenerationService.getPendingFileGenerations();
+		// 1. Convert String to Enum
+		FileGenerationStatus status = FileGenerationStatus.fromString(statusParam);
 
-		List<FileGenerationResponse> responseList = pendingFiles.stream()
-				.map(fileGen -> buildFileGenerationResponse(fileGen, fileGen.getFileName(),
-						fileGen.getInterfaceType(), fileGen.getErrorMessage()))
-				.collect(Collectors.toList());
+		// 2. Create PageRequest (Spring Boot 1.5.x syntax)
+		Sort.Direction direction = "desc".equalsIgnoreCase(order) ? Sort.Direction.DESC : Sort.Direction.ASC;
+		PageRequest pageRequest = new PageRequest(page, size, direction, "createdDate");
 
-		return ResponseEntity.ok(responseList);
-	}
+		// 3. Call Service
+		Page<FileGeneration> resultsPage = fileGenerationService.getFilesByStatus(status, pageRequest);
 
-	// ==================== Processing Jobs ====================
-
-	@GetMapping("/processing")
-	public ResponseEntity<List<FileGenerationResponse>> getProcessingFileGenerations() {
-		List<FileGeneration> pendingFiles = fileGenerationService.getProcessingFileGenerations();
-
-		List<FileGenerationResponse> responseList = pendingFiles.stream()
-				.map(fileGen -> buildFileGenerationResponse(fileGen, fileGen.getFileName(),
-						fileGen.getInterfaceType(), fileGen.getErrorMessage()))
-				.collect(Collectors.toList());
-
-		return ResponseEntity.ok(responseList);
-	}
-
-	// ==================== Stopped Jobs ====================
-
-	@GetMapping("/stopped")
-	public ResponseEntity<List<FileGenerationResponse>> getStoppedFileGenerations() {
-		List<FileGeneration> pendingFiles = fileGenerationService.getStoppedFileGenerations();
-
-		List<FileGenerationResponse> responseList = pendingFiles.stream()
-				.map(fileGen -> buildFileGenerationResponse(fileGen, fileGen.getFileName(),
-						fileGen.getInterfaceType(), fileGen.getErrorMessage()))
-				.collect(Collectors.toList());
-
-		return ResponseEntity.ok(responseList);
-	}
-
-	// ==================== Completed Jobs ====================
-
-	@GetMapping("/completed")
-	public ResponseEntity<List<FileGenerationResponse>> getCompletedFileGenerations() {
-		List<FileGeneration> pendingFiles = fileGenerationService.getCompletedFileGenerations();
-
-		List<FileGenerationResponse> responseList = pendingFiles.stream()
-				.map(fileGen -> buildFileGenerationResponse(fileGen, fileGen.getFileName(),
-						fileGen.getInterfaceType(), fileGen.getErrorMessage()))
-				.collect(Collectors.toList());
-
-		return ResponseEntity.ok(responseList);
-	}
-
-	// ==================== Failed Jobs ====================
-
-	@GetMapping("/failed")
-	public ResponseEntity<List<FileGenerationResponse>> getFailedFileGenerations() {
-		List<FileGeneration> pendingFiles = fileGenerationService.getFailedFileGenerations();
-
-		List<FileGenerationResponse> responseList = pendingFiles.stream()
-				.map(fileGen -> buildFileGenerationResponse(fileGen, fileGen.getFileName(),
-						fileGen.getInterfaceType(), fileGen.getErrorMessage()))
-				.collect(Collectors.toList());
-
-		return ResponseEntity.ok(responseList);
+		// 4. Map to the PagedResponse DTO
+		return ResponseEntity.ok(mapToPagedResponse(resultsPage));
 	}
 
 	// ==================== Available Interfaces ====================
-
 	@GetMapping("/interfaces")
 	public ResponseEntity<Map<String, Object>> getAvailableInterfaces() {
-		Map<String, InterfaceConfig> interfaces = interfaceConfigLoader.getEnabledConfigs();
-
+		Map<String, InterfaceConfig> enabledConfigs = interfaceConfigLoader.getEnabledConfigs();
 		Map<String, Object> response = new HashMap<>();
-		response.put("totalInterfaces", interfaces.size());
-		response.put("interfaces", interfaces.keySet());
-
+		response.put("totalInterfaces", enabledConfigs.size());
+		response.put("interfaces", enabledConfigs.keySet());
 		return ResponseEntity.ok(response);
 	}
 
 	// ==================== Interface Configuration ====================
-
 	@GetMapping("/interfaces/{interfaceType}")
 	public ResponseEntity<?> getInterfaceConfiguration(@PathVariable String interfaceType) {
-		try {
-			InterfaceConfig interfaceConfig = interfaceConfigLoader.getConfig(interfaceType);
-			interfaceConfig.setDataSourceQuery(null);
-			return ResponseEntity.ok(interfaceConfig);
-		} catch (IllegalArgumentException ex) {
-			return ResponseEntity.status(HttpStatus.NOT_FOUND)
-					.body(new FileGenerationResponse("NOT_FOUND",
-							"Interface configuration not found: " + interfaceType));
-		}
+		InterfaceConfig interfaceConfig = interfaceConfigLoader.getConfig(interfaceType);
+		if (interfaceConfig == null) throw new NotFoundException("Interface configuration not found: " + interfaceType);
+		InterfaceConfig response = mapToDetailsResponse(interfaceConfig);
+		return ResponseEntity.ok(response);
+	}
+
+	private InterfaceConfig mapToDetailsResponse(InterfaceConfig source) {
+		InterfaceConfig target = new InterfaceConfig();
+		target.setName(source.getName());
+		target.setEnabled(source.isEnabled());
+		target.setChunkSize(source.getChunkSize());
+		target.setOutputFormat(source.getOutputFormat());
+		target.setOutputFileExtension(source.getOutputFileExtension());
+		target.setStreamName(source.getStreamName());
+		target.setXsdSchemaFile(source.getXsdSchemaFile());
+		target.setRootElement(source.getRootElement());
+		target.setNamespace(source.getNamespace());
+		target.setKeysetColumn(source.getKeysetColumn());
+		target.setDescription(source.getDescription());
+		return target;
 	}
 
 	// ==================== Health Endpoint ====================
-
 	@GetMapping("/health")
-	public ResponseEntity<Map<String, Object>> health() {
-		CompletableFuture<ResponseEntity<Map<String, Object>>> healthTask = CompletableFuture.supplyAsync(() -> {
-			Map<String, Object> health = new HashMap<>();
+	public DeferredResult<ResponseEntity<HealthResponse>> health() {
+		// DeferredResult with 5-second timeout
+		DeferredResult<ResponseEntity<HealthResponse>> deferredResult = new DeferredResult<>(5000L);
+
+		// Handle timeout
+		deferredResult.onTimeout(() -> {
+			logger.warn("Health check timed out - system likely under heavy load");
+			HealthResponse timeoutResponse = new HealthResponse();
+			timeoutResponse.setStatus(HealthStatus.DEGRADED);
+			timeoutResponse.setError("Health check timeout (DB or Scheduler unresponsive)");
+			if (!deferredResult.isSetOrExpired()) {
+				deferredResult.setResult(ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(timeoutResponse));
+			}
+		});
+
+		// Run the health check asynchronously
+		CompletableFuture.runAsync(() -> {
+			HealthResponse response = new HealthResponse();
+			response.setStatus(HealthStatus.UP);
+			response.setTimestamp(new Date());
+
+			// 1. Quartz Scheduler Status
+			SchedulerHealth sched = new SchedulerHealth();
+			sched.setJobName(FILE_GEN_POLL_JOB);
+
 			try {
-				// 1. Basic App Status
-				health.put("status", "UP");
-				health.put("timestamp", new java.util.Date());
+				if (scheduler != null) {
+					sched.setRunning(scheduler.isStarted());
+					sched.setInStandby(scheduler.isInStandbyMode());
+				}
+			} catch (SchedulerException e) {
+				logger.warn("Health Check: Scheduler unreachable");
+				sched.setRunning(false);
+				sched.setError(e.getMessage());
+				response.setStatus(HealthStatus.DEGRADED); // Downgrade status
+			}
+			response.setScheduler(sched);
 
-				// 2. Quartz Scheduler Status (Critical for automation)
-				Map<String, Object> schedulerDetails = new HashMap<>();
-				schedulerDetails.put("running", scheduler.isStarted());
-				schedulerDetails.put("in_standby", scheduler.isInStandbyMode());
-				schedulerDetails.put("job_name", "fileGenPollJob");
-				health.put("scheduler", schedulerDetails);
+			// 2. Config Status
+			response.setInterfacesLoaded(interfaceConfigLoader.getAllConfigs().size());
 
-				// 3. Batch & Config Status
-				health.put("interfaces_loaded", interfaceConfigLoader.getAllConfigs().size());
-
-				// 4. Queue Depth
+			// 3. Queue Depth / Database Check
+			try {
 				long pending = fileGenerationService.getPendingCount();
-				health.put("pending_jobs", pending);
-				health.put("system_load", pending > 50 ? "HIGH" : "NORMAL");
-
-				return ResponseEntity.ok(health);
+				response.setPendingJobs(pending);
+				response.setSystemLoad(pending > HIGH_LOAD_THRESHOLD ? SystemLoad.HIGH : SystemLoad.NORMAL);
 			} catch (Exception e) {
-				health.put("status", "DOWN");
-				health.put("error", e.getMessage());
-				return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(health);
+				logger.warn("Health Check: Database unreachable");
+				response.setStatus(HealthStatus.DOWN); // Critical failure
+				response.setError("Database connectivity lost: " + e.getMessage());
+			}
+
+			// 4. Final Result Routing
+			if (!deferredResult.isSetOrExpired()) {
+				HttpStatus status = response.getStatus() == HealthStatus.UP ? HttpStatus.OK : HttpStatus.SERVICE_UNAVAILABLE;
+				deferredResult.setResult(ResponseEntity.status(status).body(response));
 			}
 		}, taskExecutor);
 
-		try {
-			return healthTask.get(5, TimeUnit.SECONDS);
-		} catch (TimeoutException e) {
-			logger.error("Health check timed out after 5 seconds - system likely under heavy load");
-			Map<String, Object> timeoutResponse = new HashMap<>();
-			timeoutResponse.put("status", "DEGRADED");
-			timeoutResponse.put("error", "Health check timeout (DB or Scheduler unresponsive)");
-			return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(timeoutResponse);
-		} catch (Exception e) {
-			logger.error("Health check execution failed", e);
-			return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-		}
+		return deferredResult;
 	}
 
 	@GetMapping("/download/{jobId}")
-	public ResponseEntity<Resource> downloadFile(@PathVariable String jobId) {
-		// 1. Retrieve metadata from Database
-		Optional<FileGeneration> fileGenOpt = fileGenerationService.getFileGeneration(jobId);
-
-		if (!fileGenOpt.isPresent()) {
-			return ResponseEntity.notFound().build();
+	public ResponseEntity<Resource> downloadFile(@PathVariable String jobId) throws IOException {
+		// 1. Directory safety check (Volatile check)
+		if (!outputDirValid || outputDirPath == null) {
+			throw new ConfigurationException("Output storage is unavailable");
 		}
 
-		FileGeneration fileGen = fileGenOpt.get();
+		// 2. DB Metadata check
+		FileGeneration fileGen = fileGenerationService.getFileGeneration(jobId)
+				.orElseThrow(() -> new NotFoundException("Job not found"));
 
-		// 2. Security/State Check: Only allow download if the status is COMPLETED
-		if (!"COMPLETED".equals(fileGen.getStatus())) {
-			return ResponseEntity.status(HttpStatus.FORBIDDEN)
-					.header("Reason", "File is not ready or generation failed")
-					.build();
+		if (!FileGenerationStatus.COMPLETED.equals(fileGen.getStatus())) {
+			throw new ForbiddenException("File is not ready or generation failed");
 		}
 
+		// 3. Security: Path Traversal Protection
+		Path resolvedPath = outputDirPath.resolve(fileGen.getFileName()).normalize();
+		if (!resolvedPath.startsWith(outputDirPath)) {
+			logger.error("Security Alert: Unauthorized path traversal attempt for jobId: {}", jobId);
+			throw new ForbiddenException("Invalid file path");
+		}
+
+		if (!Files.exists(resolvedPath)) {
+			throw new GoneException("File has been archived or deleted from disk");
+		}
+
+		// 4. Resource Preparation
+		Resource resource = new org.springframework.core.io.FileSystemResource(resolvedPath.toFile());
+
+		// 5. MIME Detection
+		String contentType = "application/octet-stream";
 		try {
-			// 3. Construct file path
-			Path path = Paths.get(fileGen.getFilePath(), fileGen.getFileName());
-
-			if (!Files.exists(path)) {
-				logger.error("Physical file missing at: {}", path.toAbsolutePath());
-				return ResponseEntity.status(HttpStatus.GONE).build();
-			}
-
-			// 4. Detect Content Type (MIME)
-			String contentType = Files.probeContentType(path);
-			if (contentType == null) {
-				contentType = "application/octet-stream";
-			}
-
-			// 5. Prepare streaming resource
-			InputStreamResource resource = new InputStreamResource(Files.newInputStream(path));
-
-			return ResponseEntity.ok()
-					.header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + path.getFileName().toString() + "\"")
-					.contentType(MediaType.parseMediaType(contentType))
-					.contentLength(Files.size(path))
-					.body(resource);
-
-		} catch (Exception e) {
-			logger.error("Error while preparing file download for ID: {}", jobId, e);
-			return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+			contentType = Optional.ofNullable(Files.probeContentType(resolvedPath)).orElse(contentType);
+		} catch (IOException e) {
+			logger.warn("MIME detection failed for {}", fileGen.getFileName());
 		}
-	}
-	// ==================== Helper Methods ====================
 
+		// 6. Build Response with Range Support
+		return ResponseEntity.ok()
+				.header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileGen.getFileName() + "\"")
+				// Signal to browsers/download managers that we support Range requests
+				.header(HttpHeaders.ACCEPT_RANGES, "bytes")
+				.contentType(MediaType.parseMediaType(contentType))
+				// Note: We DO NOT set contentLength manually here.
+				// Spring's ResourceHttpMessageConverter calculates it for the specific range requested.
+				.contentLength(Files.size(resolvedPath))
+				.body(resource);
+	}
+
+	// ==================== Helper Methods ====================
 	private FileGenerationResponse buildFileGenerationResponse(
 			FileGeneration fileGen,
 			String fileName,
@@ -353,13 +341,35 @@ public class FileGenerationController {
 	) {
 		FileGenerationResponse response = new FileGenerationResponse();
 		response.setJobId(fileGen.getJobId());
-		response.setStatus(fileGen.getStatus());
+		response.setStatus(fileGen.getStatus().name());
 		response.setFileName(fileName);
 		response.setInterfaceType(interfaceType);
 		response.setRecordCount(fileGen.getRecordCount());
 		response.setSkippedRecordCount(fileGen.getSkippedRecordCount());
 		response.setInvalidRecordCount(fileGen.getInvalidRecordCount());
 		response.setMessage(message);
+		return response;
+	}
+
+	private PagedResponse<FileGenerationResponse> mapToPagedResponse(Page<FileGeneration> page) {
+		// 1. Convert the Entities to DTOs using your existing build method
+		List<FileGenerationResponse> dtoList = page.getContent().stream()
+				.map(fileGen -> buildFileGenerationResponse(
+						fileGen,
+						fileGen.getFileName(),
+						fileGen.getInterfaceType(),
+						fileGen.getErrorMessage()))
+				.collect(Collectors.toList());
+
+		// 2. Wrap it in the PagedResponse object
+		PagedResponse<FileGenerationResponse> response = new PagedResponse<>();
+		response.setContent(dtoList);
+		response.setPage(page.getNumber());
+		response.setSize(page.getSize());
+		response.setTotalElements(page.getTotalElements());
+		response.setTotalPages(page.getTotalPages());
+		response.setLast(page.isLast());
+
 		return response;
 	}
 }

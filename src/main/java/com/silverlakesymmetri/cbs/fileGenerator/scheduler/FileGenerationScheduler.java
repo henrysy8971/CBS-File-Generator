@@ -9,6 +9,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.quartz.QuartzJobBean;
 import org.springframework.stereotype.Component;
 
+import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.*;
+
 @Component
 @DisallowConcurrentExecution
 public class FileGenerationScheduler extends QuartzJobBean {
@@ -53,8 +55,8 @@ public class FileGenerationScheduler extends QuartzJobBean {
 	 * Call this from a Startup Runner or API to initialize the recurring trigger
 	 */
 	public void createRecurringSchedule(String cronExpression) throws SchedulerException {
-		JobKey jobKey = JobKey.jobKey("fileGenPollJob", "file-generation-group");
-		TriggerKey triggerKey = TriggerKey.triggerKey("fileGenPollTrigger", "file-generation-group");
+		JobKey jobKey = JobKey.jobKey(FILE_GEN_POLL_JOB, FILE_GEN_GROUP);
+		TriggerKey triggerKey = TriggerKey.triggerKey(FILE_GEN_TRIGGER_NAME, FILE_GEN_GROUP);
 
 		JobDetail jobDetail = JobBuilder.newJob(FileGenerationScheduler.class)
 				.withIdentity(jobKey)

@@ -2,6 +2,8 @@ package com.silverlakesymmetri.cbs.fileGenerator.repository;
 
 import com.silverlakesymmetri.cbs.fileGenerator.entity.FileGeneration;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -19,6 +21,13 @@ public interface FileGenerationRepository extends JpaRepository<FileGeneration, 
 
 	// Updated to use Enum for type safety
 	List<FileGeneration> findByStatus(FileGenerationStatus status);
+
+	/**
+	 * Paginated status lookup.
+	 * Spring Data JPA handles the Pageable argument to generate LIMIT/OFFSET
+	 * and automatically converts the Enum to its String value for the query.
+	 */
+	Page<FileGeneration> findAllByStatus(FileGenerationStatus status, Pageable pageable);
 
 	List<FileGeneration> findByStatusAndCreatedBy(FileGenerationStatus status, String createdBy);
 
@@ -48,7 +57,7 @@ public interface FileGenerationRepository extends JpaRepository<FileGeneration, 
 	)
 	int updateStatus(
 			@Param("jobId") String jobId,
-			@Param("status") String status,
+			@Param("status") FileGenerationStatus status,
 			@Param("errorMessage") String errorMessage,
 			@Param("completedDate") Timestamp completedDate
 	);
@@ -68,8 +77,8 @@ public interface FileGenerationRepository extends JpaRepository<FileGeneration, 
 	)
 	int updateStatusAtomic(
 			@Param("jobId") String jobId,
-			@Param("nextStatus") String nextStatus,
-			@Param("expectedStatus") String expectedStatus,
+			@Param("nextStatus") FileGenerationStatus nextStatus,
+			@Param("expectedStatus") FileGenerationStatus expectedStatus,
 			@Param("errorMessage") String errorMessage,
 			@Param("completedDate") Timestamp completedDate
 	);
@@ -92,5 +101,5 @@ public interface FileGenerationRepository extends JpaRepository<FileGeneration, 
 			@Param("invalid") long invalid
 	);
 
-	long countByStatus(String status);
+	long countByStatus(FileGenerationStatus status);
 }

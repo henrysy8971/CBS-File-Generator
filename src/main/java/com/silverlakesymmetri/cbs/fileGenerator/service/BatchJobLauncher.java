@@ -59,7 +59,7 @@ public class BatchJobLauncher {
 
 			// Only allow PENDING jobs to start.
 			// This prevents double-clicks from triggering multiple Batch runs.
-			if (!FileGenerationStatus.PENDING.name().equals(currentJob.get().getStatus())) {
+			if (!FileGenerationStatus.PENDING.equals(currentJob.get().getStatus())) {
 				logger.warn("Job launch aborted: JobId {} is already in status {}",
 						jobId, currentJob.get().getStatus());
 				return;
@@ -79,11 +79,15 @@ public class BatchJobLauncher {
 			// Build output file path with .part during processing
 			String outputFilePath = buildOutputFilePath(jobId, interfaceType, extension);
 
+			// Get the ID from MDC (put there by the Filter)
+			String requestId = org.slf4j.MDC.get("requestId");
+
 			// Build job parameters
 			JobParameters jobParameters = new JobParametersBuilder()
 					.addString("jobId", jobId)
 					.addString("interfaceType", interfaceType)
 					.addString("outputFilePath", outputFilePath)
+					.addString("requestId", requestId)
 					.addLong("timestamp", System.currentTimeMillis())
 					.toJobParameters();
 

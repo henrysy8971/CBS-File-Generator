@@ -45,4 +45,11 @@ public enum FileGenerationStatus {
 				.getOrDefault(this, EnumSet.noneOf(FileGenerationStatus.class))
 				.contains(nextStatus);
 	}
+
+	public static FileGenerationStatus fromString(String status) {
+		if (status == null || status.trim().isEmpty()) {
+			throw new IllegalArgumentException("Status cannot be null or empty");
+		}
+		return FileGenerationStatus.valueOf(status.trim().toUpperCase());
+	}
 }
