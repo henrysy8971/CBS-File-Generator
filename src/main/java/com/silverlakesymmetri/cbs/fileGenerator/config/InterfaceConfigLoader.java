@@ -37,8 +37,7 @@ public class InterfaceConfigLoader {
 	@PostConstruct
 	public void loadConfigs() {
 		if (!configResource.exists()) {
-			throw new IllegalStateException(
-					"interface-config.json not found on classpath");
+			throw new IllegalStateException("interface-config.json not found on classpath");
 		}
 
 		try (InputStream is = configResource.getInputStream()) {
@@ -53,7 +52,7 @@ public class InterfaceConfigLoader {
 			logSummary(this.configs);
 		} catch (Exception e) {
 			logger.error("Failed to load interface-config.json", e);
-			throw new IllegalStateException("Startup failed: Invalid interface configuration", e);
+			throw new IllegalStateException("Startup failed: Invalid interface configuration");
 		}
 	}
 
@@ -101,6 +100,7 @@ public class InterfaceConfigLoader {
 			if (StringUtils.isBlank(ext)) {
 				throw new IllegalStateException("Config Error [" + key + "]: 'outputFileExtension' is required");
 			}
+
 			if (!ALLOWED_EXTENSIONS.contains(ext.toLowerCase())) {
 				throw new IllegalStateException("Config Error [" + key + "]: Invalid extension '" + ext +
 						"'. Allowed: " + ALLOWED_EXTENSIONS);

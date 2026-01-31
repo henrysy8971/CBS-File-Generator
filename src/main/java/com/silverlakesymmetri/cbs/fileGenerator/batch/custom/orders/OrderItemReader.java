@@ -1,4 +1,4 @@
-package com.silverlakesymmetri.cbs.fileGenerator.batch.custom;
+package com.silverlakesymmetri.cbs.fileGenerator.batch.custom.orders;
 
 import com.silverlakesymmetri.cbs.fileGenerator.dto.OrderDto;
 import com.silverlakesymmetri.cbs.fileGenerator.entity.Order;
