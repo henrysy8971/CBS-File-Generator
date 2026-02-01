@@ -75,11 +75,6 @@ public class FileGenerationService {
 		transitionStatus(jobId, FileGenerationStatus.PROCESSING, null);
 	}
 
-	@Transactional
-	public void markFinalizing(String jobId) {
-		transitionStatus(jobId, FileGenerationStatus.FINALIZING, null);
-	}
-
 	@Retryable(
 			value = {
 					org.springframework.dao.TransientDataAccessException.class,
@@ -209,26 +204,6 @@ public class FileGenerationService {
 	}
 
 	@Transactional(readOnly = true)
-	public List<FileGeneration> getProcessingFileGenerations() {
-		return fileGenerationRepository.findByStatus(FileGenerationStatus.PROCESSING);
-	}
-
-	@Transactional(readOnly = true)
-	public List<FileGeneration> getStoppedFileGenerations() {
-		return fileGenerationRepository.findByStatus(FileGenerationStatus.STOPPED);
-	}
-
-	@Transactional(readOnly = true)
-	public List<FileGeneration> getFailedFileGenerations() {
-		return fileGenerationRepository.findByStatus(FileGenerationStatus.FAILED);
-	}
-
-	@Transactional(readOnly = true)
-	public List<FileGeneration> getCompletedFileGenerations() {
-		return fileGenerationRepository.findByStatus(FileGenerationStatus.COMPLETED);
-	}
-
-	@Transactional(readOnly = true)
 	public boolean hasRunningJob(String interfaceType) {
 		return fileGenerationRepository.existsByInterfaceTypeAndStatus(
 				interfaceType,
@@ -245,30 +220,5 @@ public class FileGenerationService {
 	public long getPendingCount() {
 		// Assuming "PENDING" or "IN_PROGRESS" are your status strings
 		return fileGenerationRepository.countByStatus(FileGenerationStatus.PENDING);
-	}
-
-	@Transactional(readOnly = true)
-	public Page<FileGeneration> getProcessingFileGenerations(Pageable pageable) {
-		return getFilesByStatus(FileGenerationStatus.PROCESSING, pageable);
-	}
-
-	@Transactional(readOnly = true)
-	public Page<FileGeneration> getPendingFileGenerations(Pageable pageable) {
-		return getFilesByStatus(FileGenerationStatus.PENDING, pageable);
-	}
-
-	@Transactional(readOnly = true)
-	public Page<FileGeneration> getCompletedFileGenerations(Pageable pageable) {
-		return getFilesByStatus(FileGenerationStatus.COMPLETED, pageable);
-	}
-
-	@Transactional(readOnly = true)
-	public Page<FileGeneration> getStoppedFileGenerations(Pageable pageable) {
-		return getFilesByStatus(FileGenerationStatus.STOPPED, pageable);
-	}
-
-	@Transactional(readOnly = true)
-	public Page<FileGeneration> getFailedFileGenerations(Pageable pageable) {
-		return getFilesByStatus(FileGenerationStatus.FAILED, pageable);
 	}
 }
