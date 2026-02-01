@@ -26,20 +26,30 @@ public class GenericXMLWriter implements OutputFormatWriter {
 	private BufferedOutputStream outputStream;
 	private String partFilePath;
 	private String interfaceType;
+	private String rootElement;
+	private String itemElement;
 	private long recordCount = 0;
 	private boolean headerWritten = false;
 	private boolean stepSuccessful = false;
+	private final Object lock = new Object(); // Thread-safety for write operations
 
 	public GenericXMLWriter() {
 	}
 
 	@Override
 	public void init(String outputFilePath, String interfaceType) throws IOException {
-		this.interfaceType = interfaceType;
+		if (outputFilePath == null || outputFilePath.trim().isEmpty()) {
+			throw new IllegalArgumentException("outputFilePath must not be null or empty");
+		}
+
+		this.interfaceType = (interfaceType != null && !interfaceType.trim().isEmpty())
+				? interfaceType.trim()
+				: null;
+
 		this.partFilePath = outputFilePath.endsWith(".part") ? outputFilePath : outputFilePath + ".part";
 
 		File outputFile = new File(partFilePath);
-		if (outputFile.getParentFile() != null) outputFile.getParentFile().mkdirs();
+		ensureParentDirectory(outputFile);
 
 		// Check restart condition
 		boolean isRestart = outputFile.exists() && outputFile.length() > 0;
@@ -49,15 +59,45 @@ public class GenericXMLWriter implements OutputFormatWriter {
 			this.xmlStreamWriter = XMLOutputFactory.newInstance()
 					.createXMLStreamWriter(new OutputStreamWriter(outputStream, StandardCharsets.UTF_8));
 
-			if (!isRestart) {
-				writeHeader();
-			} else {
+			// Cache element names
+			this.rootElement = resolveRootElement();
+			this.itemElement = rootElement + "Item";
+
+			if (isRestart) {
 				headerWritten = true;
 				logger.info("Resuming XML .part file: {}", partFilePath);
+			} else {
+				writeHeader();
 			}
 
 		} catch (Exception e) {
+			closeQuietly();
 			throw new IOException("Failed to initialize XMLStreamWriter", e);
+		}
+	}
+
+	private void ensureParentDirectory(File file) throws IOException {
+		File parentDir = file.getParentFile();
+		if (parentDir != null) {
+			if (parentDir.exists()) {
+				if (!parentDir.isDirectory()) {
+					throw new IOException("Parent path exists but is not a directory: " + parentDir.getAbsolutePath());
+				}
+			} else if (!parentDir.mkdirs()) {
+				throw new IOException("Unable to create output directory: " + parentDir.getAbsolutePath());
+			}
+		}
+	}
+
+	private void closeQuietly() {
+		try {
+			if (xmlStreamWriter != null) xmlStreamWriter.close();
+		} catch (Exception ignored) {
+		}
+
+		try {
+			if (outputStream != null) outputStream.close();
+		} catch (Exception ignored) {
 		}
 	}
 
@@ -65,35 +105,34 @@ public class GenericXMLWriter implements OutputFormatWriter {
 	public void write(List<? extends DynamicRecord> items) throws Exception {
 		if (items == null || items.isEmpty()) return;
 
-		for (DynamicRecord record : items) {
-			writeRecordXml(record);
-			recordCount++;
+		synchronized (lock) { // ensure thread-safe writes
+			for (DynamicRecord record : items) {
+				if (record != null) {
+					writeRecordXml(record);
+					recordCount++;
+				}
+			}
+			xmlStreamWriter.flush();
+			outputStream.flush();
 		}
-
-		// Flush once per chunk
-		xmlStreamWriter.flush();
-		outputStream.flush();
 
 		logger.debug("Chunk written: {} records, total so far: {}", items.size(), recordCount);
 	}
 
 	private void writeHeader() throws XMLStreamException {
 		xmlStreamWriter.writeStartDocument("UTF-8", "1.0");
-		String root = resolveRootElement();
-		xmlStreamWriter.writeStartElement(root);
+		xmlStreamWriter.writeStartElement(rootElement);
 		xmlStreamWriter.writeStartElement("records");
 		headerWritten = true;
 	}
 
 	private void writeRecordXml(DynamicRecord record) throws XMLStreamException {
-		String itemElement = resolveRootElement() + "Item";
 		xmlStreamWriter.writeStartElement(itemElement);
 
 		for (String column : record.keySet()) {
 			Object value = record.get(column);
 			if (value != null) {
-				String element = sanitizeElementName(column);
-				xmlStreamWriter.writeStartElement(element);
+				xmlStreamWriter.writeStartElement(sanitizeElementName(column));
 				xmlStreamWriter.writeCharacters(value.toString());
 				xmlStreamWriter.writeEndElement();
 			}
@@ -113,13 +152,17 @@ public class GenericXMLWriter implements OutputFormatWriter {
 	}
 
 	private String sanitizeElementName(String name) {
+		if (name == null || name.trim().isEmpty()) return "_";
+
 		String sanitized = name.toLowerCase(Locale.ROOT)
 				.replaceAll("[^a-z0-9_]", "_")
-				.replaceAll("_+", "_");
+				.replaceAll("_+", "_")
+				.replaceAll("^_+|_+$", ""); // trim leading/trailing underscores
+
 		if (!sanitized.matches("^[a-z_].*")) {
 			sanitized = "_" + sanitized;
 		}
-		return sanitized;
+		return sanitized.isEmpty() ? "_" : sanitized;
 	}
 
 	private String resolveRootElement() {
@@ -129,20 +172,28 @@ public class GenericXMLWriter implements OutputFormatWriter {
 
 	@Override
 	public void close() throws IOException {
-		try {
-			if (xmlStreamWriter != null) {
-				if (headerWritten && stepSuccessful) {
-					writeFooter();
-				} else {
-					logger.warn("Step not successful or no records written. Skipping XML footer.");
+		synchronized (lock) {
+			try {
+				if (xmlStreamWriter != null) {
+					try {
+						if (headerWritten && stepSuccessful) {
+							writeFooter();
+						} else {
+							logger.warn("Step not successful. Writing footer for well-formed partial XML.");
+							writeFooter(); // ensures XML remains well-formed
+						}
+					} catch (XMLStreamException e) {
+						throw new IOException("Failed writing XML footer", e);
+					}
+					xmlStreamWriter.close();
 				}
-				xmlStreamWriter.close();
-			}
 
-			if (outputStream != null) outputStream.close();
-		} catch (Exception e) {
-			logger.error("Error closing GenericXMLWriter", e);
-			throw new IOException("Failed to close/finalize XML writer", e);
+				if (outputStream != null) outputStream.close();
+
+			} catch (Exception e) {
+				logger.error("Error closing GenericXMLWriter", e);
+				throw new IOException("Failed to close/finalize XML writer", e);
+			}
 		}
 	}
 
