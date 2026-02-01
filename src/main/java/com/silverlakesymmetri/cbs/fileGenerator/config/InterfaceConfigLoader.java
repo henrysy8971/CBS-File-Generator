@@ -3,7 +3,6 @@ package com.silverlakesymmetri.cbs.fileGenerator.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.silverlakesymmetri.cbs.fileGenerator.config.model.InterfaceConfig;
 import com.silverlakesymmetri.cbs.fileGenerator.config.model.InterfaceConfigWrapper;
-import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -12,8 +11,13 @@ import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
 import java.io.InputStream;
-import java.util.*;
+import java.util.Collections;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
+
+import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.*;
 
 @Component
 public class InterfaceConfigLoader {
@@ -28,7 +32,6 @@ public class InterfaceConfigLoader {
 	 * Immutable map of interfaceType -> InterfaceConfig
 	 */
 	private volatile Map<String, InterfaceConfig> configs = Collections.emptyMap();
-	private static final Set<String> ALLOWED_EXTENSIONS = new HashSet<>(Arrays.asList("xml", "csv", "txt", "json", "dat"));
 
 	public InterfaceConfigLoader(ObjectMapper objectMapper) {
 		this.objectMapper = objectMapper;
@@ -36,12 +39,16 @@ public class InterfaceConfigLoader {
 
 	@PostConstruct
 	public void loadConfigs() {
-		if (!configResource.exists()) {
+		if (configResource == null || !configResource.exists()) {
 			throw new IllegalStateException("interface-config.json not found on classpath");
 		}
 
 		try (InputStream is = configResource.getInputStream()) {
 			InterfaceConfigWrapper wrapper = objectMapper.readValue(is, InterfaceConfigWrapper.class);
+			if (wrapper == null || wrapper.getInterfaces() == null || wrapper.getInterfaces().isEmpty()) {
+				throw new IllegalStateException("No interfaces defined in interface-config.json");
+			}
+
 			Map<String, InterfaceConfig> loaded = wrapper.getInterfaces();
 
 			// 1. Perform strict validation
@@ -58,6 +65,9 @@ public class InterfaceConfigLoader {
 
 	/* ================= Public API ================= */
 	public InterfaceConfig getConfig(String interfaceType) {
+		if (interfaceType == null || interfaceType.trim().isEmpty()) {
+			throw new IllegalArgumentException("interfaceType cannot be null or empty");
+		}
 		InterfaceConfig config = configs.get(interfaceType);
 		if (config == null) {
 			throw new IllegalArgumentException("No interface configuration found for: " + interfaceType);
@@ -66,11 +76,11 @@ public class InterfaceConfigLoader {
 	}
 
 	public boolean interfaceExists(String interfaceType) {
-		return configs.containsKey(interfaceType);
+		return interfaceType != null && configs.containsKey(interfaceType);
 	}
 
 	public Map<String, InterfaceConfig> getAllConfigs() {
-		return configs;
+		return Collections.unmodifiableMap(configs);
 	}
 
 	public Map<String, InterfaceConfig> getEnabledConfigs() {
@@ -85,35 +95,40 @@ public class InterfaceConfigLoader {
 
 	/* ================= Validation ================= */
 	private void validateConfigs(Map<String, InterfaceConfig> configs) {
-		if (configs.isEmpty()) {
+		if (configs == null || configs.isEmpty()) {
 			throw new IllegalStateException("No interfaces defined in interface-config.json");
 		}
 
 		configs.forEach((key, cfg) -> {
+			if (cfg == null) {
+				throw new IllegalStateException("Config [" + key + "] is null");
+			}
+
 			// A. Check for Required Fields
-			if (StringUtils.isBlank(cfg.getDataSourceQuery())) {
+			if (cfg.getDataSourceQuery() == null || cfg.getDataSourceQuery().trim().isEmpty()) {
 				throw new IllegalStateException("Config Error [" + key + "]: 'dataSourceQuery' is required");
 			}
 
 			// B. Validate File Extension
 			String ext = cfg.getOutputFileExtension();
-			if (StringUtils.isBlank(ext)) {
+			if (ext == null || ext.trim().isEmpty()) {
 				throw new IllegalStateException("Config Error [" + key + "]: 'outputFileExtension' is required");
 			}
 
-			if (!ALLOWED_EXTENSIONS.contains(ext.toLowerCase())) {
+			if (!ALLOWED_EXTENSIONS.contains(ext.toLowerCase(Locale.ROOT))) {
 				throw new IllegalStateException("Config Error [" + key + "]: Invalid extension '" + ext +
 						"'. Allowed: " + ALLOWED_EXTENSIONS);
 			}
 
 			// C. Validate Chunk Size
-			if (cfg.getChunkSize() == null || cfg.getChunkSize() <= 0 || cfg.getChunkSize() > 10000) {
-				throw new IllegalStateException("Config Error [" + key + "]: 'chunkSize' must be between 1 and 10000");
+			if (cfg.getChunkSize() == null || cfg.getChunkSize() < MIN_CHUNK_SIZE || cfg.getChunkSize() > MAX_CHUNK_SIZE) {
+				throw new IllegalStateException("Config Error [" + key + "]: 'chunkSize' must be between MIN_CHUNK_SIZE and MAX_CHUNK_SIZE");
 			}
 
 			// D. Metadata Consistency
-			if ("XML".equalsIgnoreCase(cfg.getOutputFormat().name()) && StringUtils.isBlank(cfg.getXsdSchemaFile())) {
-				logger.warn("Config Warning [{}]: XML format selected but no XSD schema provided for validation", key);
+			if ("XML".equalsIgnoreCase(Optional.ofNullable(cfg.getOutputFormat()).map(Enum::name).orElse("")) &&
+					(cfg.getXsdSchemaFile() == null || cfg.getXsdSchemaFile().trim().isEmpty())) {
+				logger.warn("Config [{}]: XML format selected but no XSD schema provided for validation", key);
 			}
 		});
 	}

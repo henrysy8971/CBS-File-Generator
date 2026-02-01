@@ -1,5 +1,8 @@
 package com.silverlakesymmetri.cbs.fileGenerator.config.model;
 
+import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.MAX_CHUNK_SIZE;
+import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.MIN_CHUNK_SIZE;
+
 /**
  * Configuration for a data interface used in batch file generation.
  * Designed to be restart-safe and compatible with keyset-pagination readers.
@@ -59,8 +62,11 @@ public class InterfaceConfig {
 	}
 
 	public void setChunkSize(Integer chunkSize) {
-		if (chunkSize <= 0) {
-			throw new IllegalArgumentException("chunkSize must be > 0");
+		if (chunkSize < MIN_CHUNK_SIZE) {
+			throw new IllegalArgumentException("chunkSize must be >= " + MIN_CHUNK_SIZE);
+		}
+		if (chunkSize > MAX_CHUNK_SIZE) {
+			throw new IllegalArgumentException("chunkSize must be <= " + MAX_CHUNK_SIZE);
 		}
 		this.chunkSize = chunkSize;
 	}

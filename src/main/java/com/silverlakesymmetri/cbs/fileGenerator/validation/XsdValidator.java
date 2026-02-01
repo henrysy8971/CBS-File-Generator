@@ -47,19 +47,34 @@ public class XsdValidator {
 	 * Use this in your Tasklet for post-generation validation.
 	 */
 	public boolean validateFullFile(File xmlFile, String schemaFileName) {
+		if (xmlFile == null) {
+			logger.error("Validation failed: XML file is null");
+			return !strictMode;
+		}
+
+		if (!xmlFile.exists() || !xmlFile.isFile()) {
+			String msg = "Validation failed: File does not exist or is not a file: " + xmlFile;
+			logger.error(msg);
+			return !strictMode;
+		}
+
+		if (!xmlFile.canRead()) {
+			String msg = "Validation failed: File not readable (permissions?) " + xmlFile;
+			logger.error(msg);
+			return !strictMode;
+		}
+
 		if (schemaFileName == null || schemaFileName.trim().isEmpty()) {
+			logger.info("No schema specified; skipping validation for file {}", xmlFile.getAbsolutePath());
 			return true;
 		}
 
-		if (!xmlFile.exists()) {
-			logger.error("Validation failed: File not found at {}", xmlFile.getAbsolutePath());
-			return false;
-		}
-
 		try (InputStream is = Files.newInputStream(xmlFile.toPath())) {
-			return executeValidation(new StreamSource(xmlFile), schemaFileName);
+			StreamSource source = new StreamSource(is);
+			source.setSystemId(xmlFile.getAbsolutePath()); // improves error messages
+			return executeValidation(source, schemaFileName.trim());
 		} catch (Exception e) {
-			logger.error("Could not open file for validation: {}", xmlFile.getPath(), e);
+			logger.error("Error opening file {} for validation: {}", xmlFile.getAbsolutePath(), e.getMessage(), e);
 			return !strictMode;
 		}
 	}
@@ -94,10 +109,11 @@ public class XsdValidator {
 	 * Load XSD schema safely from classpath.
 	 */
 	private Optional<Schema> loadSchema(String schemaFileName) {
-		ClassPathResource resource = new ClassPathResource(XSD_LOCATION + schemaFileName);
+		String schemaPath = XSD_LOCATION + schemaFileName;
+		ClassPathResource resource = new ClassPathResource(schemaPath);
 
-		if (!resource.exists()) {
-			logger.warn("XSD schema not found on classpath: {}{}", XSD_LOCATION, schemaFileName);
+		if (!resource.exists() || !resource.isReadable()) {
+			logger.warn("XSD schema not found or unreadable: {}", schemaPath);
 			return Optional.empty();
 		}
 
@@ -126,9 +142,14 @@ public class XsdValidator {
 	 */
 	private void validateXml(StreamSource source, Schema schema) throws Exception {
 		Validator validator = schema.newValidator();
-		validator.setProperty(XMLConstants.ACCESS_EXTERNAL_DTD, "");
-		validator.setProperty(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
 		try {
+			// XXE-safe
+			try {
+				validator.setProperty(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+				validator.setProperty(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
+			} catch (Exception ignore) {
+				// Not all JAXP implementations support these properties
+			}
 			validator.validate(source);
 		} catch (SAXParseException e) {
 			logger.error("XSD Validation Error at Line: {}, Column: {}. Reason: {}",
@@ -136,5 +157,4 @@ public class XsdValidator {
 			throw e; // Re-throw so executeValidation can handle strictMode logic
 		}
 	}
-
 }

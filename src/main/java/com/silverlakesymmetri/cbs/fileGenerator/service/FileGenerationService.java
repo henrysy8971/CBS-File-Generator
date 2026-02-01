@@ -37,6 +37,16 @@ public class FileGenerationService {
 											   String filePath,
 											   String createdBy,
 											   String interfaceType) {
+
+		if (fileName == null || fileName.trim().isEmpty())
+			throw new IllegalArgumentException("fileName cannot be null or empty");
+		if (filePath == null || filePath.trim().isEmpty())
+			throw new IllegalArgumentException("filePath cannot be null or empty");
+		if (createdBy == null || createdBy.trim().isEmpty())
+			throw new IllegalArgumentException("createdBy cannot be null or empty");
+		if (interfaceType == null || interfaceType.trim().isEmpty())
+			throw new IllegalArgumentException("interfaceType cannot be null or empty");
+
 		try {
 			FileGeneration fg = new FileGeneration();
 			fg.setJobId(UUID.randomUUID().toString());
@@ -69,9 +79,9 @@ public class FileGenerationService {
 	}
 
 	/* ===================== STATUS ===================== */
-
 	@Transactional
 	public void markProcessing(String jobId) {
+		validateJobId(jobId);
 		transitionStatus(jobId, FileGenerationStatus.PROCESSING, null);
 	}
 
@@ -85,6 +95,7 @@ public class FileGenerationService {
 	)
 	@Transactional
 	public void markCompleted(String jobId) {
+		validateJobId(jobId);
 		transitionStatus(jobId, FileGenerationStatus.COMPLETED, null);
 	}
 
@@ -98,6 +109,8 @@ public class FileGenerationService {
 	)
 	@Transactional
 	public void markFailed(String jobId, String errorMessage) {
+		validateJobId(jobId);
+		if (errorMessage == null) errorMessage = "UNKNOWN";
 		transitionStatus(jobId, FileGenerationStatus.FAILED, errorMessage);
 		logger.warn("File generation failed: jobId={}, error={}", jobId, errorMessage);
 	}
@@ -109,23 +122,26 @@ public class FileGenerationService {
 
 	@Recover
 	public void recover(Exception e, String jobId) {
-		logger.error("CRITICAL: Failed after retries for jobId={}", jobId, e);
+		logger.error("[RECOVER] Failed after retries for jobId={}", jobId, e);
 		// Here you could send an alert to an IT support Slack channel or email
 	}
 
 	// Recovery for markCompleted
 	@Recover
 	public void recoverCompleted(Exception e, String jobId) {
-		logger.error("CRITICAL: Failed to mark COMPLETED after retries for jobId={}", jobId, e);
+		logger.error("[RECOVER] Failed to mark COMPLETED after retries for jobId={}", jobId, e);
 	}
 
 	// Recovery for markFailed (Matches parameters)
 	@Recover
 	public void recoverFailed(Exception e, String jobId, String errorMessage) {
-		logger.error("CRITICAL: Failed to mark FAILED after retries for jobId={}. Original Error: {}", jobId, errorMessage, e);
+		logger.error("[RECOVER] Failed to mark FAILED for jobId={} with error='{}'. Original exception: {}",
+				jobId, errorMessage, e.getMessage(), e);
 	}
 
 	private void transitionStatus(String jobId, FileGenerationStatus nextStatus, String errorMessage) {
+		validateJobId(jobId);
+
 		// 1. Fetch current status for the log
 		FileGenerationStatus currentStatus = fileGenerationRepository.findStatusByJobId(jobId)
 				.orElseThrow(() -> new LifecycleException("Job not found: " + jobId));
@@ -141,6 +157,7 @@ public class FileGenerationService {
 		}
 
 		Timestamp completedDate = nextStatus.isTerminal() ? now() : null;
+
 		int updated = fileGenerationRepository.updateStatusAtomic(
 				jobId,
 				nextStatus,
@@ -162,7 +179,6 @@ public class FileGenerationService {
 	}
 
 	/* ===================== METRICS ===================== */
-
 	@Retryable(
 			value = {
 					org.springframework.dao.TransientDataAccessException.class,
@@ -173,14 +189,13 @@ public class FileGenerationService {
 	)
 	@Transactional
 	public void updateFileMetrics(String jobId, long processed, long skipped, long invalid) {
+		validateJobId(jobId);
 
 		FileGenerationStatus status = fileGenerationRepository.findStatusByJobId(jobId)
 				.orElseThrow(() -> new LifecycleException("Job not found: " + jobId));
 
 		if (status.isTerminal()) {
-			throw new LifecycleException(
-					"Cannot update metrics for terminal job: " + jobId
-			);
+			throw new LifecycleException("Cannot update metrics for terminal job: " + jobId);
 		}
 
 		fileGenerationRepository.updateMetrics(jobId, processed, skipped, invalid);
@@ -192,9 +207,9 @@ public class FileGenerationService {
 	}
 
 	/* ===================== Queries ===================== */
-
 	@Transactional(readOnly = true)
 	public Optional<FileGeneration> getFileGeneration(String jobId) {
+		validateJobId(jobId);
 		return fileGenerationRepository.findByJobId(jobId);
 	}
 
@@ -212,9 +227,15 @@ public class FileGenerationService {
 	}
 
 	/* ===================== Helpers ===================== */
-
 	private Timestamp now() {
 		return new Timestamp(System.currentTimeMillis());
+	}
+
+	// ==================== Helpers ====================
+	private void validateJobId(String jobId) {
+		if (jobId == null || jobId.trim().isEmpty()) {
+			throw new IllegalArgumentException("jobId cannot be null or empty");
+		}
 	}
 
 	public long getPendingCount() {

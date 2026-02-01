@@ -15,6 +15,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
 
 @Component
 @StepScope
@@ -34,42 +36,80 @@ public class FileValidationTasklet implements Tasklet {
 		ExecutionContext jobContext = chunkContext.getStepContext().getStepExecution()
 				.getJobExecution().getExecutionContext();
 
-		String partFilePath = jobContext.getString("partFilePath");
-		String interfaceType = (String) chunkContext.getStepContext().getJobParameters().get("interfaceType");
+		// 1. Retrieve file path and guard against missing path
+		String partFilePath = jobContext.getString("partFilePath", null);
+		if (partFilePath == null || partFilePath.trim().isEmpty()) {
+			logger.warn("Validation skipped: 'partFilePath' missing or empty in ExecutionContext.");
+			return RepeatStatus.FINISHED;
+		}
+		partFilePath = partFilePath.trim();
 
-		// 1. Guard against missing path
-		if (partFilePath == null) {
-			logger.warn("Validation skipped: 'partFilePath' not found in ExecutionContext for interface {}", interfaceType);
+		// 2. Retrieve interfaceType
+		String interfaceType = String.valueOf(chunkContext.getStepContext()
+				.getJobParameters()
+				.getOrDefault("interfaceType", "UNKNOWN"));
+
+		// 3. Load interface configuration
+		InterfaceConfig interfaceConfig = interfaceConfigLoader.getConfig(interfaceType);
+		if (interfaceConfig == null || interfaceConfig.getXsdSchemaFile() == null) {
+			logger.info("No XSD schema configured for interface {}. Skipping validation.", interfaceType);
 			return RepeatStatus.FINISHED;
 		}
 
-		InterfaceConfig interfaceConfig = interfaceConfigLoader.getConfig(interfaceType);
+		// 4. Validate input file
+		File file = new File(partFilePath);
+		ensureFileReadable(file);
 
-		if (interfaceConfig != null && interfaceConfig.getXsdSchemaFile() != null) {
-			File file = new File(partFilePath);
+		String xsdSchema = interfaceConfig.getXsdSchemaFile();
+		boolean isValid = xsdValidator.validateFullFile(file, xsdSchema);
 
-			if (!file.exists()) {
-				throw new RuntimeException("Validation Error: File missing at " + partFilePath);
-			}
-
-			if (!file.canRead()) {
-				throw new RuntimeException("Validation Error: File is not readable (Permissions?) at " + partFilePath);
-			}
-
-			String xsdSchema = interfaceConfig.getXsdSchemaFile();
-			logger.info("Validating file [{}] against schema [{}]", file.getName(), xsdSchema);
-
-			boolean isValid = xsdValidator.validateFullFile(file, xsdSchema);
-
-			if (!isValid) {
-				throw new RuntimeException("XSD Validation failed for file: " + partFilePath + " interface: " + interfaceType);
-			}
-
-			logger.info("XSD Validation successful for file: {}, interface: {}", partFilePath, interfaceType);
-		} else {
-			logger.info("No XSD schema configured for interface {}. Skipping validation.", interfaceType);
+		if (!isValid) {
+			throw new ValidationException("XSD validation failed for file: " +
+					file.getAbsolutePath() + ", interface: " + interfaceType);
 		}
 
+		logger.info("XSD validation successful for file: {}, interface: {}", file.getAbsolutePath(), interfaceType);
+
 		return RepeatStatus.FINISHED;
+	}
+
+	/**
+	 * Ensures the file exists and is readable.
+	 *
+	 * @param file File to check
+	 * @throws ValidationException if file is missing or unreadable
+	 */
+	private void ensureFileReadable(File file) throws ValidationException {
+		ensureFileReadable(file, "Input file");
+	}
+
+	private void ensureFileReadable(File file, String fileTypeDescription) throws ValidationException {
+		if (!file.exists()) {
+			throw new ValidationException(fileTypeDescription + " missing at path: " + file.getAbsolutePath());
+		}
+
+		if (!file.isFile() || !file.canRead()) {
+			throw new ValidationException(fileTypeDescription + " is not a regular file: " + file.getAbsolutePath());
+		}
+
+		try (FileInputStream fis = new FileInputStream(file)) {
+			// Successfully opened file → readable
+		} catch (IOException e) {
+			throw new ValidationException(fileTypeDescription + " is not readable (permissions?) at path: " +
+					file.getAbsolutePath(), e);
+		}
+	}
+
+	/**
+	 * Exception class for validation errors.
+	 */
+	public static class ValidationException extends RuntimeException {
+		public ValidationException(String message) {
+			super(message);
+		}
+
+		public ValidationException(String message, Throwable cause) {
+			super(message, cause);
+		}
 	}
 }
