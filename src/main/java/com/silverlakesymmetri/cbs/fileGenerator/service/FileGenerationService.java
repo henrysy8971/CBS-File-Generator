@@ -2,6 +2,7 @@ package com.silverlakesymmetri.cbs.fileGenerator.service;
 
 import com.silverlakesymmetri.cbs.fileGenerator.entity.FileGeneration;
 import com.silverlakesymmetri.cbs.fileGenerator.exception.ConflictException;
+import com.silverlakesymmetri.cbs.fileGenerator.exception.LifecycleException;
 import com.silverlakesymmetri.cbs.fileGenerator.repository.FileGenerationRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -132,16 +133,16 @@ public class FileGenerationService {
 	private void transitionStatus(String jobId, FileGenerationStatus nextStatus, String errorMessage) {
 		// 1. Fetch current status for the log
 		FileGenerationStatus currentStatus = fileGenerationRepository.findStatusByJobId(jobId)
-				.orElseThrow(() -> new IllegalStateException("Job not found: " + jobId));
+				.orElseThrow(() -> new LifecycleException("Job not found: " + jobId));
 
 		// Prevent updates to terminal jobs
 		if (currentStatus.isTerminal()) {
-			throw new IllegalStateException("Cannot update terminal job. jobId=" + jobId + ", status=" + currentStatus);
+			throw new LifecycleException("Cannot update terminal job. jobId=" + jobId + ", status=" + currentStatus);
 		}
 
 		// Enforce lifecycle rules
 		if (!currentStatus.canTransitionTo(nextStatus)) {
-			throw new IllegalStateException("Invalid status transition: " + currentStatus + " -> " + nextStatus + " for jobId=" + jobId);
+			throw new LifecycleException("Invalid status transition: " + currentStatus + " -> " + nextStatus + " for jobId=" + jobId);
 		}
 
 		Timestamp completedDate = nextStatus.isTerminal() ? now() : null;
@@ -179,10 +180,10 @@ public class FileGenerationService {
 	public void updateFileMetrics(String jobId, long processed, long skipped, long invalid) {
 
 		FileGenerationStatus status = fileGenerationRepository.findStatusByJobId(jobId)
-				.orElseThrow(() -> new IllegalStateException("Job not found: " + jobId));
+				.orElseThrow(() -> new LifecycleException("Job not found: " + jobId));
 
 		if (status.isTerminal()) {
-			throw new IllegalStateException(
+			throw new LifecycleException(
 					"Cannot update metrics for terminal job: " + jobId
 			);
 		}
