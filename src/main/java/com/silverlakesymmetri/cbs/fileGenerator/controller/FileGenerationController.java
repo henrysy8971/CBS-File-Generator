@@ -2,18 +2,17 @@ package com.silverlakesymmetri.cbs.fileGenerator.controller;
 
 import com.silverlakesymmetri.cbs.fileGenerator.config.InterfaceConfigLoader;
 import com.silverlakesymmetri.cbs.fileGenerator.config.model.InterfaceConfig;
-import com.silverlakesymmetri.cbs.fileGenerator.dto.*;
+import com.silverlakesymmetri.cbs.fileGenerator.dto.FileGenerationRequest;
+import com.silverlakesymmetri.cbs.fileGenerator.dto.FileGenerationResponse;
+import com.silverlakesymmetri.cbs.fileGenerator.dto.PagedResponse;
 import com.silverlakesymmetri.cbs.fileGenerator.entity.FileGeneration;
 import com.silverlakesymmetri.cbs.fileGenerator.exception.*;
 import com.silverlakesymmetri.cbs.fileGenerator.service.BatchJobLauncher;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationStatus;
-import org.quartz.Scheduler;
-import org.quartz.SchedulerException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.event.ContextRefreshedEvent;
 import org.springframework.context.event.EventListener;
@@ -26,7 +25,6 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.context.request.async.DeferredResult;
 
 import javax.validation.Valid;
 import java.io.IOException;
@@ -34,12 +32,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
-import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.*;
+import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.HTTP_HEADER_METADATA_KEY_USER_NAME;
+import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.HTTP_HEADER_METADATA_USER_NAME_DEFAULT;
 
 @RestController
 @RequestMapping("/api/v1/file-generation")
@@ -49,8 +46,6 @@ public class FileGenerationController {
 	private final FileGenerationService fileGenerationService;
 	private final BatchJobLauncher batchJobLauncher;
 	private final InterfaceConfigLoader interfaceConfigLoader;
-	private final Scheduler scheduler;
-	private final Executor taskExecutor;
 	private volatile boolean outputDirValid;
 	private volatile Path outputDirPath = null;
 	private final AtomicBoolean initialized = new AtomicBoolean(false);
@@ -60,13 +55,10 @@ public class FileGenerationController {
 
 	@Autowired
 	public FileGenerationController(FileGenerationService fileGenerationService, BatchJobLauncher batchJobLauncher,
-									InterfaceConfigLoader interfaceConfigLoader, Scheduler scheduler,
-									@Qualifier("taskExecutor") Executor taskExecutor) {
+									InterfaceConfigLoader interfaceConfigLoader) {
 		this.fileGenerationService = fileGenerationService;
 		this.batchJobLauncher = batchJobLauncher;
 		this.interfaceConfigLoader = interfaceConfigLoader;
-		this.scheduler = scheduler;
-		this.taskExecutor = taskExecutor;
 	}
 
 	// ==================== Startup Initialization ====================
@@ -219,70 +211,6 @@ public class FileGenerationController {
 		target.setEnabled(source.isEnabled());
 		target.setDescription(source.getDescription());
 		return target;
-	}
-
-	// ==================== Health Endpoint ====================
-	@GetMapping("/health")
-	public DeferredResult<ResponseEntity<HealthResponse>> health() {
-		// DeferredResult with 5-second timeout
-		DeferredResult<ResponseEntity<HealthResponse>> deferredResult = new DeferredResult<>(5000L);
-
-		// Handle timeout
-		deferredResult.onTimeout(() -> {
-			logger.warn("Health check timed out - system likely under heavy load");
-			HealthResponse timeoutResponse = new HealthResponse();
-			timeoutResponse.setStatus(HealthStatus.DEGRADED);
-			timeoutResponse.setError("Health check timeout (DB or Scheduler unresponsive)");
-			if (!deferredResult.isSetOrExpired()) {
-				deferredResult.setResult(ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(timeoutResponse));
-			}
-		});
-
-		// Run the health check asynchronously
-		CompletableFuture.runAsync(() -> {
-			HealthResponse response = new HealthResponse();
-			response.setStatus(HealthStatus.UP);
-			response.setTimestamp(new Date());
-
-			// 1. Quartz Scheduler Status
-			SchedulerHealth sched = new SchedulerHealth();
-			sched.setJobName(FILE_GEN_POLL_JOB);
-
-			try {
-				if (scheduler != null) {
-					sched.setRunning(scheduler.isStarted());
-					sched.setInStandby(scheduler.isInStandbyMode());
-				}
-			} catch (SchedulerException e) {
-				logger.warn("Health Check: Scheduler unreachable");
-				sched.setRunning(false);
-				sched.setError(e.getMessage());
-				response.setStatus(HealthStatus.DEGRADED); // Downgrade status
-			}
-			response.setScheduler(sched);
-
-			// 2. Config Status
-			response.setInterfacesLoaded(interfaceConfigLoader.getAllConfigs().size());
-
-			// 3. Queue Depth / Database Check
-			try {
-				long pending = fileGenerationService.getPendingCount();
-				response.setPendingJobs(pending);
-				response.setSystemLoad(pending > HIGH_LOAD_THRESHOLD ? SystemLoad.HIGH : SystemLoad.NORMAL);
-			} catch (Exception e) {
-				logger.warn("Health Check: Database unreachable");
-				response.setStatus(HealthStatus.DOWN); // Critical failure
-				response.setError("Database connectivity lost: " + e.getMessage());
-			}
-
-			// 4. Final Result Routing
-			if (!deferredResult.isSetOrExpired()) {
-				HttpStatus status = response.getStatus() == HealthStatus.UP ? HttpStatus.OK : HttpStatus.SERVICE_UNAVAILABLE;
-				deferredResult.setResult(ResponseEntity.status(status).body(response));
-			}
-		}, taskExecutor);
-
-		return deferredResult;
 	}
 
 	@GetMapping("/download/{jobId}")
