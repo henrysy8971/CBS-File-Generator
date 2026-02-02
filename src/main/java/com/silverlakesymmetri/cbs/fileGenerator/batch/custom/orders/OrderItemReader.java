@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Component;
 
+import javax.persistence.Tuple;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -78,46 +79,36 @@ public class OrderItemReader implements ItemStreamReader<OrderDto> {
 
 	private Page<Order> loadNextPage() {
 		try {
-			Pageable pageable = new PageRequest(
-					0,
-					pageSize,
-					Sort.Direction.ASC,
-					"orderId"
-			);
+			Pageable pageable = new PageRequest(0, pageSize, Sort.Direction.ASC, "orderId");
 
-			// STEP 1: Fetch page of Orders (IDs only)
-			Page<Order> page = (lastProcessedId == null)
-					? orderRepository.findFirstActive(pageable)
-					: orderRepository.findActiveAfterId(lastProcessedId, pageable);
+			// STEP 1: Fetch only the IDs using Tuples (Extremely lightweight)
+			Page<Tuple> idPage = (lastProcessedId == null)
+					? orderRepository.findActiveIds(pageable)
+					: orderRepository.findActiveIdsAfter(lastProcessedId, pageable);
 
-			if (!page.hasContent()) {
-				return page;
+			if (!idPage.hasContent()) {
+				return new PageImpl<>(Collections.emptyList());
 			}
 
-			// STEP 2: Fetch line items in bulk
-			List<Long> orderIds = page.getContent()
+			// STEP 2: Extract IDs
+			List<Long> orderIds = idPage.getContent()
 					.stream()
-					.map(Order::getOrderId)
+					.map(t -> t.get("id", Long.class))
 					.collect(Collectors.toList());
 
-			List<Order> ordersWithLines = orderIds.isEmpty()
-					? Collections.emptyList()
-					: orderRepository.findWithLineItemsByOrderIdIn(orderIds);
+			// STEP 3: Bulk Fetch details
+			List<Order> ordersWithLines = orderRepository.findWithLineItemsByOrderIdIn(orderIds);
 
+			// Sort to maintain Keyset sequence
 			ordersWithLines.sort(Comparator.comparing(Order::getOrderId));
 
-			logger.debug(
-					"Loaded {} orders with line items after lastProcessedId={}",
-					ordersWithLines.size(),
-					lastProcessedId
-			);
+			logger.debug("Fetched {} full entities with line items. Last ID: {}",
+					ordersWithLines.size(), lastProcessedId);
 
-			// IMPORTANT:
-			// Return a Page that contains the fully-loaded Orders
 			return new PageImpl<>(ordersWithLines);
 
 		} catch (Exception e) {
-			logger.error("Error loading orders after id {}", lastProcessedId, e);
+			logger.error("Error performing two-step fetch after ID {}", lastProcessedId, e);
 			throw new RuntimeException("Error reading orders from database", e);
 		}
 	}

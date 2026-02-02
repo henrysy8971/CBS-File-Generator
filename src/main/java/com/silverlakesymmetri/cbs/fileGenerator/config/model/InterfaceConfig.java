@@ -18,6 +18,7 @@ public class InterfaceConfig {
 
 	/* ================= Optional (Mutable) ================= */
 	private String beanioMappingFile;
+	private boolean haveHeaders = false;
 	private String streamName;
 	private String xsdSchemaFile;
 	private Integer chunkSize = MAX_CHUNK_SIZE;
@@ -91,6 +92,14 @@ public class InterfaceConfig {
 
 	public void setBeanioMappingFile(String beanioMappingFile) {
 		this.beanioMappingFile = beanioMappingFile;
+	}
+
+	public boolean isHaveHeaders() {
+		return haveHeaders;
+	}
+
+	public void setHaveHeaders(boolean haveHeaders) {
+		this.haveHeaders = haveHeaders;
 	}
 
 	public String getStreamName() {

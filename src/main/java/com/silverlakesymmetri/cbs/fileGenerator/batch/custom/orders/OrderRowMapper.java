@@ -8,14 +8,19 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
+import java.time.format.DateTimeFormatter;
+
 @Component
 public class OrderRowMapper {
 	private static final Logger logger = LoggerFactory.getLogger(OrderRowMapper.class);
+	private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
 	/**
 	 * Map Order JPA entity to OrderDto (includes line items)
 	 */
 	public OrderDto mapRow(Order order) {
+		if (order == null) return null;
+
 		try {
 			OrderDto dto = new OrderDto();
 
@@ -29,8 +34,7 @@ public class OrderRowMapper {
 
 			// Convert timestamp to string
 			if (order.getOrderDate() != null) {
-				dto.setOrderDate(order.getOrderDate().toLocalDateTime()
-						.format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+				dto.setOrderDate(order.getOrderDate().toLocalDateTime().format(DATE_TIME_FORMATTER));
 			}
 
 			// Map child line items
@@ -45,8 +49,7 @@ public class OrderRowMapper {
 
 			return dto;
 		} catch (Exception e) {
-			logger.error("Error mapping order entity to DTO for orderId: {}",
-					order.getOrderId(), e);
+			logger.error("Error mapping order entity to DTO for orderId: {}", order.getOrderId(), e);
 			throw new RuntimeException("Error mapping order data", e);
 		}
 	}

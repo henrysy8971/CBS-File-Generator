@@ -56,7 +56,7 @@ public class BeanIOFormatWriter implements OutputFormatWriter {
 		boolean append = outputFile.exists() && outputFile.length() > 0;
 
 		// Reset recordCount for this session
-		recordCount.set(append ? countExistingRecords(outputFile, false) : 0);
+		recordCount.set(append ? countExistingRecords(outputFile, interfaceConfig.isHaveHeaders()) : 0);
 
 		File parent = outputFile.getParentFile();
 		if (parent != null && !parent.exists() && !parent.mkdirs()) {

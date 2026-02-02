@@ -14,6 +14,7 @@ import org.springframework.stereotype.Component;
 import javax.xml.stream.XMLOutputFactory;
 import javax.xml.stream.XMLStreamWriter;
 import java.io.*;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
@@ -26,6 +27,7 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto> {
 	private static final String NS_PREFIX = "tns";
 
 	private XMLStreamWriter xmlStreamWriter;
+	private Writer underlyingWriter;
 	private boolean stepSuccessful = false;
 	private long recordCount = 0;
 	private String partFilePath;
@@ -37,17 +39,19 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto> {
 
 	@Override
 	public void open(ExecutionContext executionContext) throws ItemStreamException {
-
-		BufferedWriter writer = null;
-
 		try {
 			File file = new File(partFilePath);
+			if (file.getParentFile() != null && !file.getParentFile().exists()) {
+				file.getParentFile().mkdirs();
+			}
+
 			boolean append = executionContext.containsKey(RESTART_COUNT_KEY);
 			recordCount = append ? executionContext.getLong(RESTART_COUNT_KEY) : 0;
 
-			writer = new BufferedWriter(new OutputStreamWriter(
+			this.underlyingWriter = new BufferedWriter(new OutputStreamWriter(
 					new FileOutputStream(file, append), StandardCharsets.UTF_8));
-			xmlStreamWriter = XMLOutputFactory.newInstance().createXMLStreamWriter(writer);
+			xmlStreamWriter = XMLOutputFactory.newInstance().createXMLStreamWriter(underlyingWriter);
+			xmlStreamWriter.setPrefix(NS_PREFIX, NS_URI);
 
 			if (!append) {
 				xmlStreamWriter.writeStartDocument("UTF-8", "1.0");
@@ -58,12 +62,7 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto> {
 
 			logger.info("XML writer initialized for file {}. Restart: {}", partFilePath, append);
 		} catch (Exception e) {
-			// Close writer if initialization failed
-			if (writer != null) {
-				try {
-					writer.close();
-				} catch (IOException ioEx) { /* ignore */ }
-			}
+			closeResources();
 			throw new ItemStreamException("Failed to initialize XML writer", e);
 		}
 	}
@@ -114,7 +113,13 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto> {
 	// Helper to write an element safely
 	private void writeSimpleElement(String name, Object value) throws Exception {
 		xmlStreamWriter.writeStartElement(NS_PREFIX, name, NS_URI);
-		xmlStreamWriter.writeCharacters(value != null ? value.toString() : "");
+		if (value != null) {
+			if (value instanceof BigDecimal) {
+				xmlStreamWriter.writeCharacters(((BigDecimal) value).toPlainString());
+			} else {
+				xmlStreamWriter.writeCharacters(value.toString());
+			}
+		}
 		xmlStreamWriter.writeEndElement();
 	}
 
@@ -138,14 +143,24 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto> {
 			} catch (Exception e) {
 				throw new ItemStreamException("Failed to close XML writer properly", e);
 			} finally {
-				try {
-					xmlStreamWriter.close();
-				} catch (Exception e) {
-					logger.warn("Failed to close XMLStreamWriter", e);
-				}
-				xmlStreamWriter = null;
+				closeResources();
 			}
 		}
+	}
+
+	private void closeResources() {
+		try {
+			if (xmlStreamWriter != null) xmlStreamWriter.close();
+		} catch (Exception e) {
+			logger.warn("Error closing XMLStreamWriter: {}", e.getMessage());
+		}
+		try {
+			if (underlyingWriter != null) underlyingWriter.close();
+		} catch (Exception e) {
+			logger.warn("Error closing underlying file writer: {}", e.getMessage());
+		}
+		xmlStreamWriter = null;
+		underlyingWriter = null;
 	}
 
 	// Setter used by the Listener to mark step success
