@@ -14,10 +14,6 @@ public class FileGenerationRequest {
 	@Size(max = INTERFACE_TYPE_LENGTH)
 	@Pattern(regexp = "^[A-Za-z0-9_]+$")
 	private String interfaceType; // Required: must match key in interface-config.json
-	@Min(1)
-	@Max(10000)
-	private Integer chunkSize;
-	private String xsdSchemaName;
 
 	public FileGenerationRequest() {
 	}
@@ -32,21 +28,5 @@ public class FileGenerationRequest {
 
 	public void setInterfaceType(String interfaceType) {
 		this.interfaceType = interfaceType;
-	}
-
-	public Integer getChunkSize() {
-		return chunkSize;
-	}
-
-	public void setChunkSize(Integer chunkSize) {
-		this.chunkSize = chunkSize;
-	}
-
-	public String getXsdSchemaName() {
-		return xsdSchemaName;
-	}
-
-	public void setXsdSchemaName(String xsdSchemaName) {
-		this.xsdSchemaName = xsdSchemaName;
 	}
 }

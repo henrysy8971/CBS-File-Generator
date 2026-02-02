@@ -147,7 +147,7 @@ public class FileGenerationController {
 	}
 
 	// ==================== File Status ====================
-	@GetMapping("/status/{jobId}")
+	@GetMapping("/getFileGenerationStatus/{jobId}")
 	public ResponseEntity<FileGenerationResponse> getFileGenerationStatus(@PathVariable String jobId) {
 		FileGeneration fileGen = fileGenerationService.getFileGeneration(jobId)
 				.orElseThrow(() -> new NotFoundException("Job not found"));
@@ -155,25 +155,25 @@ public class FileGenerationController {
 				fileGen.getInterfaceType(), fileGen.getErrorMessage()));
 	}
 
-	@GetMapping("/status")
+	@GetMapping("/getFileGenerationsByStatus")
 	public ResponseEntity<PagedResponse<FileGenerationResponse>> getFileGenerationsByStatus(
 			@RequestParam("status") String statusParam,
-			@RequestParam(value = "order", defaultValue = "desc") String order,
 			@RequestParam(value = "page", defaultValue = "0") int page,
-			@RequestParam(value = "size", defaultValue = "20") int size) {
+			@RequestParam(value = "size", defaultValue = "20") int size,
+			@RequestParam(value = "order", defaultValue = "desc") String order) {
 
 		// 1. Convert String to Enum
 		FileGenerationStatus status = FileGenerationStatus.fromString(statusParam);
 
 		// 2. Create PageRequest (Spring Boot 1.5.x syntax)
-		Sort.Direction direction = "desc".equalsIgnoreCase(order) ? Sort.Direction.DESC : Sort.Direction.ASC;
-		PageRequest pageRequest = new PageRequest(page, size, direction, "createdDate");
+		Sort.Direction sortOrder = "desc".equalsIgnoreCase(order) ? Sort.Direction.DESC : Sort.Direction.ASC;
+		PageRequest pageRequest = new PageRequest(page, size, sortOrder, "createdDate");
 
 		// 3. Call Service
 		Page<FileGeneration> resultsPage = fileGenerationService.getFilesByStatus(status, pageRequest);
 
 		// 4. Map to the PagedResponse DTO
-		return ResponseEntity.ok(mapToPagedResponse(resultsPage));
+		return ResponseEntity.ok(mapFileGenerationDetailsToReponse(resultsPage));
 	}
 
 	// ==================== Available Interfaces ====================
@@ -187,15 +187,15 @@ public class FileGenerationController {
 	}
 
 	// ==================== Interface Configuration ====================
-	@GetMapping("/interfaces/{interfaceType}")
+	@GetMapping("/getConfigInfo/{interfaceType}")
 	public ResponseEntity<?> getInterfaceConfiguration(@PathVariable String interfaceType) {
 		InterfaceConfig interfaceConfig = interfaceConfigLoader.getConfig(interfaceType);
 		if (interfaceConfig == null) throw new NotFoundException("Interface configuration not found: " + interfaceType);
-		InterfaceConfig response = mapToDetailsResponse(interfaceConfig);
+		InterfaceConfig response = mapInterfaceDetailsToResponse(interfaceConfig);
 		return ResponseEntity.ok(response);
 	}
 
-	private InterfaceConfig mapToDetailsResponse(InterfaceConfig source) {
+	private InterfaceConfig mapInterfaceDetailsToResponse(InterfaceConfig source) {
 		InterfaceConfig target = new InterfaceConfig();
 		target.setName(source.getName());
 		target.setBeanioMappingFile(source.getBeanioMappingFile());
@@ -213,8 +213,8 @@ public class FileGenerationController {
 		return target;
 	}
 
-	@GetMapping("/download/{jobId}")
-	public ResponseEntity<Resource> downloadFile(@PathVariable String jobId) throws IOException {
+	@GetMapping("/downloadFileByJobId/{jobId}")
+	public ResponseEntity<Resource> downloadFileByJobId(@PathVariable String jobId) throws IOException {
 		// 1. Directory safety check (Volatile check)
 		if (!outputDirValid || outputDirPath == null) {
 			throw new ConfigurationException("Output storage is unavailable");
@@ -281,7 +281,7 @@ public class FileGenerationController {
 		return response;
 	}
 
-	private PagedResponse<FileGenerationResponse> mapToPagedResponse(Page<FileGeneration> page) {
+	private PagedResponse<FileGenerationResponse> mapFileGenerationDetailsToReponse(Page<FileGeneration> page) {
 		// 1. Convert the Entities to DTOs using your existing build method
 		List<FileGenerationResponse> dtoList = page.getContent().stream()
 				.map(fileGen -> buildFileGenerationResponse(
