@@ -135,7 +135,7 @@ public class BatchJobLauncher {
 	 */
 	private String buildOutputFilePath(String jobId, String interfaceType, String extension) {
 		return Paths.get(outputDirectory, interfaceType + "_" + jobId + "." + extension + ".part")
-				.toAbsolutePath().toString();
+				.toAbsolutePath().normalize().toString();
 	}
 
 	/**

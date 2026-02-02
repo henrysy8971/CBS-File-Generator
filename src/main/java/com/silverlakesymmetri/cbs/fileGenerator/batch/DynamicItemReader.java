@@ -9,16 +9,17 @@ import org.slf4j.LoggerFactory;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.item.ExecutionContext;
 import org.springframework.batch.item.ItemStreamReader;
+import org.springframework.batch.item.NonTransientResourceException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.persistence.EntityManager;
 import javax.persistence.Query;
+import javax.persistence.Tuple;
+import javax.persistence.TupleElement;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 
 @Component
 @StepScope
@@ -32,11 +33,17 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 	private final String queryString;
 	private final EntityManager entityManager;
 	private RecordSchema sharedSchema;
-	private Iterator<Map<String, Object>> resultIterator;
-	private Long lastProcessedId = null;
+	private List<Tuple> currentPage;
+
+	private int currentIndex = 0;
+	private boolean endReached = false;
+
+	private String lastProcessedId = null;
 	private long totalProcessed = 0;
-	private String keySetColumnName = null;
+	private final String keySetColumnName;
 	private String actualKeySetColumnName = null;
+	private ColumnType keyColumnType;
+	private int keySetColumnIndex = -1; // Store the index once
 
 	@Autowired
 	public DynamicItemReader(
@@ -61,116 +68,151 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 
 		this.interfaceType = interfaceConfig.getName();
 		this.queryString = interfaceConfig.getDataSourceQuery();
-
-		if (interfaceConfig.getKeysetColumn() != null) {
-			this.keySetColumnName = interfaceConfig.getKeysetColumn();
-		}
+		this.keySetColumnName = interfaceConfig.getKeysetColumn();
 	}
 
 	@Override
 	public DynamicRecord read() {
 		try {
-			if (resultIterator == null || !resultIterator.hasNext()) {
-				fetchNextBatch();
-			}
-
-			if (resultIterator == null || !resultIterator.hasNext()) {
-				logger.info("End of data reached. Total records processed={}", totalProcessed);
+			if (endReached) {
 				return null;
 			}
-
-			Map<String, Object> rowMap = resultIterator.next();
-			DynamicRecord record = convertRowToRecord(rowMap);
-
-			if (actualKeySetColumnName != null) {
-				Object idValue = rowMap.get(actualKeySetColumnName);
-				if (idValue instanceof Number) {
-					lastProcessedId = ((Number) idValue).longValue();
-				} else if (idValue instanceof String) {
-					try {
-						lastProcessedId = Long.parseLong((String) idValue);
-					} catch (NumberFormatException e) {
-						logger.warn("Key set column is not a valid number: {}", idValue);
-					}
-				}
+			if (currentPage == null || currentIndex >= currentPage.size()) {
+				fetchNextPage();
 			}
-
+			if (endReached) {
+				return null;
+			}
+			Tuple row = currentPage.get(currentIndex++);
+			if (sharedSchema == null) {
+				initializeSchemaFromTuple(row);
+			}
+			if (keySetColumnIndex != -1) {
+				lastProcessedId = parseLastProcessedId(row.get(keySetColumnIndex));
+			}
 			totalProcessed++;
-
-			if (totalProcessed % pageSize == 0) {
-				logger.info("Processed {} records for interface {}", totalProcessed, interfaceType);
-			}
-
-			return record;
+			return convertRowToRecord(row);
+		} catch (NonTransientResourceException e) {
+			throw e; // do not retry
 		} catch (Exception e) {
-			logger.error("Error reading record for interface {}", interfaceType, e);
-			throw new RuntimeException(e);
+			logger.error("Transient read error for interface {}", interfaceType, e);
+			throw new RuntimeException(e); // retryable
 		}
 	}
 
-	/**
-	 * Fetch the next batch of records from the database using paging.
-	 */
-	private void fetchNextBatch() {
-		Query query = entityManager.createNativeQuery(queryString);
-		query.unwrap(org.hibernate.Query.class).setResultTransformer(org.hibernate.transform.AliasToEntityMapResultTransformer.INSTANCE);
-
+	private void fetchNextPage() {
+		Query query = entityManager.createNativeQuery(queryString, Tuple.class);
+		query.setHint("javax.persistence.jdbc.fetch_size", pageSize);
 		query.setMaxResults(pageSize);
 
 		if (lastProcessedId != null && queryString.contains(":lastId")) {
-			query.setParameter("lastId", lastProcessedId);
+			Object param = lastProcessedId;
+			if (keyColumnType != null && keyColumnType == ColumnType.DECIMAL) {
+				try {
+					param = Long.valueOf(lastProcessedId);
+				} catch (NumberFormatException e) {
+					throw new NonTransientResourceException("Invalid numeric lastProcessedId=" + lastProcessedId, e);
+				}
+			}
+			query.setParameter("lastId", param);
 		}
 
 		@SuppressWarnings("unchecked")
-		List<Map<String, Object>> results = (List<Map<String, Object>>) query.getResultList();
+		List<Tuple> tuples = query.getResultList();
 
-		if (results == null || results.isEmpty()) {
-			resultIterator = null;
+		if (tuples == null || tuples.isEmpty()) {
+			endReached = true;
+			currentPage = null;
 			return;
 		}
 
-		// Initialize schema ONLY ONCE upon the first batch
+		// Initialize schema from the first TUPLE if not already done
 		if (sharedSchema == null) {
-			initializeSchemaFromMap(results.get(0));
+			initializeSchemaFromTuple(tuples.get(0));
 		}
 
-		logger.debug("Fetched {} records for interface {} after lastProcessedId={}", results.size(), interfaceType, lastProcessedId);
-		resultIterator = results.iterator();
+		currentIndex = 0;
+		logger.debug("Fetched {} rows after lastProcessedId={}", currentPage.size(), lastProcessedId);
 	}
 
-	private void initializeSchemaFromMap(Map<String, Object> firstRow) {
-		List<String> names = new ArrayList<>(firstRow.keySet());
-		List<ColumnType> types = new ArrayList<>();
+	private void initializeSchemaFromTuple(Tuple tuple) {
+		List<TupleElement<?>> elements = tuple.getElements();
+		int columnCount = elements.size();
 
-		for (String name : names) {
-			types.add(ColumnType.fromJavaValue(firstRow.get(name)));
+		List<String> names = new ArrayList<>(columnCount);
+		List<ColumnType> types = new ArrayList<>(columnCount);
+
+		// 1. Extract Metadata from TupleElements
+		for (int i = 0; i < columnCount; i++) {
+			TupleElement<?> element = elements.get(i);
+			String alias = element.getAlias();
+
+			// Fallback for drivers that don't return aliases for Native Queries
+			if (alias == null || alias.trim().isEmpty()) {
+				alias = "column_" + i;
+			}
+
+			// RecordSchema uses lowercase keys for case-insensitive matching
+			names.add(alias.toLowerCase());
+
+			// Map raw Java types (String, BigDecimal, etc.) to our ColumnType enum
+			types.add(ColumnType.fromJavaValue(tuple.get(i)));
 		}
 
+		// 2. Create the immutable Shared Schema
 		this.sharedSchema = new RecordSchema(names, types);
 
+		// 3. Resolve Keyset Configuration (The most important part for Paging)
 		if (keySetColumnName != null) {
-			int idx = sharedSchema.getIndex(keySetColumnName);
+			// Lookup the index based on the JSON configuration name
+			int idx = sharedSchema.getIndex(keySetColumnName.toLowerCase());
 
 			if (idx != -1) {
-				// Get the actual case-sensitive name from the schema
-				this.actualKeySetColumnName = sharedSchema.getName(idx);
-				logger.info("Key set column mapped to DB field: {}", actualKeySetColumnName);
+				this.keySetColumnIndex = idx;
+				// We capture the ACTUAL case-sensitive alias used by Hibernate/DB
+				// This ensures tuple.get(actualKeySetColumnName) works every time.
+				this.actualKeySetColumnName = elements.get(idx).getAlias();
+
+				// Fallback for null aliases
+				if (this.actualKeySetColumnName == null) {
+					this.actualKeySetColumnName = "column_" + idx;
+				}
+
+				// Identify the type, so we know how to bind the ":lastId" parameter
+				this.keyColumnType = sharedSchema.getType(idx);
+
+				logger.info("Keyset Column Resolved - Configuration: [{}], Database Alias: [{}], Index: [{}], Type: [{}]",
+						keySetColumnName, actualKeySetColumnName, idx, keyColumnType);
 			} else {
-				logger.warn("Key set column [{}] not found in result set!", keySetColumnName);
+				// If this happens, the batch will loop infinitely on the first page!
+				logger.error("CRITICAL CONFIGURATION ERROR: Keyset column '{}' not found in SQL results for interface '{}'. " +
+								"Verify that your SELECT statement includes this column.",
+						keySetColumnName, interfaceType);
 			}
 		}
 
-		logger.info("Initialized shared schema for interface {} with {} columns",
+		logger.info("Successfully initialized shared schema for interface [{}] with {} columns",
 				interfaceType, sharedSchema.size());
 	}
 
-	private DynamicRecord convertRowToRecord(Map<String, Object> rowMap) {
+	/**
+	 * Safely parse lastProcessedId from the row value.
+	 * Supports Number -> Long and String -> String/Long.
+	 */
+	private String parseLastProcessedId(Object idValue) {
+		if (idValue == null) return null;
+		if (idValue instanceof Number) return String.valueOf(((Number) idValue).longValue());
+		String s = idValue.toString().trim();
+		return s.isEmpty() ? null : s;
+	}
+
+	private DynamicRecord convertRowToRecord(Tuple tuple) {
 		DynamicRecord record = new DynamicRecord(sharedSchema);
 		String[] names = sharedSchema.getNames();
 
 		// Set values by index (much faster than string-based map lookup)
 		for (int i = 0; i < sharedSchema.size(); i++) {
-			record.setValue(i, rowMap.get(names[i]));
+			record.setValue(i, tuple.get(names[i]));
 		}
 
 		return record;
@@ -178,10 +220,16 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 
 	@Override
 	public void open(ExecutionContext executionContext) {
+		// Restore total processed
 		this.totalProcessed = executionContext.getLong(CONTEXT_KEY_TOTAL, 0L);
-		this.lastProcessedId = executionContext.containsKey(CONTEXT_KEY_LAST_ID)
-				? executionContext.getLong(CONTEXT_KEY_LAST_ID)
-				: null;
+
+		// Restore lastProcessedId safely
+		if (executionContext.containsKey(CONTEXT_KEY_LAST_ID)) {
+			Object lastId = executionContext.get(CONTEXT_KEY_LAST_ID);
+			this.lastProcessedId = parseLastProcessedId(lastId); // Use centralized parser
+		} else {
+			this.lastProcessedId = null;
+		}
 
 		logger.info("Opening DynamicItemReader. Restart={}, lastProcessedId={}, totalProcessed={}",
 				executionContext.containsKey(CONTEXT_KEY_LAST_ID),
@@ -192,15 +240,14 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 	@Override
 	public void update(ExecutionContext executionContext) {
 		executionContext.putLong(CONTEXT_KEY_TOTAL, totalProcessed);
+
 		if (lastProcessedId != null) {
-			executionContext.putLong(CONTEXT_KEY_LAST_ID, lastProcessedId);
+			executionContext.putString(CONTEXT_KEY_LAST_ID, lastProcessedId);
 		}
 	}
 
 	@Override
 	public void close() {
-		// Cleanup resources like the resultIterator or temporary files
-		this.resultIterator = null;
 		logger.info("DynamicItemReader closed. Total records read: {}", totalProcessed);
 	}
 }

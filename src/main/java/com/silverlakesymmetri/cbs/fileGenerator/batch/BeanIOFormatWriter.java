@@ -4,6 +4,7 @@ import com.silverlakesymmetri.cbs.fileGenerator.config.InterfaceConfigLoader;
 import com.silverlakesymmetri.cbs.fileGenerator.config.model.InterfaceConfig;
 import com.silverlakesymmetri.cbs.fileGenerator.dto.DynamicRecord;
 import org.beanio.BeanWriter;
+import org.beanio.BeanWriterException;
 import org.beanio.StreamFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -103,7 +104,11 @@ public class BeanIOFormatWriter implements OutputFormatWriter {
 		if (beanIOWriter == null) throw new IllegalStateException("Writer not initialized");
 
 		for (DynamicRecord record : items) {
-			beanIOWriter.write(record.asMap());
+			try {
+				beanIOWriter.write(record.asMap());
+			} catch (BeanWriterException e) {
+				logger.error("Failed to write record: {}", record, e);
+			}
 		}
 
 		recordCount.addAndGet(items.size());

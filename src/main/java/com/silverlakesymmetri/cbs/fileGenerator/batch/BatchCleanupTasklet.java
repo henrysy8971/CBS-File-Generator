@@ -57,16 +57,15 @@ public class BatchCleanupTasklet implements Tasklet {
 	}
 
 	private void cleanupStaleFiles(Instant cutoffInstant) {
-		Path rootPath;
-
 		String locDir = storageDirectory == null ? "" : storageDirectory.trim();
 		if (locDir.isEmpty()) {
 			logger.warn("file.generation.output-directory value in application properties file is empty.");
 			return;
 		}
 
+		Path rootPath;
 		try {
-			rootPath = Paths.get(locDir);
+			rootPath = Paths.get(locDir).toAbsolutePath().normalize();
 		} catch (InvalidPathException e) {
 			logger.error("Invalid storage directory path: {}", locDir, e);
 			return;

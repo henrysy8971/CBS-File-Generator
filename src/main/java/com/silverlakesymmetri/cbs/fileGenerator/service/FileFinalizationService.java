@@ -6,20 +6,26 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.BufferedWriter;
-import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 @Service
 public class FileFinalizationService {
 	private static final Logger logger = LoggerFactory.getLogger(FileFinalizationService.class);
 	private static final String SHA256_ALGORITHM = "SHA-256";
 	private static final int BUFFER_SIZE = 8192;
+	private static final Pattern SHA_PATTERN = Pattern.compile("^SHA256\\((.+?)\\)=\\s*([a-fA-F0-9]{64})$");
+	private static final boolean POSIX_SUPPORTED = FileSystems.getDefault().supportedFileAttributeViews().contains("posix");
+
 	@Value("${file.generation.permissions:rw-r--r--}")
 	private String filePermissions;
 
@@ -29,79 +35,84 @@ public class FileFinalizationService {
 	 * 2. Generate SHA256 checksum file (.sha)
 	 */
 	public boolean finalizeFile(String partFilePath) {
-		partFilePath = this.safeTrim(partFilePath);
-
-		if (partFilePath.isEmpty()) {
-			logger.error("Finalization failed: partFilePath is empty");
+		Path partPath;
+		try {
+			partPath = normalizePartPath(partFilePath);
+			if (partPath == null) return false;
+		} catch (SecurityException e) {
 			return false;
 		}
 
-		Path partPath = Paths.get(partFilePath);
-		if (!Files.exists(partPath)) {
-			logger.error("Finalization failed: Part file missing at {}", partFilePath);
+		Path finalPath;
+		try {
+			finalPath = stripPartExtension(partPath);
+		} catch (IllegalArgumentException e) {
 			return false;
 		}
 
-		String partPathStr = partPath.toString();
-		if (!partPathStr.endsWith(".part")) {
-			logger.error("Finalization failed: File {} does not have .part extension", partPathStr);
-			return false;
-		}
-
-		Path finalPath = partPath.resolveSibling(partPath.getFileName().toString().replaceFirst("\\.part$", ""));
+		boolean success = false;
 
 		try {
-			// Generate SHA while it's still a .part to ensure integrity before rename
-			String shaPath = generateShaFile(partPath);
-			if (shaPath == null) return false;
+			// 1. Generate SHA while still .part
+			Path shaPartPath = generateShaFile(partPath);
+			if (shaPartPath == null) return false;
 
+			// 2. Move data file: .part -> final
 			moveFileSafely(partPath, finalPath);
 
-			// Rename the .sha file to match the new final filename
-			Path oldSha = Paths.get(shaPath);
-			Path newSha = oldSha.resolveSibling(finalPath.getFileName().toString() + ".sha");
-			Files.move(oldSha, newSha, StandardCopyOption.REPLACE_EXISTING);
-			logger.info("SHA file renamed from {} to {}", oldSha, newSha);
+			// 3. Move SHA to match final filename
+			Path finalShaPath = shaPartPath.resolveSibling(finalPath.getFileName().toString() + ".sha");
+			moveFileSafely(shaPartPath, finalShaPath);
 
-			applyPosixPermissions(finalPath);
+			// 4. Permissions
+			if (Files.exists(finalPath)) {
+				applyPosixPermissions(finalPath);
+			}
+
+			if (Files.exists(finalShaPath)) {
+				applyPosixPermissions(finalShaPath);
+			}
+
+			success = true;
 			return true;
 		} catch (Exception e) {
 			logger.error("Fatal error during finalization of {}", partFilePath, e);
 			return false;
+		} finally {
+			if (!success) {
+				cleanupIfExists(partPath.resolveSibling(finalPath.getFileName().toString() + ".sha.part"));
+			}
 		}
 	}
 
 	/**
 	 * Generate SHA256 checksum file safely (.sha.part -> .sha)
 	 */
-	private String generateShaFile(Path filePath) {
-		if (filePath == null) {
+	private Path generateShaFile(Path partPath) {
+		if (partPath == null) {
 			logger.error("Cannot generate SHA file: filePath is null");
 			return null;
 		}
 
-		String fileName = filePath.getFileName().toString();
-		Path shaPartPath = filePath.resolveSibling(fileName + ".sha.part");
-		Path finalShaPath = filePath.resolveSibling(fileName + ".sha");
+		Path finalPath = stripPartExtension(partPath);
+		String finalFileName = finalPath.getFileName().toString();
+		Path shaPartPath = partPath.resolveSibling(finalFileName + ".sha.part");
 
 		try {
-			String hash = calculateSha256(filePath);
+			String hash = calculateSha256(partPath);
 			if (hash == null) {
-				logger.warn("SHA calculation returned null for {}", filePath);
+				logger.warn("SHA calculation returned null for {}", partPath);
 				return null;
 			}
 
 			// Write SHA to .sha.part using UTF-8
 			try (BufferedWriter writer = Files.newBufferedWriter(shaPartPath, StandardCharsets.UTF_8)) {
-				writer.write(String.format("SHA256(%s)= %s", filePath.getFileName(), hash));
+				writer.write(String.format("SHA256(%s)= %s", finalFileName, hash));
 			}
 
-			moveFileSafely(shaPartPath, finalShaPath);
-			applyPosixPermissions(finalShaPath);
-			return finalShaPath.toString();
-
+			return shaPartPath;
 		} catch (Exception e) {
-			logger.error("Error generating SHA file for: {}", filePath, e);
+			logger.error("Error generating SHA file for: {}", partPath, e);
 			return null;
 		}
 	}
@@ -134,7 +145,7 @@ public class FileFinalizationService {
 	 * Calculate SHA256 hash of a file
 	 */
 	private String calculateSha256(Path filePath) {
-		try (FileInputStream fis = new FileInputStream(filePath.toFile())) {
+		try (InputStream fis = Files.newInputStream(filePath)) {
 			MessageDigest digest = MessageDigest.getInstance(SHA256_ALGORITHM);
 			byte[] buffer = new byte[BUFFER_SIZE];
 			int bytesRead;
@@ -142,7 +153,7 @@ public class FileFinalizationService {
 				digest.update(buffer, 0, bytesRead);
 			}
 			return bytesToHex(digest.digest());
-		} catch (Exception e) {
+		} catch (IOException | NoSuchAlgorithmException e) {
 			logger.error("Error calculating SHA256 for: {}", filePath, e);
 			return null;
 		}
@@ -153,7 +164,7 @@ public class FileFinalizationService {
 		if (filePathStr.isEmpty()) {
 			return null;
 		}
-		return calculateSha256(Paths.get(filePathStr));
+		return calculateSha256(Paths.get(filePathStr).toAbsolutePath().normalize());
 	}
 
 	private String bytesToHex(byte[] bytes) {
@@ -176,7 +187,7 @@ public class FileFinalizationService {
 			return;
 		}
 
-		Path partPath = Paths.get(partFilePath);
+		Path partPath = Paths.get(partFilePath).toAbsolutePath().normalize();
 
 		try {
 			if (Files.exists(partPath)) {
@@ -196,7 +207,7 @@ public class FileFinalizationService {
 		if (filePathStr.isEmpty()) return false;
 
 		try {
-			Path filePath = Paths.get(filePathStr);
+			Path filePath = Paths.get(filePathStr).toAbsolutePath().normalize();
 			Path shaPath = filePath.resolveSibling(filePath.getFileName().toString() + ".sha");
 
 			if (!Files.exists(shaPath)) {
@@ -205,21 +216,14 @@ public class FileFinalizationService {
 			}
 
 			String shaContent = new String(Files.readAllBytes(shaPath), StandardCharsets.UTF_8);
+			Matcher matcher = SHA_PATTERN.matcher(shaContent.trim());
 
-			// Safety check for the split logic
-			if (!shaContent.contains("=")) {
-				logger.error("Malformed SHA file: {}", shaPath);
+			if (!matcher.matches()) {
+				logger.error("Invalid SHA file format: {}", shaPath);
 				return false;
 			}
 
-			String[] parts = shaContent.split("=", 2);
-
-			if (parts.length != 2) {
-				logger.warn("Malformed SHA file content: '{}'", shaContent);
-				return false;
-			}
-
-			String expectedHash = parts[1].trim();
+			String expectedHash = matcher.group(2);
 			String actualHash = calculateSha256(filePathStr);
 
 			if (actualHash == null) {
@@ -256,7 +260,7 @@ public class FileFinalizationService {
 		}
 
 		try {
-			if (!path.getFileSystem().supportedFileAttributeViews().contains("posix")) {
+			if (!POSIX_SUPPORTED) {
 				logger.debug("POSIX file attributes not supported for path {}", path);
 				return;
 			}
@@ -280,5 +284,57 @@ public class FileFinalizationService {
 
 	private String safeTrim(String s) {
 		return s == null ? "" : s.trim();
+	}
+
+	private Path normalizePartPath(String path) throws SecurityException {
+		String trimmed = this.safeTrim(path);
+		if (trimmed.isEmpty()) {
+			logger.error("[normalizePartPath] partFilePath is empty");
+			return null;
+		}
+
+		Path p = Paths.get(trimmed).toAbsolutePath().normalize();
+		if (!p.getFileName().toString().toLowerCase().endsWith(".part")) {
+			logger.error("[normalizePartPath] Not a .part file: {}", p);
+			return null;
+		}
+
+		return p;
+	}
+
+	private Path stripPartExtension(Path partPath) {
+		if (partPath == null) {
+			throw new IllegalArgumentException("[stripPartExtension] partPath must not be null");
+		}
+
+		Path fileNamePath = partPath.getFileName();
+		if (fileNamePath == null) {
+			throw new IllegalArgumentException("[stripPartExtension] Invalid path: " + partPath);
+		}
+
+		String fileName = fileNamePath.toString();
+
+		if (!fileName.toLowerCase().endsWith(".part")) {
+			throw new IllegalArgumentException("[stripPartExtension] Not a .part file: " + fileName);
+		}
+
+		String baseName = fileName.substring(0, fileName.length() - 5); // ".part"
+
+		if (baseName.isEmpty()) {
+			throw new IllegalArgumentException("[stripPartExtension] Invalid .part filename: " + fileName);
+		}
+
+		return partPath.resolveSibling(baseName);
+	}
+
+	private void cleanupIfExists(Path path) {
+		try {
+			if (Files.exists(path)) {
+				Files.delete(path);
+				logger.debug("Cleaned orphan file {}", path);
+			}
+		} catch (Exception e) {
+			logger.warn("Failed to cleanup orphan file {}", path, e);
+		}
 	}
 }

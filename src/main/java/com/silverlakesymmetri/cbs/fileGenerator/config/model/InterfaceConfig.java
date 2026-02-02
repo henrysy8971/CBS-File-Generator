@@ -8,11 +8,9 @@ import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationC
  * Designed to be restart-safe and compatible with keyset-pagination readers.
  */
 public class InterfaceConfig {
-
 	/* ================= Defaults ================= */
-	public static final int DEFAULT_CHUNK_SIZE = 1000;
 	public static final OutputFormat DEFAULT_OUTPUT_FORMAT = OutputFormat.XML;
-	public static final String DEFAULT_FILE_EXTENSION = "xml";
+	public static final String DEFAULT_FILE_EXTENSION = OutputFormat.XML.name().toLowerCase();
 
 	/* ================= Core (Mandatory, Immutable) ================= */
 	private String name;
@@ -22,7 +20,7 @@ public class InterfaceConfig {
 	private String beanioMappingFile;
 	private String streamName;
 	private String xsdSchemaFile;
-	private Integer chunkSize = DEFAULT_CHUNK_SIZE;
+	private Integer chunkSize = MAX_CHUNK_SIZE;
 	private OutputFormat outputFormat = DEFAULT_OUTPUT_FORMAT;
 	private String outputFileExtension = DEFAULT_FILE_EXTENSION;
 	private String rootElement;

@@ -42,7 +42,7 @@ public class OutputFormatWriterFactory {
 
 			if (interfaceConfig != null) {
 				String beanioMappingFile = interfaceConfig.getBeanioMappingFile();
-				if (beanioMappingFile != null && !beanioMappingFile.isEmpty()) {
+				if (beanioMappingFile != null && !beanioMappingFile.trim().isEmpty()) {
 					logger.info("Selecting BeanIOFormatWriter for interface: {}", interfaceType);
 					writerClass = BeanIOFormatWriter.class;
 				} else {
