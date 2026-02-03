@@ -1,6 +1,7 @@
 package com.silverlakesymmetri.cbs.fileGenerator.controller;
 
 import com.silverlakesymmetri.cbs.fileGenerator.config.InterfaceConfigLoader;
+import com.silverlakesymmetri.cbs.fileGenerator.dto.PagedResponse;
 import com.silverlakesymmetri.cbs.fileGenerator.exception.ConflictException;
 import com.silverlakesymmetri.cbs.fileGenerator.exception.NotFoundException;
 import org.quartz.*;
@@ -108,57 +109,52 @@ public class AdminController {
 	}
 
 	@GetMapping("/scheduler/jobs")
-	public ResponseEntity<List<Map<String, Object>>> listScheduledJobs() throws SchedulerException {
-		List<Map<String, Object>> jobs = new ArrayList<>();
+	public ResponseEntity<PagedResponse<Map<String, Object>>> listScheduledJobs(
+			@RequestParam(value = "page", defaultValue = "0") int page,
+			@RequestParam(value = "size", defaultValue = "10") int size) throws SchedulerException {
 
-		// Iterate through all job groups
+		List<Map<String, Object>> allJobs = new ArrayList<>();
+
 		for (String groupName : scheduler.getJobGroupNames()) {
-			// Get all job keys in this group
 			for (JobKey jobKey : scheduler.getJobKeys(GroupMatcher.jobGroupEquals(groupName))) {
-
 				List<? extends Trigger> triggers = scheduler.getTriggersOfJob(jobKey);
-				Date nextFireTime = null;
-				String cronExpression = "N/A";
-
-				if (!triggers.isEmpty()) {
-					Trigger trigger = triggers.get(0);
-					nextFireTime = trigger.getNextFireTime();
-					if (trigger instanceof CronTrigger) {
-						cronExpression = ((CronTrigger) trigger).getCronExpression();
-					}
-				}
 
 				Map<String, Object> jobInfo = new HashMap<>();
 				jobInfo.put("jobName", jobKey.getName());
 				jobInfo.put("group", jobKey.getGroup());
-				jobInfo.put("nextFireTime", nextFireTime);
-				jobInfo.put("cronExpression", cronExpression);
-				jobInfo.put("status", scheduler.getTriggerState(triggers.get(0).getKey()).name());
 
-				jobs.add(jobInfo);
+				if (!triggers.isEmpty()) {
+					Trigger trigger = triggers.get(0);
+					jobInfo.put("nextFireTime", trigger.getNextFireTime());
+					jobInfo.put("status", scheduler.getTriggerState(trigger.getKey()).name());
+					if (trigger instanceof CronTrigger) {
+						jobInfo.put("cronExpression", ((CronTrigger) trigger).getCronExpression());
+					}
+				}
+
+				allJobs.add(jobInfo);
 			}
 		}
 
-		return ResponseEntity.ok(jobs);
+		// Sort by job name so pagination is deterministic
+		allJobs.sort(Comparator.comparing(m -> (String) m.get("jobName")));
+		return ResponseEntity.ok(paginate(allJobs, page, size));
 	}
 
 	@GetMapping("/scheduler/status")
-	public ResponseEntity<List<Map<String, Object>>> getDetailedJobStatus() throws SchedulerException {
+	public ResponseEntity<PagedResponse<Map<String, Object>>> getDetailedJobStatus(
+			@RequestParam(value = "page", defaultValue = "0") int page,
+			@RequestParam(value = "size", defaultValue = "10") int size) throws SchedulerException {
+
 		List<Map<String, Object>> scheduledJobs = new ArrayList<>();
 
-		// 1. Get all Job groups
 		for (String groupName : scheduler.getJobGroupNames()) {
-
-			// 2. Get all Jobs in that group
 			for (JobKey jobKey : scheduler.getJobKeys(GroupMatcher.jobGroupEquals(groupName))) {
-
 				JobDetail jobDetail = scheduler.getJobDetail(jobKey);
 				List<? extends Trigger> triggers = scheduler.getTriggersOfJob(jobKey);
 
 				for (Trigger trigger : triggers) {
 					Map<String, Object> info = new LinkedHashMap<>();
-
-					// Extract Business Info from the JobDataMap
 					String interfaceType = jobDetail.getJobDataMap().getString("interfaceType");
 
 					info.put("jobName", jobKey.getName());
@@ -166,20 +162,43 @@ public class AdminController {
 					info.put("triggerName", trigger.getKey().getName());
 					info.put("nextRunTime", trigger.getNextFireTime());
 					info.put("previousRunTime", trigger.getPreviousFireTime());
+					info.put("status", scheduler.getTriggerState(trigger.getKey()).name());
 
-					// Get the Cron Expression if it's a CronTrigger
 					if (trigger instanceof CronTrigger) {
 						info.put("cronExpression", ((CronTrigger) trigger).getCronExpression());
 					}
-
-					// Get current status (NORMAL, PAUSED, BLOCKED, ERROR, etc.)
-					Trigger.TriggerState state = scheduler.getTriggerState(trigger.getKey());
-					info.put("status", state.name());
 
 					scheduledJobs.add(info);
 				}
 			}
 		}
-		return ResponseEntity.ok(scheduledJobs);
+
+		// Sort by nextRunTime (nulls last)
+		scheduledJobs.sort(Comparator.comparing(m -> (Date) m.get("nextRunTime"), Comparator.nullsLast(Comparator.naturalOrder())));
+		return ResponseEntity.ok(paginate(scheduledJobs, page, size));
+	}
+
+	/**
+	 * Helper method to perform manual pagination on a List.
+	 */
+	private <T> PagedResponse<T> paginate(List<T> fullList, int page, int size) {
+		int totalElements = fullList.size();
+		int totalPages = (int) Math.ceil((double) totalElements / size);
+
+		// Safeguard against out of bounds
+		int start = Math.min(page * size, totalElements);
+		int end = Math.min(start + size, totalElements);
+
+		List<T> pagedContent = fullList.subList(start, end);
+
+		PagedResponse<T> response = new PagedResponse<>();
+		response.setContent(pagedContent);
+		response.setPage(page);
+		response.setSize(size);
+		response.setTotalElements(totalElements);
+		response.setTotalPages(totalPages);
+		response.setLast(page >= totalPages - 1);
+
+		return response;
 	}
 }
