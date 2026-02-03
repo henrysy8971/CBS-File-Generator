@@ -14,8 +14,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.EnumerablePropertySource;
 import org.springframework.core.env.PropertySource;
-import org.springframework.scheduling.quartz.CronTriggerFactoryBean;
-import org.springframework.scheduling.quartz.JobDetailFactoryBean;
 import org.springframework.scheduling.quartz.SchedulerFactoryBean;
 
 import javax.sql.DataSource;
@@ -103,24 +101,21 @@ public class QuartzConfiguration {
 	private String maintenanceCron;
 
 	@Bean
-	public JobDetailFactoryBean maintenanceJobDetail() {
-		JobDetailFactoryBean factory = new JobDetailFactoryBean();
-		factory.setJobClass(MaintenanceQuartzJob.class);
-		factory.setDurability(true);
-		factory.setGroup("system-maintenance");
-		factory.setName("maintenanceCleanupJob");
-		return factory;
+	public JobDetail maintenanceJobDetail() {
+		return JobBuilder.newJob(MaintenanceQuartzJob.class)
+				.withIdentity("maintenanceCleanupJob", "system-maintenance")
+				.storeDurably()
+				.build();
 	}
 
 	@Bean
-	public CronTriggerFactoryBean maintenanceJobTrigger(@Qualifier("maintenanceJobDetail") JobDetail jobDetail) {
-		CronTriggerFactoryBean factory = new CronTriggerFactoryBean();
-		factory.setJobDetail(jobDetail);
-		factory.setCronExpression(maintenanceCron);
-		factory.setMisfireInstruction(CronTrigger.MISFIRE_INSTRUCTION_DO_NOTHING);
-		factory.setGroup("system-maintenance");
-		factory.setName("maintenanceCleanupTrigger");
-		return factory;
+	public Trigger maintenanceJobTrigger(@Qualifier("maintenanceJobDetail") JobDetail jobDetail) {
+		return TriggerBuilder.newTrigger()
+				.forJob(jobDetail)
+				.withIdentity("maintenanceCleanupTrigger", "system-maintenance")
+				.withSchedule(CronScheduleBuilder.cronSchedule(maintenanceCron)
+						.withMisfireHandlingInstructionDoNothing())
+				.build();
 	}
 
 	//==================================================================================================================
@@ -154,7 +149,7 @@ public class QuartzConfiguration {
 	// ORDER_INTERFACE
 	//==================================================================================================================
 	@Value("${ordersInterface.scheduler.cron:0 0 5 * * ?}")
-	private String ordersCron;
+	private String ordersInterfaceCron;
 
 	@Bean
 	public JobDetail ordersJobDetail() {
@@ -162,7 +157,7 @@ public class QuartzConfiguration {
 		jobDataMap.put("interfaceType", ORDER_INTERFACE);
 
 		return JobBuilder.newJob(BatchJobLauncherJob.class)
-				.withIdentity("ordersGenerationJob", FILE_GEN_GROUP)
+				.withIdentity(FILE_GEN_ORDERS_JOB, FILE_GEN_GROUP)
 				.setJobData(jobDataMap)
 				.storeDurably()
 				.build();
@@ -175,8 +170,9 @@ public class QuartzConfiguration {
 	public Trigger ordersJobTrigger(@Qualifier("ordersJobDetail") JobDetail jobDetail) {
 		return TriggerBuilder.newTrigger()
 				.forJob(jobDetail)
-				.withIdentity("ordersCronTrigger", FILE_GEN_GROUP)
-				.withSchedule(CronScheduleBuilder.cronSchedule(ordersCron))
+				.withIdentity(FILE_GEN_ORDERS_TRIGGER_NAME, FILE_GEN_GROUP)
+				.withSchedule(CronScheduleBuilder.cronSchedule(ordersInterfaceCron)
+						.withMisfireHandlingInstructionDoNothing())
 				.build();
 	}
 }

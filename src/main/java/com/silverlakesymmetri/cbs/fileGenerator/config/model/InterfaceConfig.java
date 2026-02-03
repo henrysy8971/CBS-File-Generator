@@ -175,6 +175,8 @@ public class InterfaceConfig {
 	public enum OutputFormat {
 		XML,
 		CSV,
+		TXT,
+		JSON,
 		FIXED
 	}
 }
