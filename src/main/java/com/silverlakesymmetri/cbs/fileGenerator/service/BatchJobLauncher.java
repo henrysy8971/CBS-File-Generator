@@ -77,7 +77,7 @@ public class BatchJobLauncher {
 			// Determine file extension, defaulting to 'txt'
 			String extension = Optional.ofNullable(config.getOutputFileExtension()).orElse("txt");
 			// Build output file path with .part during processing
-			String outputFilePath = buildOutputFilePath(jobId, interfaceType, extension);
+			String outputFilePath = buildOutputFilePath(currentJob.get().getFileName());
 
 			// Get the ID from MDC (put there by the Filter)
 			String requestId = org.slf4j.MDC.get("requestId");
@@ -133,8 +133,8 @@ public class BatchJobLauncher {
 	/**
 	 * Builds a safe output file path with .part extension for in-progress files.
 	 */
-	private String buildOutputFilePath(String jobId, String interfaceType, String extension) {
-		return Paths.get(outputDirectory, interfaceType + "_" + jobId + "." + extension + ".part")
+	private String buildOutputFilePath(String dbFileName) {
+		return Paths.get(outputDirectory, dbFileName + ".part")
 				.toAbsolutePath().normalize().toString();
 	}
 
@@ -145,7 +145,6 @@ public class BatchJobLauncher {
 		File folder = new File(outputDirectory);
 		if (!folder.exists()) {
 			logger.info("Creating missing output directory: {}", outputDirectory);
-			// mkdirs() creates the entire path including parent folders if they are missing
 			if (!folder.mkdirs()) {
 				throw new IOException("Could not create directory structure for: " + outputDirectory);
 			}

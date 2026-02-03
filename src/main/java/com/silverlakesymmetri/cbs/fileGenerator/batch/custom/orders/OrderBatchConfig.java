@@ -17,6 +17,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.ORDER_INTERFACE;
+
 @Configuration
 public class OrderBatchConfig {
 	private static final Logger logger = LoggerFactory.getLogger(OrderBatchConfig.class);
@@ -58,10 +60,9 @@ public class OrderBatchConfig {
 				.build();
 	}
 
-	@Bean(name = "ORDER_INTERFACE")
+	@Bean(name = ORDER_INTERFACE)
 	public Job orderFileGenerationJob(DynamicJobExecutionListener sharedJobListener) {
-		logger.info("Configuring specialized 'ORDER_INTERFACE' Job");
-		return jobBuilderFactory.get("ORDER_INTERFACE")
+		return jobBuilderFactory.get(ORDER_INTERFACE)
 				.incrementer(new RunIdIncrementer())
 				.listener(sharedJobListener)
 				.start(orderFileGenerationStep())

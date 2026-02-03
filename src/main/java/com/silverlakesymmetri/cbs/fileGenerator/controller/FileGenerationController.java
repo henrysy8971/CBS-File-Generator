@@ -117,11 +117,8 @@ public class FileGenerationController {
 		logger.info("File generation request received - Interface: {}, User: {}", interfaceType, userName);
 
 		// ===== Generate collision-resistant filename =====
-		String fileName = String.format("%s_%d_%s.%s",
-				interfaceType,
-				System.currentTimeMillis(),
-				UUID.randomUUID(),
-				interfaceConfig.getOutputFileExtension());
+		String ext = interfaceConfig.getOutputFileExtension() != null ? interfaceConfig.getOutputFileExtension() : "txt";
+		String fileName = interfaceType + "_" + UUID.randomUUID() + "." + ext;
 
 		// ===== Create file generation record =====
 		FileGeneration fileGen = fileGenerationService.createFileGeneration(

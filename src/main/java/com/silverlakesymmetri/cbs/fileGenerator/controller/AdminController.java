@@ -12,13 +12,13 @@ import org.springframework.batch.core.JobParameters;
 import org.springframework.batch.core.JobParametersBuilder;
 import org.springframework.batch.core.launch.JobLauncher;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.*;
 
-import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.FILE_GEN_GROUP;
-import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.FILE_GEN_POLL_JOB;
+import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.*;
 
 @RestController
 @RequestMapping("/api/v1/admin")
@@ -31,7 +31,7 @@ public class AdminController {
 
 	@Autowired
 	public AdminController(JobLauncher jobLauncher,
-						   Job cleanupJob,
+						   @Qualifier("cleanupJob") Job cleanupJob,
 						   Scheduler scheduler,
 						   InterfaceConfigLoader interfaceConfigLoader) {
 		this.jobLauncher = jobLauncher;
@@ -99,9 +99,9 @@ public class AdminController {
 		jobDataMap.put("interfaceType", upperType);
 		jobDataMap.put("triggeredBy", "ADMIN_REST_API");
 
-		// 3. Trigger the Poller Job immediately with these specific parameters
-		// Note: We trigger the FILE_GEN_POLL_JOB which is capable of handling the specific type
-		scheduler.triggerJob(JobKey.jobKey(FILE_GEN_POLL_JOB, FILE_GEN_GROUP), jobDataMap);
+		// 3. Trigger the Job immediately with these specific parameters
+		// Note: We trigger the FILE_GEN_ADHOC_JOB which is capable of handling the specific type
+		scheduler.triggerJob(JobKey.jobKey(FILE_GEN_ADHOC_JOB, FILE_GEN_GROUP), jobDataMap);
 
 		logger.info("Admin manually triggered Quartz job for interface: {}", upperType);
 		return ResponseEntity.ok("Manual trigger for " + upperType + " sent to Quartz scheduler.");
@@ -146,7 +146,7 @@ public class AdminController {
 	public ResponseEntity<List<Map<String, Object>>> getDetailedJobStatus() throws SchedulerException {
 		List<Map<String, Object>> scheduledJobs = new ArrayList<>();
 
-		// 1. Get all Job groups (e.g., 'file-generation-group')
+		// 1. Get all Job groups
 		for (String groupName : scheduler.getJobGroupNames()) {
 
 			// 2. Get all Jobs in that group

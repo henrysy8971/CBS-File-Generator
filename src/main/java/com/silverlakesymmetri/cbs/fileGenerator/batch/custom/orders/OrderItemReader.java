@@ -19,13 +19,14 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.ORDER_INTERFACE;
+
 @Component
 @StepScope
 public class OrderItemReader implements ItemStreamReader<OrderDto> {
 	private static final Logger logger = LoggerFactory.getLogger(OrderItemReader.class);
 	private static final String CONTEXT_KEY_TOTAL = "order.reader.totalProcessed";
 	private static final String CONTEXT_KEY_LAST_ID = "order.reader.lastProcessedId";
-	private static final String INTERFACE_TYPE = "ORDER_INTERFACE";
 
 	private final int pageSize;
 
@@ -67,12 +68,12 @@ public class OrderItemReader implements ItemStreamReader<OrderDto> {
 			totalProcessed++;
 
 			if (totalProcessed % pageSize == 0) {
-				logger.info("Processed {} records for interface {}", totalProcessed, INTERFACE_TYPE);
+				logger.info("Processed {} records for interface {}", totalProcessed, ORDER_INTERFACE);
 			}
 
 			return orderDto;
 		} catch (Exception e) {
-			logger.error("Error reading record for interface {}", INTERFACE_TYPE, e);
+			logger.error("Error reading record for interface {}", ORDER_INTERFACE, e);
 			throw new RuntimeException(e);
 		}
 	}
