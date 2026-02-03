@@ -1,9 +1,8 @@
 package com.silverlakesymmetri.cbs.fileGenerator.config;
 
+import com.silverlakesymmetri.cbs.fileGenerator.scheduler.BatchJobLauncherJob;
 import com.silverlakesymmetri.cbs.fileGenerator.scheduler.MaintenanceQuartzJob;
-import org.quartz.CronTrigger;
-import org.quartz.JobDetail;
-import org.quartz.Trigger;
+import org.quartz.*;
 import org.quartz.spi.JobFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -101,5 +100,33 @@ public class QuartzConfiguration {
 			}
 		}
 		return properties;
+	}
+
+	/**
+	 * Define the Job Detail for Orders
+	 */
+	@Bean
+	public JobDetail ordersJobDetail() {
+		JobDataMap jobDataMap = new JobDataMap();
+		jobDataMap.put("interfaceType", "ORDER_INTERFACE"); // Matches your interface-config.json
+
+		return JobBuilder.newJob(BatchJobLauncherJob.class)
+				.withIdentity("ordersGenerationJob", "file-generation-group")
+				.setJobData(jobDataMap)
+				.storeDurably()
+				.build();
+	}
+
+	/**
+	 * Define the Cron Trigger for Orders
+	 */
+	@Bean
+	public Trigger ordersJobTrigger(@Qualifier("ordersJobDetail") JobDetail jobDetail) {
+		return TriggerBuilder.newTrigger()
+				.forJob(jobDetail)
+				.withIdentity("ordersCronTrigger", "file-generation-group")
+				// Example: Run every hour
+				.withSchedule(CronScheduleBuilder.cronSchedule("0 0 * * * ?"))
+				.build();
 	}
 }

@@ -66,7 +66,7 @@ public class BatchJobLauncher {
 			}
 
 			// Validate interface configuration
-			if (!interfaceConfigLoader.interfaceExists(interfaceType)) {
+			if (Boolean.FALSE.equals(interfaceConfigLoader.interfaceExists(interfaceType))) {
 				String error = "Interface configuration not found: " + interfaceType;
 				logger.error("Job launch failed: {}", error);
 				fileGenerationService.markFailed(jobId, error);
