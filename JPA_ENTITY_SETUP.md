@@ -426,7 +426,7 @@ public OrderDto mapRow(Order order) {
 
 **Why this architecture**:
 - ✅ Entities handle database concerns (JPA, columns, relationships)
-- ✅ DTOs handle output concerns (formatting, nesting, denormalization)
+- ✅ DTOs handle output concerns (formatting, nesting, de-normalization)
 - ✅ Mapper handles transformation logic
 - ✅ Custom ItemReader/ItemWriter handle specialized batch processing
 

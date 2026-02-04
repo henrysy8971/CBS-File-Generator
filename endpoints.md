@@ -1,6 +1,6 @@
-**1\. Admin Endpoints (AdminController)**
+**1. Admin Endpoints (AdminController)**
 
-**Base Path:****http://localhost:8080/api/v1/admin**
+**Base Path:** **http://localhost:8080/api/v1/admin**
 
 | HTTP Method | Endpoint Path             | Description                                                          | Parameters / Notes           |
 |-------------|---------------------------|----------------------------------------------------------------------|------------------------------|
@@ -19,15 +19,13 @@ Since these arePOST requests, you cannot just paste them into a browser address 
 
 **Example using cURL:**
 
-curl -X POST **http://localhost:8080/cbs-file-generator/api/v1/admin**/scheduler/force-run \\
-
--H "X-DB-Token: **your_active_token_here**"
+curl -X POST **http://localhost:8080/cbs-file-generator/api/v1/admin/scheduler/force-run** -H "X-DB-Token: **your_active_token_here**"
 
 * * *
 
-**2\. File Generation Endpoints (FileGenerationController)**
+**2. File Generation Endpoints (FileGenerationController)**
 
-**Base Path:****http://localhost:8080/api/v1/file-generation**
+**Base Path:** **http://localhost:8080/api/v1/file-generation**
 
 | HTTP Method | Endpoint Path                 | Description                                                 | Parameters / Notes                             |
 |-------------|-------------------------------|-------------------------------------------------------------|------------------------------------------------|
@@ -43,43 +41,37 @@ curl -X POST **http://localhost:8080/cbs-file-generator/api/v1/admin**/scheduler
 **Key Parameter Details**
 
 *   **Pagination Defaults:**
-
-*   page: default0
-*   size: default10(Admin) or10(File Generation)
-
+    *   page: default0
+    *   size: default10(Admin) or10(File Generation)
 *   **Status Query values:**
-
-*   Valid values:PENDING,PROCESSING,STOPPED,FINALIZING,COMPLETED,FAILED
-
+*   **Valid values:** PENDING,PROCESSING,STOPPED,FINALIZING,COMPLETED,FAILED
 *   **Special Headers:**
-
-*   X-User-Name: Used in/generate to track who requested the file. Defaults toSYSTEM.
-*   X-DB-Token: (Handled by yourTokenAuthenticationFilter) Required for all protected paths above.
+    *   X-User-Name: Used in/generate to track who requested the file. Defaults toSYSTEM.
+    *   X-DB-Token: (Handled by yourTokenAuthenticationFilter) Required for all protected paths above.
 
 All of these endpoints require a valid DB Token in the request header.
 
 Here is the breakdown of why and how this is applied:
 
-**1\. The Global Rule**
+**1. The Global Rule**
 
 Since both theAdminController(/api/v1/admin) and theFileGenerationController(/api/v1/file-generation) fall under the/api/path, the**TokenAuthenticationFilter**will intercept**every single request**to those endpoints.
 
-**2\. Required Header**
+**2. Required Header**
 
 For any of those requests to succeed, you must include the header defined in **application.properties**:
 
-*   **Header Name:****X-DB-Token**
-*   **Value:**A valid token string that exists and is marked**ACTIVE**in **IF_DB_TOKEN**table.
+*   **Header Name:** **X-DB-Token**
+*   **Value:** A valid token string that exists and is marked **ACTIVE** in **IF_DB_TOKEN** table.
 
-**3\. The Exceptions (No Token Required)**
+**3. The Exceptions (No Token Required)**
 
 The only endpoints that**do not**require a token are the system health and info endpoints, because they are explicitly bypassed in theTokenAuthenticationFilter.java logic:
-
-*   /actuator/\*\*
-*   /health/\*\*
+*   /actuator/**
+*   /health/**
 *   /info
 
-**4\. The "Master Switch"**
+**4. The "Master Switch"**
 
 If you are testing locally and want to disable the token requirement for all endpoints, you can change this setting in your application.properties:
 
@@ -98,4 +90,4 @@ When this is false, the filter still runs, but it immediately calls filterChain.
 | /actuator/health           | NO              | Explicitly skipped in Filter logic |
 | /actuator/info             | NO              | Explicitly skipped in Filter logic |
 
-**Security Note:**In a production banking environment, it is highly recommended to keep the token validation enabled for all/api/endpoints to prevent unauthorized users from triggering massive batch jobs or cleaning up system metadata.
+**Security Note:** In a production banking environment, it is highly recommended to keep the token validation enabled for all/api/endpoints to prevent unauthorized users from triggering massive batch jobs or cleaning up system metadata.
