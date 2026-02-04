@@ -156,7 +156,7 @@ public class FileGenerationController {
 	public ResponseEntity<PagedResponse<FileGenerationResponse>> getFileGenerationsByStatus(
 			@RequestParam("status") String statusParam,
 			@RequestParam(value = "page", defaultValue = "0") int page,
-			@RequestParam(value = "size", defaultValue = "20") int size,
+			@RequestParam(value = "size", defaultValue = "10") int size,
 			@RequestParam(value = "order", defaultValue = "desc") String order) {
 
 		// 1. Convert String to Enum
