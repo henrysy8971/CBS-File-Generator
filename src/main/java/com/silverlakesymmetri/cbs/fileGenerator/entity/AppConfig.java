@@ -8,8 +8,7 @@ import java.time.LocalDateTime;
 @Table(name = "IF_APP_CONFIG")
 public class AppConfig {
 	@Id
-	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "IF_APP_CONFIG_SEQ")
-	@SequenceGenerator(name = "IF_APP_CONFIG_SEQ", sequenceName = "IF_APP_CONFIG_SEQ", allocationSize = 1)
+	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	@Column(name = "CONFIG_ID")
 	private Long id;
 

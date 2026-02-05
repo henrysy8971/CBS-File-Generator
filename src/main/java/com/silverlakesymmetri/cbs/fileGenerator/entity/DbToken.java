@@ -7,8 +7,7 @@ import java.sql.Timestamp;
 @Table(name = "IF_DB_TOKEN")
 public class DbToken {
 	@Id
-	@GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "IF_DB_TOKEN_SEQ")
-	@SequenceGenerator(name = "IF_DB_TOKEN_SEQ", sequenceName = "IF_DB_TOKEN_SEQ", allocationSize = 1)
+	@GeneratedValue(strategy = GenerationType.IDENTITY)
 	@Column(name = "TOKEN_ID")
 	private Long tokenId;
 
