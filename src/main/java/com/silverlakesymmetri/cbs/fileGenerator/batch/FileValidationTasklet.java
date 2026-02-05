@@ -23,15 +23,17 @@ import java.io.IOException;
 @StepScope
 public class FileValidationTasklet implements Tasklet {
 	private static final Logger logger = LoggerFactory.getLogger(FileValidationTasklet.class);
-	private final XsdValidator xsdValidator;
 	private final InterfaceConfigLoader interfaceConfigLoader;
-	@Value("${validation.xsd.strict-mode:false}")
-	private boolean strictMode;
+	private final XsdValidator xsdValidator;
+	private final boolean strictMode;
 
 	@Autowired
-	public FileValidationTasklet(XsdValidator xsdValidator, InterfaceConfigLoader interfaceConfigLoader) {
+	public FileValidationTasklet(XsdValidator xsdValidator,
+								 InterfaceConfigLoader interfaceConfigLoader,
+								 @Value("${validation.xsd.strict-mode:false}") boolean strictMode) {
 		this.xsdValidator = xsdValidator;
 		this.interfaceConfigLoader = interfaceConfigLoader;
+		this.strictMode = strictMode;
 	}
 
 	@Override
