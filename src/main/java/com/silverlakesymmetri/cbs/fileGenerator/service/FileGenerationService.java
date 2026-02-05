@@ -79,6 +79,14 @@ public class FileGenerationService {
 	}
 
 	/* ===================== STATUS ===================== */
+	@Retryable(
+			value = {
+					org.springframework.dao.TransientDataAccessException.class,
+					org.springframework.orm.ObjectOptimisticLockingFailureException.class
+			},
+			maxAttempts = 3,
+			backoff = @Backoff(delay = 2000)
+	)
 	@Transactional
 	public void markQueued(String jobId) {
 		validateJobId(jobId);
@@ -86,6 +94,14 @@ public class FileGenerationService {
 		transitionStatus(jobId, FileGenerationStatus.QUEUED, null);
 	}
 
+	@Retryable(
+			value = {
+					org.springframework.dao.TransientDataAccessException.class,
+					org.springframework.orm.ObjectOptimisticLockingFailureException.class
+			},
+			maxAttempts = 3,
+			backoff = @Backoff(delay = 2000)
+	)
 	@Transactional
 	public void markProcessing(String jobId) {
 		validateJobId(jobId);
