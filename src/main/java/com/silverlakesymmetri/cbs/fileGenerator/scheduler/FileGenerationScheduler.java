@@ -1,5 +1,6 @@
 package com.silverlakesymmetri.cbs.fileGenerator.scheduler;
 
+import com.silverlakesymmetri.cbs.fileGenerator.entity.FileGeneration;
 import com.silverlakesymmetri.cbs.fileGenerator.service.BatchJobLauncher;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
 import org.quartz.DisallowConcurrentExecution;
@@ -8,6 +9,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.quartz.QuartzJobBean;
 import org.springframework.stereotype.Component;
+
+import java.util.List;
+import java.util.UUID;
 
 /**
  * The background worker that polls the database for PENDING file requests.
@@ -29,19 +33,29 @@ public class FileGenerationScheduler extends QuartzJobBean {
 		logger.debug("Quartz Poller: Checking for pending file generation requests...");
 
 		try {
-			// 1. Fetch pending requests from DB
-			fileGenerationService.getPendingFileGenerations().forEach(fileGen -> {
-				try {
-					logger.info("Poller claiming request: {} for interface: {}", fileGen.getJobId(), fileGen.getInterfaceType());
+			// 1. Get PENDING jobs
+			List<FileGeneration> pendingJobs = fileGenerationService.getPendingFileGenerations();
 
+			for (FileGeneration fileGen : pendingJobs) {
+				try {
+					// 2. Try to CLAIM the job by moving it to QUEUED
+					// If another node picked this up 1ms ago, this will throw an exception
+					fileGenerationService.markQueued(fileGen.getJobId());
+
+					// 3. If we are here, we successfully claimed it. Now Launch.
+					String requestId = "POLLER-" + UUID.randomUUID();
+
+					logger.info("Poller claiming request: {} for interface: {}", fileGen.getJobId(), fileGen.getInterfaceType());
+					// Pass requestId to the updated signature we discussed
 					batchJobLauncher.launchFileGenerationJob(
 							fileGen.getJobId(),
-							fileGen.getInterfaceType()
+							fileGen.getInterfaceType(),
+							requestId
 					);
 				} catch (Exception e) {
 					logger.error("Failed to hand off JobId {} to Batch Launcher", fileGen.getJobId(), e);
 				}
-			});
+			}
 		} catch (Exception e) {
 			// Don't crash the whole scheduler, just log the DB connectivity issue
 			logger.error("Poller could not retrieve pending jobs from database", e);

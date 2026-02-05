@@ -12,6 +12,7 @@ import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.event.ContextRefreshedEvent;
@@ -131,8 +132,9 @@ public class FileGenerationController {
 		logger.info("File generation job created - JobId: {}, Interface: {}",
 				fileGen.getJobId(), interfaceType);
 
+		String requestId = MDC.get("requestId");
 		// ===== Launch batch job asynchronously =====
-		batchJobLauncher.launchFileGenerationJob(fileGen.getJobId(), interfaceType);
+		batchJobLauncher.launchFileGenerationJob(fileGen.getJobId(), interfaceType, requestId);
 
 		logger.info("File generation job queued - JobId: {}, Interface: {}",
 				fileGen.getJobId(), interfaceType);
@@ -207,6 +209,7 @@ public class FileGenerationController {
 		target.setKeysetColumn(source.getKeysetColumn());
 		target.setEnabled(source.isEnabled());
 		target.setDescription(source.getDescription());
+
 		return target;
 	}
 

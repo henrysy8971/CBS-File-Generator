@@ -7,6 +7,7 @@ import java.util.Set;
 
 public enum FileGenerationStatus {
 	PENDING,
+	QUEUED,
 	PROCESSING,
 	STOPPED,
 	FINALIZING,
@@ -18,7 +19,10 @@ public enum FileGenerationStatus {
 
 	static {
 		TRANSITIONS.put(PENDING,
-				EnumSet.of(PROCESSING, STOPPED, FAILED));
+				EnumSet.of(QUEUED, PROCESSING, STOPPED, FAILED));
+
+		TRANSITIONS.put(QUEUED,
+				EnumSet.of(PROCESSING, FAILED));
 
 		TRANSITIONS.put(PROCESSING,
 				EnumSet.of(FINALIZING, STOPPED, FAILED));

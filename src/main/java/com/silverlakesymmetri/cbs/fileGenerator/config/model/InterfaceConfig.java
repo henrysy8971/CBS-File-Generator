@@ -1,7 +1,6 @@
 package com.silverlakesymmetri.cbs.fileGenerator.config.model;
 
 import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.MAX_CHUNK_SIZE;
-import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.MIN_CHUNK_SIZE;
 
 /**
  * Configuration for a data interface used in batch file generation.
@@ -61,12 +60,6 @@ public class InterfaceConfig {
 	}
 
 	public void setChunkSize(Integer chunkSize) {
-		if (chunkSize < MIN_CHUNK_SIZE) {
-			throw new IllegalArgumentException("chunkSize must be >= " + MIN_CHUNK_SIZE);
-		}
-		if (chunkSize > MAX_CHUNK_SIZE) {
-			throw new IllegalArgumentException("chunkSize must be <= " + MAX_CHUNK_SIZE);
-		}
 		this.chunkSize = chunkSize;
 	}
 
@@ -156,8 +149,8 @@ public class InterfaceConfig {
 	public String toString() {
 		return "InterfaceConfig{" +
 				"name='" + name + '\'' +
-				", dataSourceQuery='" + dataSourceQuery + '\'' +
 				", beanioMappingFile='" + beanioMappingFile + '\'' +
+				", haveHeaders=" + haveHeaders +
 				", streamName='" + streamName + '\'' +
 				", xsdSchemaFile='" + xsdSchemaFile + '\'' +
 				", chunkSize=" + chunkSize +

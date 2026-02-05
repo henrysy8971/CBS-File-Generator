@@ -1,10 +1,10 @@
 package com.silverlakesymmetri.cbs.fileGenerator.service;
 
 import com.silverlakesymmetri.cbs.fileGenerator.config.InterfaceConfigLoader;
-import com.silverlakesymmetri.cbs.fileGenerator.config.model.InterfaceConfig;
 import com.silverlakesymmetri.cbs.fileGenerator.entity.FileGeneration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.JobParameters;
 import org.springframework.batch.core.JobParametersBuilder;
@@ -47,7 +47,9 @@ public class BatchJobLauncher {
 	}
 
 	@Async
-	public void launchFileGenerationJob(String jobId, String interfaceType) {
+	public void launchFileGenerationJob(String jobId, String interfaceType, String requestId) {
+		MDC.put("requestId", requestId);
+
 		try {
 			ensureOutputDirectoryExists();
 			Optional<FileGeneration> currentJob = fileGenerationService.getFileGeneration(jobId);
@@ -73,14 +75,8 @@ public class BatchJobLauncher {
 				return;
 			}
 
-			InterfaceConfig config = interfaceConfigLoader.getConfig(interfaceType);
-			// Determine file extension, defaulting to 'txt'
-			String extension = Optional.ofNullable(config.getOutputFileExtension()).orElse("txt");
 			// Build output file path with .part during processing
 			String outputFilePath = buildOutputFilePath(currentJob.get().getFileName());
-
-			// Get the ID from MDC (put there by the Filter)
-			String requestId = org.slf4j.MDC.get("requestId");
 
 			// Build job parameters
 			JobParameters jobParameters = new JobParametersBuilder()

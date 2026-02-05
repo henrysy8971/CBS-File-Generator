@@ -80,6 +80,13 @@ public class FileGenerationService {
 
 	/* ===================== STATUS ===================== */
 	@Transactional
+	public void markQueued(String jobId) {
+		validateJobId(jobId);
+		// This transitions PENDING -> QUEUED
+		transitionStatus(jobId, FileGenerationStatus.QUEUED, null);
+	}
+
+	@Transactional
 	public void markProcessing(String jobId) {
 		validateJobId(jobId);
 		transitionStatus(jobId, FileGenerationStatus.PROCESSING, null);

@@ -45,44 +45,58 @@ src/main/java/com/silverlakesymmetri/cbs/fileGenerator/
 │       ├── InterfaceConfig.java            ← Interface Config model
 │       └── InterfaceConfigWrapper.java     ← Wrapper for interface-config.json
 ├── constants/
-│   └── BatchMetricsConstants.java          ← REST endpoints
+│   ├── BatchMetricsConstants.java          ←
+│   └── FileGenerationConstants.java        ←
 ├── controller/
-│   └── AdminController.java                ← REST endpoints
+│   ├── AdminController.java                ← REST endpoints
 │   └── FileGenerationController.java       ← REST endpoints
 ├── dto/
+│   ├── ApiResponse.java                    ←
 │   ├── ColumnType.java                     ←
-│   ├── DynamicColumn.java                  ←
 │   ├── DynamicRecord.java                  ← Generic record holder for dynamic data
-│   ├── FileGenerationRequest.java          ← API request (interfaceType only)
+│   ├── FileGenerationRequest.java          ← API request
 │   ├── FileGenerationResponse.java         ← API response
 │   ├── LineItemDto.java                    ← Example: nested DTO
 │   ├── OrderDto.java                       ← Example: complex DTO
+│   └── PagedResponse.java                  ←
 │   └── RecordSchema.java                   ←
 ├── entity/
 │   ├── AppConfig.java                      ← Application config
 │   ├── DbToken.java                        ← Auth tokens
-│   ├── FileGeneration.java                 ← Tracks job execution
+│   ├── FileGeneration.java                 ← Tracks file generation job execution
 │   ├── LineItem.java                       ← Example: JPA entity
 │   └── Order.java                          ← Example: JPA entity
 ├── exception/
-│   └── GlobalExceptionHandler.java         ← Global exception handler
+│   ├── ConfigurationException.java         ←
+│   ├── ConflictException.java              ←
+│   ├── ForbiddenException.java             ←
+│   ├── GlobalExceptionHandler.java         ← Global exception handler
+│   ├── GoneException.java                  ←
+│   ├── LifecycleException.java             ←
+│   └── NotFoundException.java              ←
+├── health/
+│   ├── BatchQueueHealthIndicator.java      ←
+│   └── QuartzHealthIndicator.java          ←
 ├── repository/
 │   ├── AppConfigRepository.java            ← Config access
 │   ├── DbTokenRepository.java              ← Token access
 │   ├── FileGenerationRepository.java       ← Job tracking
 │   └── OrderRepository.java                ← Example: custom queries
-├── service/
-│   ├── AppConfigService.java               ← Config service
-│   ├── BatchJobLauncher.java               ← Job routing
-│   ├── FileFinalizationService.java        ← Finalizes file generation
-│   └── FileGenerationService.java          ← Business logic
 ├── scheduler/
+│   └── BatchJobLauncherJob.java            ←
 │   └── FileGenerationScheduler.java        ← Job scheduling
 │   └── MaintenanceScheduler.java           ←
 ├── security/
+│   ├── CorrelationIdFilter.java            ←
 │   ├── TokenAuthenticationFilter.java      ← Token authentication filter
 │   └── TokenValidator.java                 ← Token validator
-└── validation/
+├── service/
+│   ├── AppConfigService.java               ← App Config service
+│   ├── BatchJobLauncher.java               ← Job routing
+│   ├── FileFinalizationService.java        ← Finalizes file generation
+│   ├── FileGenerationService.java          ← Business logic
+│   └── FileGenerationStatus.java           ← 
+── validation/
     └── XsdValidator.java                   ← Optional XSD validation
 
 src/main/resources/
@@ -116,7 +130,7 @@ src/test/java/com/silverlakesymmetri/cbs/fileGenerator/  ← Unit tests
 ## Key Features
 
 ### 1. Database Token Authentication
-- Custom token-based authentication mechanism
+- Custom DB token-based authentication mechanism
 - Tokens stored in `IF_DB_TOKEN` table
 - Token validation via `TokenValidator` component
 - Automatic token expiry checking
@@ -129,9 +143,8 @@ src/test/java/com/silverlakesymmetri/cbs/fileGenerator/  ← Unit tests
 - Audit trail with created/updated dates
 
 ### 3. Spring Batch File Generation
-- **Cursor-Based Reading:** Uses `JdbcCursorItemReader` to prevent `OutOfMemory` errors when processing millions of banking records.
-- **Chunking:** Default 1000 records per transaction chunk for optimal performance and rollback capability.
-- JDBC cursor-based item reader for large datasets
+- **Memory-Efficient Batch Reading:** Implements `ItemStreamReader` with keyset pagination to process millions of records without exhausting memory, while supporting batch restarts.
+- **Chunking:** Processes 1000 records per transaction chunk by default, balancing memory usage and performance. In case of failure, only the current chunk is rolled back.
 - Configurable item processors for validation
 - Multiple output format support (CSV, XML, etc.)
 - Error handling and recovery
@@ -140,7 +153,6 @@ src/test/java/com/silverlakesymmetri/cbs/fileGenerator/  ← Unit tests
 - Database-backed job store
 - JDBC persistent scheduling
 - Support for cron expressions
-- Job clustering support (disabled by default)
 - Transaction management
 
 ### 5. XSD Validation
@@ -164,7 +176,7 @@ src/test/java/com/silverlakesymmetri/cbs/fileGenerator/  ← Unit tests
 - **Optimistic Locking:** Uses JPA `@Version` to prevent duplicate batch executions for the same jobId.
 - **Async Guarding:** The `BatchJobLauncher` performs a status pre-check to ensure only `PENDING` jobs can transition to `PROCESSING`.
 
-### 8. REST API Endpoints
+### 9. REST API Endpoints
 All endpoints (except health) require a valid `X-DB-Token` in the header.
 
 | Method | Endpoint | Description |
@@ -205,7 +217,7 @@ Tracks file generation job execution
 - INTERFACE_TYPE
 - FILE_NAME
 - FILE_PATH
-- STATUS State machine(PENDING, PROCESSING, COMPLETED, FAILED)
+- STATUS State machine(PENDING, PROCESSING, STOPPED, FINALIZING, COMPLETED, FAILED)
 - RECORD_COUNT
 - SKIPPED_RECORD_COUNT
 - INVALID_RECORD_COUNT
@@ -278,23 +290,22 @@ Comprehensive documentation for understanding and using this template:
 
 ### Getting Started
 
-
-
 - **TEMPLATE_APPLICATION_SUMMARY.md** - Complete overview of this template application, architecture, and how to use it as a starting point for new projects
 
 ### Architecture & Design
-- **BATCH_ARCHITECTURE.md** - Detailed batch processing architecture
-  - Generic vs Specialized approaches explained
-  - JPQL requirement and examples
-  - Configuration structure (interface-config.json)
-  - Data flow diagrams
-  - When to use each approach
 
 - **AGENTS.md** - Developer guidelines
   - Build and test commands
   - Code style guidelines
   - Architecture overview
   - Key components and their roles
+
+- **BATCH_ARCHITECTURE.md** - Detailed batch processing architecture
+  - Generic vs Specialized approaches explained
+  - JPQL requirement and examples
+  - Configuration structure (interface-config.json)
+  - Data flow diagrams
+  - When to use each approach
 
 ### Implementation Guides
 
@@ -305,15 +316,6 @@ Comprehensive documentation for understanding and using this template:
   - Annotation reference
   - Real-world examples (Order/LineItem)
   - Data type mapping
-
-- **DEPLOYMENT.md** - Build and deployment guide
-  - Prerequisites
-  - Building JAR (embedded Tomcat) and WAR (external Tomcat)
-  - Database setup and schema
-  - Application startup (standalone and Tomcat)
-  - Post-deployment configuration
-  - Testing with curl examples
-  - Monitoring and troubleshooting
 
 ### Configuration & Output
 

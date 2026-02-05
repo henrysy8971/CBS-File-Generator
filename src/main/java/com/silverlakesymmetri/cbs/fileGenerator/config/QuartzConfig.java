@@ -22,12 +22,12 @@ import java.util.Properties;
 import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.*;
 
 @Configuration
-public class QuartzConfiguration {
+public class QuartzConfig {
 	private final DataSource dataSource;
 	private final ConfigurableEnvironment env;
 
 	@Autowired
-	public QuartzConfiguration(DataSource dataSource, ConfigurableEnvironment env) {
+	public QuartzConfig(DataSource dataSource, ConfigurableEnvironment env) {
 		this.dataSource = dataSource;
 		this.env = env;
 	}

@@ -39,6 +39,7 @@ public class BatchJobLauncherJob implements Job {
 	public void execute(JobExecutionContext context) throws JobExecutionException {
 		JobDataMap dataMap = context.getMergedJobDataMap();
 		String interfaceType = dataMap.getString("interfaceType");
+		String requestId = "SCHED-" + UUID.randomUUID().toString();
 
 		logger.info("Quartz triggering scheduled generation for: {}", interfaceType);
 
@@ -55,7 +56,7 @@ public class BatchJobLauncherJob implements Job {
 			);
 
 			// 2. Launch the Spring Batch Job
-			batchJobLauncher.launchFileGenerationJob(fileGen.getJobId(), interfaceType);
+			batchJobLauncher.launchFileGenerationJob(fileGen.getJobId(), interfaceType, requestId);
 		} catch (Exception e) {
 			logger.error("Failed to launch scheduled job for {}", interfaceType, e);
 			throw new JobExecutionException(e);
