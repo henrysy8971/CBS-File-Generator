@@ -14,7 +14,7 @@ import java.util.List;
 @Repository
 public interface OrderRepository extends JpaRepository<Order, Long> {
 	// Fetch only IDs as Tuples for high-performance paging
-	@Query("SELECT o.orderId as id FROM Order o WHERE o.status = 'ACTIVE' ORDER BY o.orderId ASC")
+	@Query("SELECT o.orderId AS id FROM Order o WHERE o.status = 'ACTIVE' ORDER BY o.orderId ASC")
 	Page<Tuple> findActiveIds(Pageable pageable);
 
 	@Query("SELECT o.orderId as id FROM Order o WHERE o.status = 'ACTIVE' AND o.orderId > :lastId ORDER BY o.orderId ASC")

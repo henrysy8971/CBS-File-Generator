@@ -2,7 +2,7 @@
 	"interfaces": {
 		"ORDER_INTERFACE": {
 			"name": "ORDER_INTERFACE",
-			"dataSourceQuery": "SELECT o FROM Order o LEFT JOIN FETCH o.lineItems WHERE o.status = 'ACTIVE' AND (:lastId IS NULL OR o.id > :lastId) ORDER BY o.orderId",
+			"dataSourceQuery": "SELECT o FROM Order o LEFT JOIN FETCH o.lineItems WHERE o.status = 'ACTIVE' AND (:lastId IS NULL OR o.orderId > :lastId) ORDER BY o.orderId",
 			"keysetColumn": "orderId",
 			"xsdSchemaFile": "order_schema.xsd",
 			"chunkSize": 1000,
