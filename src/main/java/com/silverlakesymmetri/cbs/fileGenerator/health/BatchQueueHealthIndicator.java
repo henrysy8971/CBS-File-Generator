@@ -21,14 +21,18 @@ public class BatchQueueHealthIndicator implements HealthIndicator {
 		try {
 			long pending = fileGenerationService.getPendingCount();
 
+			// Default to UP
 			Health.Builder builder = Health.up();
+
 			if (pending > HIGH_LOAD_THRESHOLD) { // Your threshold
-				builder.status("DEGRADED"); // Custom status
+				builder.status("DEGRADED")
+						.withDetail("warning", "Queue load exceeds threshold");
 			}
 
 			return builder
 					.withDetail("pendingJobs", pending)
 					.withDetail("threshold", HIGH_LOAD_THRESHOLD)
+					.withDetail("loadPercentage", String.format("%.2f%%", ((double)pending / HIGH_LOAD_THRESHOLD) * 100))
 					.build();
 		} catch (Exception e) {
 			return Health.down(e).build();

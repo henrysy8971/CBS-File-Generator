@@ -21,13 +21,19 @@ public class QuartzHealthIndicator implements HealthIndicator {
 				return Health.down().withDetail("error", "Scheduler not initialized").build();
 			}
 
-			boolean running = scheduler.isStarted();
-			boolean standby = scheduler.isInStandbyMode();
+			boolean isShutdown = scheduler.isShutdown();
+			boolean isStarted = scheduler.isStarted();
+			boolean inStandby = scheduler.isInStandbyMode();
 
-			Health.Builder builder = running ? Health.up() : Health.down();
+			// Determine status: DOWN if shutdown, otherwise UP (even if in standby)
+			Health.Builder builder = isShutdown ? Health.down() : Health.up();
+
 			return builder
-					.withDetail("running", running)
-					.withDetail("inStandby", standby)
+					.withDetail("schedulerName", scheduler.getSchedulerName())
+					.withDetail("schedulerInstanceId", scheduler.getSchedulerInstanceId()) // Helpful for clustering
+					.withDetail("started", isStarted)
+					.withDetail("inStandby", inStandby)
+					.withDetail("isShutdown", isShutdown)
 					.build();
 		} catch (Exception e) {
 			return Health.down(e).build();
