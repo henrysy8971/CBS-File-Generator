@@ -4,10 +4,8 @@ import com.silverlakesymmetri.cbs.fileGenerator.service.BatchJobLauncher;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
 import org.quartz.DisallowConcurrentExecution;
 import org.quartz.JobExecutionContext;
-import org.quartz.JobExecutionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.quartz.QuartzJobBean;
 import org.springframework.stereotype.Component;
 
@@ -21,14 +19,13 @@ public class FileGenerationScheduler extends QuartzJobBean {
 	private final FileGenerationService fileGenerationService;
 	private final BatchJobLauncher batchJobLauncher;
 
-	@Autowired
 	public FileGenerationScheduler(FileGenerationService fileGenerationService, BatchJobLauncher batchJobLauncher) {
 		this.fileGenerationService = fileGenerationService;
 		this.batchJobLauncher = batchJobLauncher;
 	}
 
 	@Override
-	protected void executeInternal(JobExecutionContext context) throws JobExecutionException {
+	protected void executeInternal(JobExecutionContext context) {
 		logger.debug("Quartz Poller: Checking for pending file generation requests...");
 
 		try {

@@ -9,14 +9,13 @@ import org.springframework.batch.core.Job;
 import org.springframework.batch.core.JobParameters;
 import org.springframework.batch.core.JobParametersBuilder;
 import org.springframework.batch.core.launch.JobLauncher;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
 /**
  * Cluster-safe Quartz Job that triggers the Spring Batch Maintenance Job.
- *
- * @DisallowConcurrentExecution prevents the same job from starting if the
+ * <p>
+ * {@code @DisallowConcurrentExecution} prevents the same job from starting if the
  * previous week's cleanup is still running.
  */
 @Component
@@ -24,12 +23,13 @@ import org.springframework.stereotype.Component;
 public class MaintenanceQuartzJob implements org.quartz.Job {
 	private static final Logger logger = LoggerFactory.getLogger(MaintenanceQuartzJob.class);
 
-	@Autowired
-	private JobLauncher jobLauncher;
+	private final JobLauncher jobLauncher;
+	private final Job cleanupJob;
 
-	@Autowired
-	@Qualifier("cleanupJob")
-	private Job cleanupJob;
+	public MaintenanceQuartzJob(JobLauncher jobLauncher, @Qualifier("cleanupJob") Job cleanupJob) {
+		this.jobLauncher = jobLauncher;
+		this.cleanupJob = cleanupJob;
+	}
 
 	@Override
 	public void execute(JobExecutionContext context) throws JobExecutionException {

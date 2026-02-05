@@ -41,7 +41,6 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 	private String lastProcessedId = null;
 	private long totalProcessed = 0;
 	private final String keySetColumnName;
-	private String actualKeySetColumnName = null;
 	private ColumnType keyColumnType;
 	private int keySetColumnIndex = -1; // Store the index once
 
@@ -171,11 +170,11 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 				this.keySetColumnIndex = idx;
 				// We capture the ACTUAL case-sensitive alias used by Hibernate/DB
 				// This ensures tuple.get(actualKeySetColumnName) works every time.
-				this.actualKeySetColumnName = elements.get(idx).getAlias();
+				String actualKeySetColumnName = elements.get(idx).getAlias();
 
 				// Fallback for null aliases
-				if (this.actualKeySetColumnName == null) {
-					this.actualKeySetColumnName = "column_" + idx;
+				if (actualKeySetColumnName == null) {
+					actualKeySetColumnName = "column_" + idx;
 				}
 
 				// Identify the type, so we know how to bind the ":lastId" parameter

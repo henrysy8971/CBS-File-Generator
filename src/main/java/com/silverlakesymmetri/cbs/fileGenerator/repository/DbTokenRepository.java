@@ -10,5 +10,4 @@ import java.util.Optional;
 public interface DbTokenRepository extends JpaRepository<DbToken, Long> {
 	Optional<DbToken> findByTokenValueAndActiveTrue(String tokenValue);
 
-	Optional<DbToken> findByApplicationNameAndActiveTrue(String applicationName);
 }

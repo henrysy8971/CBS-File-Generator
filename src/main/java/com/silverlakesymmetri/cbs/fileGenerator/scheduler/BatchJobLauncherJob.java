@@ -8,7 +8,6 @@ import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
 import org.quartz.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -19,17 +18,22 @@ import java.util.UUID;
 public class BatchJobLauncherJob implements Job {
 	private static final Logger logger = LoggerFactory.getLogger(BatchJobLauncherJob.class);
 
-	@Autowired
-	private BatchJobLauncher batchJobLauncher;
+	private final BatchJobLauncher batchJobLauncher;
+	private final FileGenerationService fileGenerationService;
+	private final InterfaceConfigLoader interfaceConfigLoader;
+	private final String outputDir;
 
-	@Autowired
-	private FileGenerationService fileGenerationService;
-
-	@Autowired
-	private InterfaceConfigLoader interfaceConfigLoader;
-
-	@Value("${file.generation.output-directory}")
-	private String outputDir;
+	public BatchJobLauncherJob(
+			BatchJobLauncher batchJobLauncher,
+			FileGenerationService fileGenerationService,
+			InterfaceConfigLoader interfaceConfigLoader,
+			@Value("${file.generation.output-directory}") String outputDir
+	) {
+		this.batchJobLauncher = batchJobLauncher;
+		this.fileGenerationService = fileGenerationService;
+		this.interfaceConfigLoader = interfaceConfigLoader;
+		this.outputDir = outputDir;
+	}
 
 	@Override
 	public void execute(JobExecutionContext context) throws JobExecutionException {

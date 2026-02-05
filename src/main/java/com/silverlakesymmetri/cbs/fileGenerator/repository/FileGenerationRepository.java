@@ -29,43 +29,16 @@ public interface FileGenerationRepository extends JpaRepository<FileGeneration, 
 	 */
 	Page<FileGeneration> findAllByStatus(FileGenerationStatus status, Pageable pageable);
 
-	List<FileGeneration> findByStatusAndCreatedBy(FileGenerationStatus status, String createdBy);
-
 	// This utilizes the composite index (INTERFACE_TYPE, STATUS)
 	boolean existsByInterfaceTypeAndStatus(String interfaceType, FileGenerationStatus status);
-
-	/**
-	 * Dashboard Query: Find recent jobs for a specific interface.
-	 * Uses a custom JPQL query for better control.
-	 */
-	@Query("SELECT f FROM FileGeneration f WHERE f.interfaceType = :type ORDER BY f.createdDate DESC")
-	List<FileGeneration> findRecentByInterface(@Param("type") String interfaceType);
 
 	@Query("SELECT f.status FROM FileGeneration f WHERE f.jobId = :jobId")
 	Optional<FileGenerationStatus> findStatusByJobId(@Param("jobId") String jobId);
 
 	/**
-	 * Update job status without loading the entity.
-	 * Used by Batch job lifecycle transitions.
-	 */
-	@Modifying(clearAutomatically = true, flushAutomatically = true)
-	@Query("UPDATE FileGeneration f " +
-			"SET f.status = :status, " +
-			"f.errorMessage = :errorMessage, " +
-			"f.completedDate = :completedDate " +
-			"WHERE f.jobId = :jobId"
-	)
-	int updateStatus(
-			@Param("jobId") String jobId,
-			@Param("status") FileGenerationStatus status,
-			@Param("errorMessage") String errorMessage,
-			@Param("completedDate") Timestamp completedDate
-	);
-
-	/**
 	 * ATOMIC STATUS TRANSITION
 	 * Only updates the record if the current status matches the expectedStatus.
-	 * This prevents race conditions in multi-threaded environments.
+	 * This prevents race conditions in multi-threaded environments
 	 */
 	@Modifying(clearAutomatically = true, flushAutomatically = true)
 	@Query("UPDATE FileGeneration f " +
@@ -94,7 +67,7 @@ public interface FileGenerationRepository extends JpaRepository<FileGeneration, 
 			"f.invalidRecordCount =:invalid " +
 			"WHERE f.jobId =:jobId"
 	)
-	int updateMetrics(
+	void updateMetrics(
 			@Param("jobId") String jobId,
 			@Param("processed") long processed,
 			@Param("skipped") long skipped,

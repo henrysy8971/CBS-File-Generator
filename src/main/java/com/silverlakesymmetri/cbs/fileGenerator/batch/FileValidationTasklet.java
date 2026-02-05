@@ -79,24 +79,27 @@ public class FileValidationTasklet implements Tasklet {
 	 * @param file File to check
 	 * @throws ValidationException if file is missing or unreadable
 	 */
+	@SuppressWarnings("EmptyTryBlock")
 	private void ensureFileReadable(File file) throws ValidationException {
-		ensureFileReadable(file, "Input file");
-	}
+		if (file == null) {
+			throw new ValidationException("File reference is null");
+		}
 
-	private void ensureFileReadable(File file, String fileTypeDescription) throws ValidationException {
+		String desc = "Input file: " + file.getName();
+
 		if (!file.exists()) {
-			throw new ValidationException(fileTypeDescription + " missing at path: " + file.getAbsolutePath());
+			throw new ValidationException(desc + " missing at path: " + file.getAbsolutePath());
 		}
 
 		if (!file.isFile() || !file.canRead()) {
-			throw new ValidationException(fileTypeDescription + " is not a regular file: " + file.getAbsolutePath());
+			throw new ValidationException(desc + " is not a regular readable file: " + file.getAbsolutePath());
 		}
 
-		try (FileInputStream fis = new FileInputStream(file)) {
-			// Successfully opened file → readable
+		// Verify readability by opening a stream
+		try (FileInputStream ignored = new FileInputStream(file)) {
+			// File can be opened → readable
 		} catch (IOException e) {
-			throw new ValidationException(fileTypeDescription + " is not readable (permissions?) at path: " +
-					file.getAbsolutePath(), e);
+			throw new ValidationException(desc + " is not readable (permissions?) at path: " + file.getAbsolutePath(), e);
 		}
 	}
 
