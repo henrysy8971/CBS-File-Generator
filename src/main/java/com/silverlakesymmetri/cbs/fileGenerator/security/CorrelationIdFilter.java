@@ -1,6 +1,7 @@
 package com.silverlakesymmetri.cbs.fileGenerator.security;
 
 import org.slf4j.MDC;
+import org.springframework.core.Ordered;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -12,7 +13,7 @@ import java.io.IOException;
 import java.util.UUID;
 
 @Component
-public class CorrelationIdFilter extends OncePerRequestFilter {
+public class CorrelationIdFilter extends OncePerRequestFilter implements Ordered {
 	public static final String MDC_KEY = "requestId";
 	public static final String HEADER_NAME = "X-Request-Id";
 
@@ -36,5 +37,10 @@ public class CorrelationIdFilter extends OncePerRequestFilter {
 		} finally {
 			MDC.remove(MDC_KEY); // Clean up
 		}
+	}
+
+	@Override
+	public int getOrder() {
+		return Ordered.HIGHEST_PRECEDENCE;
 	}
 }
