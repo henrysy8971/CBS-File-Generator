@@ -50,11 +50,12 @@ public class FileFinalizationService {
 			return false;
 		}
 
+		Path shaPartPath = null;
 		boolean success = false;
 
 		try {
 			// 1. Generate SHA while still .part
-			Path shaPartPath = generateShaFile(partPath);
+			shaPartPath = generateShaFile(partPath);
 			if (shaPartPath == null) return false;
 
 			// 2. Move data file: .part -> final
@@ -79,8 +80,8 @@ public class FileFinalizationService {
 			logger.error("Fatal error during finalization of {}", partFilePath, e);
 			return false;
 		} finally {
-			if (!success) {
-				cleanupIfExists(partPath.resolveSibling(finalPath.getFileName().toString() + ".sha.part"));
+			if (!success && shaPartPath != null) {
+				cleanupIfExists(shaPartPath);
 			}
 		}
 	}

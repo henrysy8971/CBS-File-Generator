@@ -118,8 +118,21 @@ public class XsdValidator {
 		}
 
 		try (InputStream is = resource.getInputStream()) {
+			// SchemaFactory is NOT thread-safe, so we create a new instance per load.
+			// This is fine because this method is only called once per schema file (thanks to caching).
 			SchemaFactory factory = SchemaFactory.newInstance(XMLConstants.W3C_XML_SCHEMA_NS_URI);
+
+			// Security: Prevent DoS
 			factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
+
+			// Security: Prevent XXE during Schema parsing
+			try {
+				factory.setProperty(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+				factory.setProperty(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
+			} catch (Exception ignored) {
+				// Some older parsers don't support these specific properties
+			}
+
 			Schema schema = factory.newSchema(new StreamSource(is));
 			logger.info("XSD schema loaded and cached: {}", schemaFileName);
 			return Optional.of(schema);
@@ -141,14 +154,16 @@ public class XsdValidator {
 	 * Internal core validation logic using JAXP Source.
 	 */
 	private void validateXml(StreamSource source, Schema schema) throws Exception {
+		// Validator is NOT thread-safe. Must be created per validation request.
 		Validator validator = schema.newValidator();
 		try {
-			// XXE-safe
+			// XXE-safe properties for the validator instance
 			try {
 				validator.setProperty(XMLConstants.ACCESS_EXTERNAL_DTD, "");
 				validator.setProperty(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
 			} catch (Exception ignore) {
 				// Not all JAXP implementations support these properties
+				// Ignore if not supported
 			}
 			validator.validate(source);
 		} catch (SAXParseException e) {

@@ -10,6 +10,7 @@ import org.springframework.batch.core.JobParameters;
 import org.springframework.batch.core.JobParametersBuilder;
 import org.springframework.batch.core.launch.JobLauncher;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.scheduling.quartz.QuartzJobBean;
 import org.springframework.stereotype.Component;
 
 /**
@@ -20,7 +21,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @DisallowConcurrentExecution
-public class MaintenanceQuartzJob implements org.quartz.Job {
+public class MaintenanceQuartzJob extends QuartzJobBean {
 	private static final Logger logger = LoggerFactory.getLogger(MaintenanceQuartzJob.class);
 
 	private final JobLauncher jobLauncher;
@@ -32,16 +33,22 @@ public class MaintenanceQuartzJob implements org.quartz.Job {
 	}
 
 	@Override
-	public void execute(JobExecutionContext context) throws JobExecutionException {
+	protected void executeInternal(JobExecutionContext context) throws JobExecutionException {
 		try {
+			// Unique parameter ensures Spring Batch runs a new instance every time
 			JobParameters params = new JobParametersBuilder()
 					.addLong("time", System.currentTimeMillis())
+					.addString("type", "MAINTENANCE")
 					.toJobParameters();
 
-			logger.info("Quartz triggering cluster-safe Maintenance Cleanup Job...");
+			logger.info("Quartz triggering Maintenance Job...");
+
+			// Note: This blocks the Quartz thread until the batch job finishes.
+			// For weekly maintenance, this is acceptable.
 			jobLauncher.run(cleanupJob, params);
+
 		} catch (Exception e) {
-			logger.error("Maintenance Batch Job failed to launch", e);
+			logger.error("Maintenance Batch Job failed", e);
 			throw new JobExecutionException(e);
 		}
 	}

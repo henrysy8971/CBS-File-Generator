@@ -5,17 +5,21 @@ import com.silverlakesymmetri.cbs.fileGenerator.config.model.InterfaceConfig;
 import com.silverlakesymmetri.cbs.fileGenerator.entity.FileGeneration;
 import com.silverlakesymmetri.cbs.fileGenerator.service.BatchJobLauncher;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
-import org.quartz.*;
+import org.quartz.DisallowConcurrentExecution;
+import org.quartz.JobDataMap;
+import org.quartz.JobExecutionContext;
+import org.quartz.JobExecutionException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.quartz.QuartzJobBean;
 import org.springframework.stereotype.Component;
 
 import java.util.UUID;
 
 @Component
 @DisallowConcurrentExecution
-public class BatchJobLauncherJob implements Job {
+public class BatchJobLauncherJob extends QuartzJobBean {
 	private static final Logger logger = LoggerFactory.getLogger(BatchJobLauncherJob.class);
 
 	private final BatchJobLauncher batchJobLauncher;
@@ -36,10 +40,10 @@ public class BatchJobLauncherJob implements Job {
 	}
 
 	@Override
-	public void execute(JobExecutionContext context) throws JobExecutionException {
-		JobDataMap dataMap = context.getMergedJobDataMap();
+	protected void executeInternal(JobExecutionContext jobExecutionContext) throws JobExecutionException {
+		JobDataMap dataMap = jobExecutionContext.getMergedJobDataMap();
 		String interfaceType = dataMap.getString("interfaceType");
-		String requestId = "SCHED-" + UUID.randomUUID().toString();
+		String requestId = "SCHED-" + UUID.randomUUID();
 
 		logger.info("Quartz triggering scheduled generation for: {}", interfaceType);
 
@@ -54,6 +58,10 @@ public class BatchJobLauncherJob implements Job {
 			FileGeneration fileGen = fileGenerationService.createFileGeneration(
 					fileName, outputDir, "QUARTZ_SCHEDULER", interfaceType
 			);
+
+			// Immediately mark as QUEUED.
+			// This prevents the Poller from "stealing" this job while we are preparing to launch it.
+			fileGenerationService.markQueued(fileGen.getJobId());
 
 			// 2. Launch the Spring Batch Job
 			batchJobLauncher.launchFileGenerationJob(fileGen.getJobId(), interfaceType, requestId);

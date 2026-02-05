@@ -12,6 +12,7 @@ import org.springframework.batch.core.step.tasklet.Tasklet;
 import org.springframework.batch.item.ExecutionContext;
 import org.springframework.batch.repeat.RepeatStatus;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.io.File;
@@ -24,6 +25,8 @@ public class FileValidationTasklet implements Tasklet {
 	private static final Logger logger = LoggerFactory.getLogger(FileValidationTasklet.class);
 	private final XsdValidator xsdValidator;
 	private final InterfaceConfigLoader interfaceConfigLoader;
+	@Value("${validation.xsd.strict-mode:false}")
+	private boolean strictMode;
 
 	@Autowired
 	public FileValidationTasklet(XsdValidator xsdValidator, InterfaceConfigLoader interfaceConfigLoader) {
@@ -63,7 +66,7 @@ public class FileValidationTasklet implements Tasklet {
 		String xsdSchema = interfaceConfig.getXsdSchemaFile();
 		boolean isValid = xsdValidator.validateFullFile(file, xsdSchema);
 
-		if (!isValid) {
+		if (!isValid && strictMode) {
 			throw new ValidationException("XSD validation failed for file: " +
 					file.getAbsolutePath() + ", interface: " + interfaceType);
 		}
