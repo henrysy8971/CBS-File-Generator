@@ -3,7 +3,7 @@
 		"ORDER_INTERFACE": {
 			"name": "ORDER_INTERFACE",
 			"dataSourceQuery": "SELECT o FROM Order o LEFT JOIN FETCH o.lineItems WHERE o.status = 'ACTIVE' AND (:lastId IS NULL OR o.orderId > :lastId) ORDER BY o.orderId",
-			"keysetColumn": "orderId",
+			"keySetColumn": "orderId",
 			"xsdSchemaFile": "order_schema.xsd",
 			"chunkSize": 1000,
 			"outputFormat": "XML",

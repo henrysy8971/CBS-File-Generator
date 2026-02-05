@@ -4,7 +4,7 @@ import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationC
 
 /**
  * Configuration for a data interface used in batch file generation.
- * Designed to be restart-safe and compatible with keyset-pagination readers.
+ * Designed to be restart-safe and compatible with keySet-pagination readers.
  */
 public class InterfaceConfig {
 	/* ================= Defaults ================= */
@@ -16,7 +16,7 @@ public class InterfaceConfig {
 	private String dataSourceQuery;
 
 	/* ================= Optional (Mutable) ================= */
-	private String beanioMappingFile;
+	private String beanIoMappingFile;
 	private boolean haveHeaders = false;
 	private String streamName;
 	private String xsdSchemaFile;
@@ -25,7 +25,7 @@ public class InterfaceConfig {
 	private String outputFileExtension = DEFAULT_FILE_EXTENSION;
 	private String rootElement;
 	private String namespace;
-	private String keysetColumn;
+	private String keySetColumn;
 	private boolean enabled = true;
 	private String description;
 
@@ -79,12 +79,12 @@ public class InterfaceConfig {
 		this.outputFileExtension = outputFileExtension != null ? outputFileExtension : DEFAULT_FILE_EXTENSION;
 	}
 
-	public String getBeanioMappingFile() {
-		return beanioMappingFile;
+	public String getBeanIoMappingFile() {
+		return beanIoMappingFile;
 	}
 
-	public void setBeanioMappingFile(String beanioMappingFile) {
-		this.beanioMappingFile = beanioMappingFile;
+	public void setBeanIoMappingFile(String beanIoMappingFile) {
+		this.beanIoMappingFile = beanIoMappingFile;
 	}
 
 	public boolean isHaveHeaders() {
@@ -127,12 +127,12 @@ public class InterfaceConfig {
 		this.namespace = namespace;
 	}
 
-	public String getKeysetColumn() {
-		return keysetColumn;
+	public String getKeySetColumn() {
+		return keySetColumn;
 	}
 
-	public void setKeysetColumn(String keysetColumn) {
-		this.keysetColumn = keysetColumn;
+	public void setKeySetColumn(String keySetColumn) {
+		this.keySetColumn = keySetColumn;
 	}
 
 	public String getDescription() {
@@ -149,7 +149,7 @@ public class InterfaceConfig {
 	public String toString() {
 		return "InterfaceConfig{" +
 				"name='" + name + '\'' +
-				", beanioMappingFile='" + beanioMappingFile + '\'' +
+				", beanioMappingFile='" + beanIoMappingFile + '\'' +
 				", haveHeaders=" + haveHeaders +
 				", streamName='" + streamName + '\'' +
 				", xsdSchemaFile='" + xsdSchemaFile + '\'' +
@@ -158,7 +158,7 @@ public class InterfaceConfig {
 				", outputFileExtension='" + outputFileExtension + '\'' +
 				", rootElement='" + rootElement + '\'' +
 				", namespace='" + namespace + '\'' +
-				", keysetColumn='" + keysetColumn + '\'' +
+				", keySetColumn='" + keySetColumn + '\'' +
 				", enabled=" + enabled +
 				", description='" + description + '\'' +
 				'}';

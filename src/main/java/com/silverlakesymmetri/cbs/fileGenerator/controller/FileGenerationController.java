@@ -197,7 +197,7 @@ public class FileGenerationController {
 	private InterfaceConfig mapInterfaceDetailsToResponse(InterfaceConfig source) {
 		InterfaceConfig target = new InterfaceConfig();
 		target.setName(source.getName());
-		target.setBeanioMappingFile(source.getBeanioMappingFile());
+		target.setBeanIoMappingFile(source.getBeanIoMappingFile());
 		target.setHaveHeaders(source.isHaveHeaders());
 		target.setStreamName(source.getStreamName());
 		target.setXsdSchemaFile(source.getXsdSchemaFile());
@@ -206,7 +206,7 @@ public class FileGenerationController {
 		target.setOutputFileExtension(source.getOutputFileExtension());
 		target.setRootElement(source.getRootElement());
 		target.setNamespace(source.getNamespace());
-		target.setKeysetColumn(source.getKeysetColumn());
+		target.setKeySetColumn(source.getKeySetColumn());
 		target.setEnabled(source.isEnabled());
 		target.setDescription(source.getDescription());
 

@@ -45,7 +45,7 @@ public class BeanIOFormatWriter implements OutputFormatWriter {
 	public void init(String outputFilePath, String interfaceType) throws Exception {
 
 		InterfaceConfig interfaceConfig = interfaceConfigLoader.getConfig(interfaceType);
-		if (interfaceConfig == null || interfaceConfig.getBeanioMappingFile() == null) {
+		if (interfaceConfig == null || interfaceConfig.getBeanIoMappingFile() == null) {
 			throw new IllegalArgumentException("Invalid BeanIO interfaceConfig for: " + interfaceType);
 		}
 
@@ -68,7 +68,7 @@ public class BeanIOFormatWriter implements OutputFormatWriter {
 				new FileOutputStream(outputFile, append), StandardCharsets.UTF_8));
 
 		try {
-			StreamFactory streamFactory = getOrCreateFactory(interfaceConfig.getBeanioMappingFile());
+			StreamFactory streamFactory = getOrCreateFactory(interfaceConfig.getBeanIoMappingFile());
 			String streamName = interfaceConfig.getStreamName();
 
 			this.beanIOWriter = streamFactory.createWriter(streamName, bufferedWriter);

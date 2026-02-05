@@ -67,7 +67,7 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 
 		this.interfaceType = interfaceConfig.getName();
 		this.queryString = interfaceConfig.getDataSourceQuery();
-		this.keySetColumnName = interfaceConfig.getKeysetColumn();
+		this.keySetColumnName = interfaceConfig.getKeySetColumn();
 	}
 
 	@Override
