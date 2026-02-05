@@ -172,7 +172,7 @@ public class FileGenerationController {
 		Page<FileGeneration> resultsPage = fileGenerationService.getFilesByStatus(status, pageRequest);
 
 		// 4. Map to the PagedResponse DTO
-		return ResponseEntity.ok(mapFileGenerationDetailsToReponse(resultsPage));
+		return ResponseEntity.ok(mapFileGenerationDetailsToResponse(resultsPage));
 	}
 
 	// ==================== Available Interfaces ====================
@@ -281,7 +281,7 @@ public class FileGenerationController {
 		return response;
 	}
 
-	private PagedResponse<FileGenerationResponse> mapFileGenerationDetailsToReponse(Page<FileGeneration> page) {
+	private PagedResponse<FileGenerationResponse> mapFileGenerationDetailsToResponse(Page<FileGeneration> page) {
 		// 1. Convert the Entities to DTOs using your existing build method
 		List<FileGenerationResponse> dtoList = page.getContent().stream()
 				.map(fileGen -> buildFileGenerationResponse(
