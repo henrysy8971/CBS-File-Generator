@@ -61,7 +61,8 @@ public class BatchJobLauncher {
 
 			// Only allow PENDING jobs to start.
 			// This prevents double-clicks from triggering multiple Batch runs.
-			if (!FileGenerationStatus.PENDING.equals(currentJob.get().getStatus())) {
+			FileGenerationStatus currentStatus = currentJob.get().getStatus();
+			if (currentStatus != FileGenerationStatus.PENDING && currentStatus != FileGenerationStatus.QUEUED) {
 				logger.warn("Job launch aborted: JobId {} is already in status {}",
 						jobId, currentJob.get().getStatus());
 				return;
@@ -102,8 +103,9 @@ public class BatchJobLauncher {
 		} catch (Exception e) {
 			logger.error("Critical failure launching Batch Job {}", jobId, e);
 			fileGenerationService.markFailed(jobId, "Launch Failure: " + e.getMessage());
+		} finally {
+			MDC.clear(); // Clean up the thread
 		}
-
 	}
 
 	/**
