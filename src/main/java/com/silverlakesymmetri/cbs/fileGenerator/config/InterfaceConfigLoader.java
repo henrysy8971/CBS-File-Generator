@@ -14,7 +14,6 @@ import java.io.InputStream;
 import java.util.Collections;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.*;
@@ -60,7 +59,7 @@ public class InterfaceConfigLoader {
 				throw new IllegalStateException("interface-config.json not found on classpath");
 			}
 
-			logger.info("Loading interface configurations from {}", configResource.getFilename());
+			logger.info("Reloading interface configurations from classpath resource [{}]", configResource.getFilename());
 
 			try (InputStream is = configResource.getInputStream()) {
 				InterfaceConfigWrapper wrapper = objectMapper.readValue(is, InterfaceConfigWrapper.class);
@@ -71,32 +70,43 @@ public class InterfaceConfigLoader {
 				}
 
 				Map<String, InterfaceConfig> loaded = wrapper.getInterfaces();
+				Map<String, InterfaceConfig> normalized =
+						loaded.entrySet().stream()
+								.collect(Collectors.toMap(
+										e -> e.getKey().trim(),
+										Map.Entry::getValue
+								));
+
+				if (normalized.size() != loaded.size()) {
+					throw new IllegalStateException("Duplicate interface keys after normalization");
+				}
 
 				// 1. Perform strict validation
-				applyDefaults(loaded);
-				validateConfigs(loaded);
+				validateConfigs(normalized);
+				applyDefaults(normalized);
 
 				// 2. Atomic Swap
 				// This assignment is atomic. Threads reading 'configs' will either see
 				// the old map or the completely new map, never a partial state.
-				this.configs = Collections.unmodifiableMap(loaded);
+				this.configs = Collections.unmodifiableMap(normalized);
 
 				logSummary(this.configs);
 			} catch (Exception e) {
 				// If this was a manual reload, rethrow so the Controller can return 500 Error
 				// and the old config remains active.
 				logger.error("Failed to load interface-config.json", e);
-				throw new RuntimeException("Failed to load interface-config.json", e);
+				throw new IllegalStateException("Failed to load interface-config.json", e);
 			}
 		}
 	}
 
 	/* ================= Public API ================= */
 	public InterfaceConfig getConfig(String interfaceType) {
-		if (interfaceType == null || interfaceType.trim().isEmpty()) {
+		String key = interfaceType == null ? "" : interfaceType.trim();
+		if (key.isEmpty()) {
 			throw new IllegalArgumentException("interfaceType cannot be null or empty");
 		}
-		InterfaceConfig config = configs.get(interfaceType);
+		InterfaceConfig config = configs.get(key);
 		if (config == null) {
 			throw new IllegalArgumentException("No interface configuration found for: " + interfaceType);
 		}
@@ -104,20 +114,21 @@ public class InterfaceConfigLoader {
 	}
 
 	public boolean interfaceExists(String interfaceType) {
-		return interfaceType != null && configs.containsKey(interfaceType);
+		String key = interfaceType == null ? "" : interfaceType.trim();
+		return !key.isEmpty() && configs.containsKey(key);
 	}
 
 	public Map<String, InterfaceConfig> getAllConfigs() {
-		return Collections.unmodifiableMap(configs);
+		return configs;
 	}
 
 	public Map<String, InterfaceConfig> getEnabledConfigs() {
 		return configs.entrySet()
 				.stream()
 				.filter(e -> e.getValue().isEnabled())
-				.collect(Collectors.toMap(
-						Map.Entry::getKey,
-						Map.Entry::getValue
+				.collect(Collectors.collectingAndThen(
+						Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue),
+						Collections::unmodifiableMap
 				));
 	}
 
@@ -128,6 +139,10 @@ public class InterfaceConfigLoader {
 		}
 
 		configs.forEach((key, cfg) -> {
+			if (key.isEmpty()) {
+				throw new IllegalStateException("Interface key cannot be null or empty");
+			}
+
 			if (cfg == null) {
 				throw new IllegalStateException("Config [" + key + "] is null");
 			}
@@ -152,11 +167,16 @@ public class InterfaceConfigLoader {
 
 			// C. Validate Chunk Size
 			if (cfg.getChunkSize() == null || cfg.getChunkSize() < MIN_CHUNK_SIZE || cfg.getChunkSize() > MAX_CHUNK_SIZE) {
-				throw new IllegalStateException("Config Error [" + key + "]: 'chunkSize' must be between MIN_CHUNK_SIZE and MAX_CHUNK_SIZE");
+				throw new IllegalStateException(
+						String.format(
+								"Config Error [%s]: 'chunkSize' must be between %d and %d",
+								key, MIN_CHUNK_SIZE, MAX_CHUNK_SIZE
+						)
+				);
 			}
 
 			// D. Metadata Consistency
-			if ("XML".equalsIgnoreCase(Optional.ofNullable(cfg.getOutputFormat()).map(Enum::name).orElse("")) &&
+			if (cfg.getOutputFormat() == InterfaceConfig.OutputFormat.XML &&
 					(cfg.getXsdSchemaFile() == null || cfg.getXsdSchemaFile().trim().isEmpty())) {
 				logger.warn("Config [{}]: XML format selected but no XSD schema provided for validation", key);
 			}
