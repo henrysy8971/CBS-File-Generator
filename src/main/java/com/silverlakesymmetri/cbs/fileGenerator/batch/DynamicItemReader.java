@@ -68,6 +68,15 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 		this.interfaceType = interfaceConfig.getName();
 		this.queryString = interfaceConfig.getDataSourceQuery();
 		this.keySetColumnName = interfaceConfig.getKeySetColumn();
+
+		// VALIDATION: Check for infinite loop risk
+		if (this.keySetColumnName != null && !this.queryString.contains(":lastId")) {
+			throw new IllegalArgumentException(String.format(
+					"Configuration Error for [%s]: 'keySetColumn' is defined as '%s', but the SQL query is missing the ':lastId' parameter. " +
+							"Pagination will loop infinitely. Please add 'AND (:lastId IS NULL OR col > :lastId)' to the query.",
+					interfaceType, keySetColumnName
+			));
+		}
 	}
 
 	@Override
@@ -92,27 +101,36 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 			totalProcessed++;
 			return convertRowToRecord(row);
 		} catch (NonTransientResourceException e) {
-			throw e; // do not retry
+			throw e;
 		} catch (Exception e) {
 			logger.error("Transient read error for interface {}", interfaceType, e);
-			throw new RuntimeException(e); // retryable
+			throw new RuntimeException(e);
 		}
 	}
 
 	private void fetchNextPage() {
 		Query query = entityManager.createNativeQuery(queryString, Tuple.class);
+
+		// Use standard JPA hint, but also try Hibernate specific if needed
 		query.setHint("javax.persistence.jdbc.fetch_size", pageSize);
 		query.setMaxResults(pageSize);
 
-		if (lastProcessedId != null && queryString.contains(":lastId")) {
-			Object param = lastProcessedId;
-			if (keyColumnType != null && keyColumnType == ColumnType.DECIMAL) {
-				try {
-					param = Long.valueOf(lastProcessedId);
-				} catch (NumberFormatException e) {
-					throw new NonTransientResourceException("Invalid numeric lastProcessedId=" + lastProcessedId, e);
+		// Handle Parameter Binding
+		if (queryString.contains(":lastId")) {
+			Object param = null;
+
+			if (lastProcessedId != null) {
+				param = lastProcessedId;
+				// Convert to Long if the schema detected it as a Number previously
+				if (keyColumnType != null && keyColumnType == ColumnType.DECIMAL) {
+					try {
+						param = Long.valueOf(lastProcessedId);
+					} catch (NumberFormatException e) {
+						throw new NonTransientResourceException("Invalid numeric lastProcessedId=" + lastProcessedId, e);
+					}
 				}
 			}
+			// If lastProcessedId is null, we bind NULL (First Page)
 			query.setParameter("lastId", param);
 		}
 
@@ -124,6 +142,9 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 			currentPage = null;
 			return;
 		}
+
+		// Assign results to instance variable
+		this.currentPage = tuples;
 
 		// Initialize schema from the first TUPLE if not already done
 		if (sharedSchema == null) {
@@ -161,7 +182,7 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 		// 2. Create the immutable Shared Schema
 		this.sharedSchema = new RecordSchema(names, types);
 
-		// 3. Resolve Keyset Configuration (The most important part for Paging)
+		// 3. Resolve KeySet Configuration (The most important part for Paging)
 		if (keySetColumnName != null) {
 			// Lookup the index based on the JSON configuration name
 			int idx = sharedSchema.getIndex(keySetColumnName.toLowerCase());
@@ -180,11 +201,11 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 				// Identify the type, so we know how to bind the ":lastId" parameter
 				this.keyColumnType = sharedSchema.getType(idx);
 
-				logger.info("Keyset Column Resolved - Configuration: [{}], Database Alias: [{}], Index: [{}], Type: [{}]",
+				logger.info("KeySet Column Resolved - Configuration: [{}], Database Alias: [{}], Index: [{}], Type: [{}]",
 						keySetColumnName, actualKeySetColumnName, idx, keyColumnType);
 			} else {
 				// If this happens, the batch will loop infinitely on the first page!
-				logger.error("CRITICAL CONFIGURATION ERROR: Keyset column '{}' not found in SQL results for interface '{}'. " +
+				logger.error("CRITICAL CONFIGURATION ERROR: KeySet column '{}' not found in SQL results for interface '{}'. " +
 								"Verify that your SELECT statement includes this column.",
 						keySetColumnName, interfaceType);
 			}
