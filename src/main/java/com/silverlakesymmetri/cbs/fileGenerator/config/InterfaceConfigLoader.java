@@ -27,9 +27,11 @@ public class InterfaceConfigLoader {
 	private Resource configResource;
 
 	private final ObjectMapper objectMapper;
+	private final Object reloadLock = new Object(); // Lock for synchronization
 
 	/**
 	 * Immutable map of interfaceType -> InterfaceConfig
+	 * Volatile ensures that once 'configs' is updated, all threads see the new map immediately.
 	 */
 	private volatile Map<String, InterfaceConfig> configs = Collections.emptyMap();
 
@@ -38,28 +40,54 @@ public class InterfaceConfigLoader {
 	}
 
 	@PostConstruct
-	public void loadConfigs() {
-		if (configResource == null || !configResource.exists()) {
-			throw new IllegalStateException("interface-config.json not found on classpath");
+	public void init() {
+		// Load on startup. If this fails, the app should crash (Fail-Fast).
+		try {
+			refreshConfigs();
+		} catch (Exception e) {
+			logger.error("CRITICAL: Failed to load initial configuration.", e);
+			throw new IllegalStateException("Startup failed: Invalid interface configuration", e);
 		}
+	}
 
-		try (InputStream is = configResource.getInputStream()) {
-			InterfaceConfigWrapper wrapper = objectMapper.readValue(is, InterfaceConfigWrapper.class);
-			if (wrapper == null || wrapper.getInterfaces() == null || wrapper.getInterfaces().isEmpty()) {
-				throw new IllegalStateException("No interfaces defined in interface-config.json");
+	/**
+	 * Public method called by AdminController to hot-reload settings.
+	 * Synchronized to prevent multiple admins from triggering a race condition.
+	 */
+	public void refreshConfigs() {
+		synchronized (reloadLock) {
+			if (configResource == null || !configResource.exists()) {
+				throw new IllegalStateException("interface-config.json not found on classpath");
 			}
 
-			Map<String, InterfaceConfig> loaded = wrapper.getInterfaces();
+			logger.info("Loading interface configurations from {}", configResource.getFilename());
 
-			// 1. Perform strict validation
-			validateConfigs(loaded);
-			applyDefaults(loaded);
+			try (InputStream is = configResource.getInputStream()) {
+				InterfaceConfigWrapper wrapper = objectMapper.readValue(is, InterfaceConfigWrapper.class);
+				if (wrapper == null || wrapper.getInterfaces() == null || wrapper.getInterfaces().isEmpty()) {
+					// If reloading, we might want to keep the old config instead of crashing,
+					// but throwing here alerts the admin that the file is empty.
+					throw new IllegalStateException("No interfaces defined in interface-config.json");
+				}
 
-			this.configs = Collections.unmodifiableMap(loaded);
-			logSummary(this.configs);
-		} catch (Exception e) {
-			logger.error("Failed to load interface-config.json", e);
-			throw new IllegalStateException("Startup failed: Invalid interface configuration");
+				Map<String, InterfaceConfig> loaded = wrapper.getInterfaces();
+
+				// 1. Perform strict validation
+				applyDefaults(loaded);
+				validateConfigs(loaded);
+
+				// 2. Atomic Swap
+				// This assignment is atomic. Threads reading 'configs' will either see
+				// the old map or the completely new map, never a partial state.
+				this.configs = Collections.unmodifiableMap(loaded);
+
+				logSummary(this.configs);
+			} catch (Exception e) {
+				// If this was a manual reload, rethrow so the Controller can return 500 Error
+				// and the old config remains active.
+				logger.error("Failed to load interface-config.json", e);
+				throw new RuntimeException("Failed to load interface-config.json", e);
+			}
 		}
 	}
 
@@ -105,8 +133,10 @@ public class InterfaceConfigLoader {
 			}
 
 			// A. Check for Required Fields
-			if (cfg.getDataSourceQuery() == null || cfg.getDataSourceQuery().trim().isEmpty()) {
-				throw new IllegalStateException("Config Error [" + key + "]: 'dataSourceQuery' is required");
+			if (cfg.isDynamic()) {
+				if (cfg.getDataSourceQuery() == null || cfg.getDataSourceQuery().trim().isEmpty()) {
+					throw new IllegalStateException("Config Error [" + key + "]: 'dataSourceQuery' is required");
+				}
 			}
 
 			// B. Validate File Extension

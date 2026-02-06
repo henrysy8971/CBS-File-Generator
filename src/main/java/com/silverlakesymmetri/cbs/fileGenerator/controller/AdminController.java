@@ -76,7 +76,7 @@ public class AdminController {
 	@PostMapping("/reload-config")
 	public ResponseEntity<String> reloadConfig() {
 		logger.info("Admin request: Reloading interface-config.json from classpath");
-		interfaceConfigLoader.loadConfigs();
+		interfaceConfigLoader.refreshConfigs();
 		int count = interfaceConfigLoader.getAllConfigs().size();
 		return ResponseEntity.ok("Configuration reloaded successfully. Total interfaces: " + count);
 	}

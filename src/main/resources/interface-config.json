@@ -2,14 +2,15 @@
 	"interfaces": {
 		"ORDER_INTERFACE": {
 			"name": "ORDER_INTERFACE",
-			"dataSourceQuery": "SELECT o FROM Order o LEFT JOIN FETCH o.lineItems WHERE o.status = 'ACTIVE' AND (:lastId IS NULL OR o.orderId > :lastId) ORDER BY o.orderId",
+			"dataSourceQuery": null,
 			"keySetColumn": "orderId",
 			"xsdSchemaFile": "order_schema.xsd",
 			"chunkSize": 1000,
 			"outputFormat": "XML",
 			"outputFileExtension": "xml",
-			"enabled": false,
-			"description": "Order interface - uses BeanIO mapping and optional XSD validation"
+			"enabled": true,
+			"dynamic": false,
+			"description": "Generate Orders Report in XML format"
 		}
 	}
 }

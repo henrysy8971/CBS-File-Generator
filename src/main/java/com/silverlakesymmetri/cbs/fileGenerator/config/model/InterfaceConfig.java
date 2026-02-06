@@ -27,6 +27,7 @@ public class InterfaceConfig {
 	private String namespace;
 	private String keySetColumn;
 	private boolean enabled = true;
+	private boolean dynamic = false;
 	private String description;
 
 	/* ================= Getters / Setters ================= */
@@ -53,6 +54,14 @@ public class InterfaceConfig {
 
 	public void setEnabled(boolean enabled) {
 		this.enabled = enabled;
+	}
+
+	public boolean isDynamic() {
+		return dynamic;
+	}
+
+	public void setDynamic(boolean dynamic) {
+		this.dynamic = dynamic;
 	}
 
 	public Integer getChunkSize() {
@@ -160,6 +169,7 @@ public class InterfaceConfig {
 				", namespace='" + namespace + '\'' +
 				", keySetColumn='" + keySetColumn + '\'' +
 				", enabled=" + enabled +
+				", dynamic=" + dynamic +
 				", description='" + description + '\'' +
 				'}';
 	}
