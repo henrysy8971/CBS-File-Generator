@@ -13,7 +13,7 @@
 			"outputFormat": "XML",
 			"outputFileExtension": "xml",
 			"rootElement": null,
-			"namespace": true,
+			"namespace": null,
 			"description": "Generate Orders Report in XML format"
 		}
 	}
