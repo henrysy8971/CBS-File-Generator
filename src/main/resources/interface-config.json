@@ -5,7 +5,6 @@
 			"dataSourceQuery": null,
 			"keySetColumn": "orderId",
 			"xsdSchemaFile": "order_schema.xsd",
-			"chunkSize": 1000,
 			"outputFormat": "XML",
 			"outputFileExtension": "xml",
 			"enabled": true,

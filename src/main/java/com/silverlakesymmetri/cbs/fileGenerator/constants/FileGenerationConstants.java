@@ -21,8 +21,6 @@ public final class FileGenerationConstants {
 	public static final String HTTP_HEADER_METADATA_KEY_USER_NAME = "X-User-Name";
 	public static final String HTTP_HEADER_METADATA_USER_NAME_DEFAULT = "SYSTEM";
 	public static final int INTERFACE_TYPE_LENGTH = 50;
-	public static final int MIN_CHUNK_SIZE = 1;
-	public static final int MAX_CHUNK_SIZE = 10000;
 	public static final Set<String> ALLOWED_EXTENSIONS = new HashSet<>(Arrays.asList("xml", "csv", "txt", "json", "dat"));
 
 	/**

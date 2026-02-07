@@ -201,7 +201,6 @@ public class FileGenerationController {
 		target.setHaveHeaders(source.isHaveHeaders());
 		target.setStreamName(source.getStreamName());
 		target.setXsdSchemaFile(source.getXsdSchemaFile());
-		target.setChunkSize(source.getChunkSize());
 		target.setOutputFormat(source.getOutputFormat());
 		target.setOutputFileExtension(source.getOutputFileExtension());
 		target.setRootElement(source.getRootElement());

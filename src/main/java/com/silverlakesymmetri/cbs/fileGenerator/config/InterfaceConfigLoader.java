@@ -165,17 +165,7 @@ public class InterfaceConfigLoader {
 						"'. Allowed: " + ALLOWED_EXTENSIONS);
 			}
 
-			// C. Validate Chunk Size
-			if (cfg.getChunkSize() == null || cfg.getChunkSize() < MIN_CHUNK_SIZE || cfg.getChunkSize() > MAX_CHUNK_SIZE) {
-				throw new IllegalStateException(
-						String.format(
-								"Config Error [%s]: 'chunkSize' must be between %d and %d",
-								key, MIN_CHUNK_SIZE, MAX_CHUNK_SIZE
-						)
-				);
-			}
-
-			// D. Metadata Consistency
+			// C. Metadata Consistency
 			if (cfg.getOutputFormat() == InterfaceConfig.OutputFormat.XML &&
 					(cfg.getXsdSchemaFile() == null || cfg.getXsdSchemaFile().trim().isEmpty())) {
 				logger.warn("Config [{}]: XML format selected but no XSD schema provided for validation", key);
@@ -198,11 +188,10 @@ public class InterfaceConfigLoader {
 
 		configs.forEach((key, cfg) ->
 				logger.info(
-						"Interface [{}] enabled={} format={} chunk={} schema={}",
+						"Interface [{}] enabled={} format={} schema={}",
 						key,
 						cfg.isEnabled(),
 						cfg.getOutputFormat(),
-						cfg.getChunkSize(),
 						cfg.getXsdSchemaFile()
 				)
 		);

@@ -7,29 +7,29 @@
     <!-- LINE ITEM Record Type (Child) -->
     <xs:complexType name="LineItemType">
         <xs:sequence>
-            <xs:element name="lineItemId" type="xs:string" minOccurs="1" maxOccurs="1"/>
-            <xs:element name="productId" type="xs:string" minOccurs="1" maxOccurs="1"/>
-            <xs:element name="productName" type="xs:string" minOccurs="0" maxOccurs="1"/>
-            <xs:element name="quantity" type="xs:integer" minOccurs="0" maxOccurs="1"/>
-            <xs:element name="unitPrice" type="xs:decimal" minOccurs="0" maxOccurs="1"/>
-            <xs:element name="lineAmount" type="xs:decimal" minOccurs="0" maxOccurs="1"/>
-            <xs:element name="status" type="xs:string" minOccurs="0" maxOccurs="1" default="ACTIVE"/>
+            <xs:element name="lineItemId" type="xs:string"/>
+            <xs:element name="productId" type="xs:string"/>
+            <xs:element name="productName" type="xs:string" minOccurs="0"/>
+            <xs:element name="quantity" type="xs:integer" minOccurs="0"/>
+            <xs:element name="unitPrice" type="xs:decimal" minOccurs="0"/>
+            <xs:element name="lineAmount" type="xs:decimal" minOccurs="0"/>
+            <xs:element name="status" type="xs:string" minOccurs="0" default="ACTIVE"/>
         </xs:sequence>
     </xs:complexType>
 
     <!-- ORDER Record Type (Parent) with nested LineItems -->
     <xs:complexType name="OrderType">
         <xs:sequence>
-            <xs:element name="orderId" type="xs:string" minOccurs="1" maxOccurs="1"/>
-            <xs:element name="orderNumber" type="xs:string" minOccurs="1" maxOccurs="1"/>
-            <xs:element name="orderAmount" type="xs:decimal" minOccurs="0" maxOccurs="1"/>
-            <xs:element name="orderDate" type="xs:string" minOccurs="0" maxOccurs="1"/>
-            <xs:element name="customerId" type="xs:string" minOccurs="0" maxOccurs="1"/>
-            <xs:element name="customerName" type="xs:string" minOccurs="0" maxOccurs="1"/>
-            <xs:element name="status" type="xs:string" minOccurs="0" maxOccurs="1" default="ACTIVE"/>
+            <xs:element name="orderId" type="xs:string"/>
+            <xs:element name="orderNumber" type="xs:string"/>
+            <xs:element name="orderAmount" type="xs:decimal" minOccurs="0"/>
+            <xs:element name="orderDate" type="xs:string" minOccurs="0"/>
+            <xs:element name="customerId" type="xs:string" minOccurs="0"/>
+            <xs:element name="customerName" type="xs:string" minOccurs="0"/>
+            <xs:element name="status" type="xs:string" minOccurs="0" default="ACTIVE"/>
             
             <!-- Nested LineItems container -->
-            <xs:element name="lineItems" minOccurs="0" maxOccurs="1">
+            <xs:element name="lineItems" minOccurs="0">
                 <xs:complexType>
                     <xs:sequence>
                         <xs:element name="lineItem" type="tns:LineItemType" 
@@ -44,7 +44,7 @@
     <xs:element name="orderInterface">
         <xs:complexType>
             <xs:sequence>
-                <xs:element name="orders" minOccurs="0" maxOccurs="1">
+                <xs:element name="orders" minOccurs="0">
                     <xs:complexType>
                         <xs:sequence>
                             <xs:element name="order" type="tns:OrderType" 
@@ -52,7 +52,7 @@
                         </xs:sequence>
                     </xs:complexType>
                 </xs:element>
-                <xs:element name="totalRecords" type="xs:integer" minOccurs="0" maxOccurs="1"/>
+                <xs:element name="totalRecords" type="xs:integer" minOccurs="0"/>
             </xs:sequence>
         </xs:complexType>
     </xs:element>

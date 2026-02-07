@@ -1,7 +1,5 @@
 package com.silverlakesymmetri.cbs.fileGenerator.config.model;
 
-import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.MAX_CHUNK_SIZE;
-
 /**
  * Configuration for a data interface used in batch file generation.
  * Designed to be restart-safe and compatible with keySet-pagination readers.
@@ -20,7 +18,6 @@ public class InterfaceConfig {
 	private boolean haveHeaders = false;
 	private String streamName;
 	private String xsdSchemaFile;
-	private Integer chunkSize = MAX_CHUNK_SIZE;
 	private OutputFormat outputFormat = DEFAULT_OUTPUT_FORMAT;
 	private String outputFileExtension = DEFAULT_FILE_EXTENSION;
 	private String rootElement;
@@ -62,14 +59,6 @@ public class InterfaceConfig {
 
 	public void setDynamic(boolean dynamic) {
 		this.dynamic = dynamic;
-	}
-
-	public Integer getChunkSize() {
-		return chunkSize;
-	}
-
-	public void setChunkSize(Integer chunkSize) {
-		this.chunkSize = chunkSize;
 	}
 
 	public OutputFormat getOutputFormat() {
@@ -162,7 +151,6 @@ public class InterfaceConfig {
 				", haveHeaders=" + haveHeaders +
 				", streamName='" + streamName + '\'' +
 				", xsdSchemaFile='" + xsdSchemaFile + '\'' +
-				", chunkSize=" + chunkSize +
 				", outputFormat=" + outputFormat +
 				", outputFileExtension='" + outputFileExtension + '\'' +
 				", rootElement='" + rootElement + '\'' +

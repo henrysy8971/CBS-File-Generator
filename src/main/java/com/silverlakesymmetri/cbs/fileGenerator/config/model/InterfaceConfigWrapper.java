@@ -34,18 +34,6 @@ public class InterfaceConfigWrapper {
 		return interfaces;
 	}
 
-	/**
-	 * Convenience accessor with validation.
-	 */
-	public InterfaceConfig getInterface(String interfaceType) {
-		InterfaceConfig config = interfaces.get(interfaceType);
-		if (config == null) {
-			throw new IllegalArgumentException(
-					"No interface configuration found for: " + interfaceType);
-		}
-		return config;
-	}
-
 	public boolean isEmpty() {
 		return interfaces.isEmpty();
 	}
