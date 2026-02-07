@@ -2,13 +2,18 @@
 	"interfaces": {
 		"ORDER_INTERFACE": {
 			"name": "ORDER_INTERFACE",
+			"enabled": true,
+			"dynamic": false,
 			"dataSourceQuery": null,
+			"beanIoMappingFile": null,
 			"keySetColumn": "orderId",
+			"haveHeaders": true,
+			"streamName": null,
 			"xsdSchemaFile": "order_schema.xsd",
 			"outputFormat": "XML",
 			"outputFileExtension": "xml",
-			"enabled": true,
-			"dynamic": false,
+			"rootElement": null,
+			"namespace": true,
 			"description": "Generate Orders Report in XML format"
 		}
 	}

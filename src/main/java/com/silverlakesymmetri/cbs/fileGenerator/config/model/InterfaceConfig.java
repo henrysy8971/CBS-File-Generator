@@ -11,20 +11,24 @@ public class InterfaceConfig {
 
 	/* ================= Core (Mandatory, Immutable) ================= */
 	private String name;
-	private String dataSourceQuery;
+	private boolean enabled = true;
 
 	/* ================= Optional (Mutable) ================= */
+
+	// BeanIO Related
+	private boolean dynamic = false;
+	private String dataSourceQuery;
 	private String beanIoMappingFile;
+	private String keySetColumn;
 	private boolean haveHeaders = false;
 	private String streamName;
+
+	// XML Related
 	private String xsdSchemaFile;
 	private OutputFormat outputFormat = DEFAULT_OUTPUT_FORMAT;
 	private String outputFileExtension = DEFAULT_FILE_EXTENSION;
 	private String rootElement;
 	private String namespace;
-	private String keySetColumn;
-	private boolean enabled = true;
-	private boolean dynamic = false;
 	private String description;
 
 	/* ================= Getters / Setters ================= */
@@ -35,14 +39,6 @@ public class InterfaceConfig {
 
 	public String getName() {
 		return name;
-	}
-
-	public void setDataSourceQuery(String dataSourceQuery) {
-		this.dataSourceQuery = dataSourceQuery;
-	}
-
-	public String getDataSourceQuery() {
-		return dataSourceQuery;
 	}
 
 	public boolean isEnabled() {
@@ -61,20 +57,12 @@ public class InterfaceConfig {
 		this.dynamic = dynamic;
 	}
 
-	public OutputFormat getOutputFormat() {
-		return outputFormat;
+	public void setDataSourceQuery(String dataSourceQuery) {
+		this.dataSourceQuery = dataSourceQuery;
 	}
 
-	public void setOutputFormat(OutputFormat outputFormat) {
-		this.outputFormat = outputFormat != null ? outputFormat : DEFAULT_OUTPUT_FORMAT;
-	}
-
-	public String getOutputFileExtension() {
-		return outputFileExtension;
-	}
-
-	public void setOutputFileExtension(String outputFileExtension) {
-		this.outputFileExtension = outputFileExtension != null ? outputFileExtension : DEFAULT_FILE_EXTENSION;
+	public String getDataSourceQuery() {
+		return dataSourceQuery;
 	}
 
 	public String getBeanIoMappingFile() {
@@ -83,6 +71,14 @@ public class InterfaceConfig {
 
 	public void setBeanIoMappingFile(String beanIoMappingFile) {
 		this.beanIoMappingFile = beanIoMappingFile;
+	}
+
+	public String getKeySetColumn() {
+		return keySetColumn;
+	}
+
+	public void setKeySetColumn(String keySetColumn) {
+		this.keySetColumn = keySetColumn;
 	}
 
 	public boolean isHaveHeaders() {
@@ -109,6 +105,22 @@ public class InterfaceConfig {
 		this.xsdSchemaFile = xsdSchemaFile;
 	}
 
+	public OutputFormat getOutputFormat() {
+		return outputFormat;
+	}
+
+	public void setOutputFormat(OutputFormat outputFormat) {
+		this.outputFormat = outputFormat != null ? outputFormat : DEFAULT_OUTPUT_FORMAT;
+	}
+
+	public String getOutputFileExtension() {
+		return outputFileExtension;
+	}
+
+	public void setOutputFileExtension(String outputFileExtension) {
+		this.outputFileExtension = outputFileExtension != null ? outputFileExtension : DEFAULT_FILE_EXTENSION;
+	}
+
 	public String getRootElement() {
 		return rootElement;
 	}
@@ -125,14 +137,6 @@ public class InterfaceConfig {
 		this.namespace = namespace;
 	}
 
-	public String getKeySetColumn() {
-		return keySetColumn;
-	}
-
-	public void setKeySetColumn(String keySetColumn) {
-		this.keySetColumn = keySetColumn;
-	}
-
 	public String getDescription() {
 		return description;
 	}
@@ -147,7 +151,11 @@ public class InterfaceConfig {
 	public String toString() {
 		return "InterfaceConfig{" +
 				"name='" + name + '\'' +
-				", beanioMappingFile='" + beanIoMappingFile + '\'' +
+				", enabled=" + enabled +
+				", dynamic=" + dynamic +
+				", dataSourceQuery='" + dataSourceQuery + '\'' +
+				", beanIoMappingFile='" + beanIoMappingFile + '\'' +
+				", keySetColumn='" + keySetColumn + '\'' +
 				", haveHeaders=" + haveHeaders +
 				", streamName='" + streamName + '\'' +
 				", xsdSchemaFile='" + xsdSchemaFile + '\'' +
@@ -155,9 +163,6 @@ public class InterfaceConfig {
 				", outputFileExtension='" + outputFileExtension + '\'' +
 				", rootElement='" + rootElement + '\'' +
 				", namespace='" + namespace + '\'' +
-				", keySetColumn='" + keySetColumn + '\'' +
-				", enabled=" + enabled +
-				", dynamic=" + dynamic +
 				", description='" + description + '\'' +
 				'}';
 	}
