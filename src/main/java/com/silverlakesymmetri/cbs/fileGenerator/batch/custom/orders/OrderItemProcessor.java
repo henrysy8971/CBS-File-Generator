@@ -10,6 +10,7 @@ import org.springframework.batch.core.annotation.BeforeStep;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.item.ExecutionContext;
 import org.springframework.batch.item.ItemProcessor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -17,6 +18,10 @@ import org.springframework.stereotype.Component;
 public class OrderItemProcessor implements ItemProcessor<OrderDto, OrderDto> {
 	private static final Logger logger = LoggerFactory.getLogger(OrderItemProcessor.class);
 	private StepExecution stepExecution;
+	// Circuit Breaker: If more than this many records fail, abort the job.
+	// Default to 100 or configure via properties.
+	@Value("${file.generation.processor.max-skip-count:100}")
+	private int maxSkipCount;
 
 	@BeforeStep
 	public void beforeStep(StepExecution stepExecution) {
@@ -31,13 +36,20 @@ public class OrderItemProcessor implements ItemProcessor<OrderDto, OrderDto> {
 	public OrderDto process(OrderDto orderDto) {
 		try {
 			if (!isValidOrder(orderDto)) {
-				incrementMetric(BatchMetricsConstants.KEY_SKIPPED);
-				logger.debug("Skipping empty record");
+				long skipped = incrementMetric(BatchMetricsConstants.KEY_SKIPPED);
+				logger.debug("Skipping invalid order record");
+				if (skipped > maxSkipCount) {
+					circuitBreak(skipped);
+				}
 				return null;
 			}
 
 			if (!hasValidLineItems(orderDto)) {
-				incrementMetric(BatchMetricsConstants.KEY_SKIPPED);
+				long skipped = incrementMetric(BatchMetricsConstants.KEY_SKIPPED);
+				logger.debug("Skipping invalid line items");
+				if (skipped > maxSkipCount) {
+					circuitBreak(skipped);
+				}
 				return null;
 			}
 
@@ -48,8 +60,15 @@ public class OrderItemProcessor implements ItemProcessor<OrderDto, OrderDto> {
 			return orderDto;
 
 		} catch (Exception e) {
-			incrementMetric(BatchMetricsConstants.KEY_INVALID);
+			long invalidCount = incrementMetric(BatchMetricsConstants.KEY_INVALID);
+
+			// Log context to help debugging (e.g. print the record content if possible)
 			logger.error("Critical error processing Order: {}", orderDto.getOrderId(), e);
+
+			// Circuit Breaker
+			if (invalidCount > maxSkipCount) {
+				circuitBreak(invalidCount);
+			}
 			return null;
 		}
 	}
@@ -76,12 +95,12 @@ public class OrderItemProcessor implements ItemProcessor<OrderDto, OrderDto> {
 		}
 	}
 
-	private void incrementMetric(String key) {
-		if (stepExecution == null) {
-			return;
-		}
+	private long incrementMetric(String key) {
+		if (stepExecution == null) return 0;
 		ExecutionContext ctx = stepExecution.getExecutionContext();
-		ctx.putLong(key, ctx.getLong(key, 0L) + 1);
+		long newValue = ctx.getLong(key, 0L) + 1;
+		ctx.putLong(key, newValue);
+		return newValue;
 	}
 
 	// ================= Metrics Accessors =================
@@ -123,5 +142,11 @@ public class OrderItemProcessor implements ItemProcessor<OrderDto, OrderDto> {
 				.anyMatch(item -> item.getLineItemId() != null &&
 						item.getQuantity() != null &&
 						item.getQuantity() > 0);
+	}
+
+	private void circuitBreak(long count) {
+		String errorMsg = String.format("Too many processing errors (%d). Aborting job to prevent silent failure.", count);
+		logger.error(errorMsg);
+		throw new RuntimeException(errorMsg);
 	}
 }

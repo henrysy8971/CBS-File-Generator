@@ -38,8 +38,11 @@ public class DynamicItemProcessor implements ItemProcessor<DynamicRecord, Dynami
 		try {
 			// 1. Validate Input
 			if (record == null || record.isEmpty()) {
-				incrementMetric(BatchMetricsConstants.KEY_SKIPPED);
+				long skipped = incrementMetric(BatchMetricsConstants.KEY_SKIPPED);
 				logger.debug("Skipping empty record");
+				if (skipped > maxSkipCount) {
+					circuitBreak(skipped);
+				}
 				return null;
 			}
 
@@ -60,9 +63,7 @@ public class DynamicItemProcessor implements ItemProcessor<DynamicRecord, Dynami
 
 			// 5. Circuit Breaker
 			if (invalidCount > maxSkipCount) {
-				String errorMsg = String.format("Too many processing errors (%d). Aborting job to prevent silent failure.", invalidCount);
-				logger.error(errorMsg);
-				throw new RuntimeException(errorMsg, e);
+				circuitBreak(invalidCount);
 			}
 
 			return null;
@@ -117,5 +118,11 @@ public class DynamicItemProcessor implements ItemProcessor<DynamicRecord, Dynami
 			return 0;
 		}
 		return stepExecution.getExecutionContext().getLong(BatchMetricsConstants.KEY_INVALID, 0L);
+	}
+
+	private void circuitBreak(long count) {
+		String errorMsg = String.format("Too many processing errors (%d). Aborting job to prevent silent failure.", count);
+		logger.error(errorMsg);
+		throw new RuntimeException(errorMsg);
 	}
 }
