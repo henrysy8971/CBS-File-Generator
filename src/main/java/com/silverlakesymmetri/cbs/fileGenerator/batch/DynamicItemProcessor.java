@@ -9,6 +9,7 @@ import org.springframework.batch.core.annotation.BeforeStep;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.item.ExecutionContext;
 import org.springframework.batch.item.ItemProcessor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import java.util.Set;
@@ -18,6 +19,10 @@ import java.util.Set;
 public class DynamicItemProcessor implements ItemProcessor<DynamicRecord, DynamicRecord> {
 	private static final Logger logger = LoggerFactory.getLogger(DynamicItemProcessor.class);
 	private StepExecution stepExecution;
+	// Circuit Breaker: If more than this many records fail, abort the job.
+	// Default to 100 or configure via properties.
+	@Value("${file.generation.processor.max-skip-count:100}")
+	private int maxSkipCount;
 
 	@BeforeStep
 	public void beforeStep(StepExecution stepExecution) {
@@ -31,21 +36,35 @@ public class DynamicItemProcessor implements ItemProcessor<DynamicRecord, Dynami
 	@Override
 	public DynamicRecord process(DynamicRecord record) {
 		try {
+			// 1. Validate Input
 			if (record == null || record.isEmpty()) {
 				incrementMetric(BatchMetricsConstants.KEY_SKIPPED);
 				logger.debug("Skipping empty record");
 				return null;
 			}
 
+			// 2. Transformation Logic
 			Set<String> columns = record.keySet();
 			applyTransformations(record, columns);
 
+			// 3. Success
 			incrementMetric(BatchMetricsConstants.KEY_PROCESSED);
 			return record;
 
 		} catch (Exception e) {
-			incrementMetric(BatchMetricsConstants.KEY_INVALID);
-			logger.error("Error processing record - skipping", e);
+			// 4. Handling Failures
+			long invalidCount = incrementMetric(BatchMetricsConstants.KEY_INVALID);
+
+			// Log context to help debugging (e.g. print the record content if possible)
+			logger.error("Error processing record: {}", record, e);
+
+			// 5. Circuit Breaker
+			if (invalidCount > maxSkipCount) {
+				String errorMsg = String.format("Too many processing errors (%d). Aborting job to prevent silent failure.", invalidCount);
+				logger.error(errorMsg);
+				throw new RuntimeException(errorMsg, e);
+			}
+
 			return null;
 		}
 	}
@@ -70,12 +89,12 @@ public class DynamicItemProcessor implements ItemProcessor<DynamicRecord, Dynami
 		}
 	}
 
-	private void incrementMetric(String key) {
-		if (stepExecution == null) {
-			return;
-		}
+	private long incrementMetric(String key) {
+		if (stepExecution == null) return 0;
 		ExecutionContext ctx = stepExecution.getExecutionContext();
-		ctx.putLong(key, ctx.getLong(key, 0L) + 1);
+		long newValue = ctx.getLong(key, 0L) + 1;
+		ctx.putLong(key, newValue);
+		return newValue;
 	}
 
 	// ================= Metrics Accessors =================

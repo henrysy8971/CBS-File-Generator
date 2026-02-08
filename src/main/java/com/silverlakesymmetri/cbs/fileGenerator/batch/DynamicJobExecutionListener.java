@@ -43,6 +43,8 @@ public class DynamicJobExecutionListener implements JobExecutionListener {
 			return;
 		}
 
+		String finalFilePath = partFilePath.replaceAll("\\.part$", "");
+
 		// Handle FAILED or STOPPED jobs
 		if (jobExecution.getStatus() != BatchStatus.COMPLETED) {
 			handleJobFailure(jobId, jobExecution);
@@ -61,7 +63,6 @@ public class DynamicJobExecutionListener implements JobExecutionListener {
 			}
 
 			// SHA256 verification
-			String finalFilePath = partFilePath.replaceAll("\\.part$", "");
 			boolean verified = fileFinalizationService.verifyShaFile(finalFilePath);
 
 			if (!verified) {

@@ -1,5 +1,6 @@
 package com.silverlakesymmetri.cbs.fileGenerator.batch;
 
+import com.silverlakesymmetri.cbs.fileGenerator.config.InterfaceConfigLoader;
 import com.silverlakesymmetri.cbs.fileGenerator.config.model.InterfaceConfig;
 import com.silverlakesymmetri.cbs.fileGenerator.dto.ColumnType;
 import com.silverlakesymmetri.cbs.fileGenerator.dto.DynamicRecord;
@@ -14,6 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import javax.annotation.PostConstruct;
 import javax.persistence.EntityManager;
 import javax.persistence.Query;
 import javax.persistence.Tuple;
@@ -29,9 +31,11 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 	private static final String CONTEXT_KEY_LAST_ID = "dynamic.reader.lastProcessedId";
 
 	private final int pageSize;
-	private final String interfaceType;
-	private final String queryString;
+	private String interfaceType;
+	private String queryString;
+	private String keySetColumnName;
 	private final EntityManager entityManager;
+	private final InterfaceConfigLoader interfaceConfigLoader;
 	private RecordSchema sharedSchema;
 	private List<Tuple> currentPage;
 
@@ -40,43 +44,52 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 
 	private String lastProcessedId = null;
 	private long totalProcessed = 0;
-	private final String keySetColumnName;
 	private ColumnType keyColumnType;
 	private int keySetColumnIndex = -1; // Store the index once
 
 	@Autowired
 	public DynamicItemReader(
-			InterfaceConfig interfaceConfig,
+			InterfaceConfigLoader interfaceConfigLoader,
 			EntityManager entityManager,
 			@Value("${file.generation.chunk-size:1000}") int pageSize
 	) {
+		this.interfaceConfigLoader = interfaceConfigLoader;
 		this.entityManager = entityManager;
 		this.pageSize = pageSize;
+	}
 
-		if (interfaceConfig == null) {
-			throw new IllegalArgumentException("InterfaceConfig cannot be null");
+	@Value("#{jobParameters['interfaceType']}")
+	public void setInterfaceType(String interfaceType) {
+		this.interfaceType = interfaceType;
+	}
+
+	@PostConstruct
+	public void init() {
+		if (interfaceType == null || interfaceType.isEmpty()) {
+			throw new IllegalArgumentException("Job Parameter 'interfaceType' is missing");
 		}
 
-		if (interfaceConfig.getName() == null) {
-			throw new IllegalArgumentException("Interface Name must be defined");
+		InterfaceConfig config = interfaceConfigLoader.getConfig(interfaceType);
+		if (config == null) {
+			throw new IllegalArgumentException("Interface configuration not found for: " + interfaceType);
 		}
 
-		if (interfaceConfig.getDataSourceQuery() == null) {
-			throw new IllegalArgumentException("Data source query must be defined");
-		}
+		this.queryString = config.getDataSourceQuery();
+		this.keySetColumnName = config.getKeySetColumn();
 
-		this.interfaceType = interfaceConfig.getName();
-		this.queryString = interfaceConfig.getDataSourceQuery();
-		this.keySetColumnName = interfaceConfig.getKeySetColumn();
+		if (this.queryString == null) {
+			throw new IllegalArgumentException("Data source query must be defined for " + interfaceType);
+		}
 
 		// VALIDATION: Check for infinite loop risk
 		if (this.keySetColumnName != null && !this.queryString.contains(":lastId")) {
 			throw new IllegalArgumentException(String.format(
-					"Configuration Error for [%s]: 'keySetColumn' is defined as '%s', but the SQL query is missing the ':lastId' parameter. " +
-							"Pagination will loop infinitely. Please add 'AND (:lastId IS NULL OR col > :lastId)' to the query.",
+					"Configuration Error for [%s]: 'keySetColumn' is defined as '%s', but SQL query is missing ':lastId'.",
 					interfaceType, keySetColumnName
 			));
 		}
+
+		logger.info("DynamicItemReader initialized for interface: {}", interfaceType);
 	}
 
 	@Override
@@ -111,7 +124,7 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 	private void fetchNextPage() {
 		Query query = entityManager.createNativeQuery(queryString, Tuple.class);
 
-		// Use standard JPA hint, but also try Hibernate specific if needed
+		// Use standard JPA hint, but also try using Hibernate specific if needed
 		query.setHint("javax.persistence.jdbc.fetch_size", pageSize);
 		query.setMaxResults(pageSize);
 
