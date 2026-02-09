@@ -174,7 +174,7 @@ public class FileFinalizationService {
 		}
 	}
 
-	public Optional<String> calculateSha256(String filePathStr) {
+	private Optional<String> calculateSha256(String filePathStr) {
 		if (!StringUtils.hasText(filePathStr)) return Optional.empty();
 		try {
 			return calculateSha256(Paths.get(filePathStr).toAbsolutePath().normalize());
