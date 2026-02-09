@@ -8,7 +8,7 @@
 - **Build WAR without tests**: `mvn clean package -Pwar -DskipTests`
 - **Run tests**: `mvn test`
 - **Run locally**: `mvn spring-boot:run`
-- - **Clean Oracle Schema**: `mvn liquibase:dropAll` (if applicable) or manual execution of `schema.sql`
+- - **Clean Oracle Schema**: Manual execution of `src/main/resources/db/schema.sql` (Liquibase not configured).
 
 ## Architecture & Codebase Structure
 

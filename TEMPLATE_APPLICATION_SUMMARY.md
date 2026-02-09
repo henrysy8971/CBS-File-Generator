@@ -6,86 +6,29 @@ This is a **production-ready template application** for batch file generation fr
 
 ---
 
-### Core Documentation
+## Code Architecture
 
-- **AGENTS.md** - Developer guidelines
-  - Build commands (JAR, WAR, with/without tests)
-  - Code style guidelines
-  - Architecture and codebase structure
-  - Key components and classes
-
-- **BATCH_ARCHITECTURE.md** - Deep dive into batch processing
-  - Generic vs Specialized architecture explained
-  - Data flow diagrams for both approaches
-  - JPQL requirement clarification (not native SQL)
-  - Configuration structure (interface-config.json)
-  - When to use each approach
-  - Examples for adding new interfaces
-
-- **JPA_ENTITY_SETUP.md** - Entity and DTO creation guide
-  - Decision tree: Entity only vs Entity + DTO
-  - When DTOs are needed (transformation, nested objects)
-  - Step-by-step entity creation
-  - Annotation reference
-  - Real example with ORDER_INTERFACE
-  - Data type mapping table
-
-- **OUTPUT_FORMATS.md** - Output format configuration
-  - XML as default format (no config needed)
-  - BeanIO mapping for custom formats (CSV, fixed-length, delimited)
-  - Format examples and configurations
-  - Stream naming conventions
-  - Field type support
-  - Troubleshooting guide
-
-- **README.md** - Overview and technology stack
-  - High-level architecture
-  - Technology stack (Spring Boot 1.5.22, Quartz, Spring Batch, Oracle)
-  - Key features explained
-  - Links to additional resources
-
-- **DEPLOYMENT.md** - Build and deployment guide
-  - Prerequisites (Java 8, Maven 3.6+, Oracle 11g+)
-  - Building JAR (embedded Tomcat) and WAR (external Tomcat)
-  - Database setup and schema
-  - Application startup instructions
-  - Post-deployment configuration
-  - Testing examples with curl
-  - Monitoring and troubleshooting
-
-- **XSD_VALIDATION.md** - Optional schema validation
-  - Configuration setup
-  - Strict vs lenient modes
-  - Example XSD schemas
-  - Performance considerations
-  - Integration with processors
-  - Best practices
-
----
-
-## Code Architecture ✅
-
-### Generic Approach (Recommended for Simple Data)
+### 1. Generic Approach (Recommended for Simple Data)
 
 **Components**:
 - `DynamicBatchConfig` - Batch job configuration
 - `DynamicItemProcessor` - Basic validation and transformation
-- `DynamicItemReader` - Executes JPQL query, detects columns automatically
+- `DynamicItemReader` - **Executes Native SQL**, detects columns automatically (No Java Entities needed)
 - `DynamicItemWriter` - Auto-generates XML without mapping files
 - `DynamicJobExecutionListener` - Job status tracking
-- `DynamicStepExecutionListener` - Step status tracking
 
 **When to use**:
 - ✅ Flat table structure (no nesting)
-- ✅ No date/format transformations
+- ✅ No complex transformations
 - ✅ Output as-is from database
-- ✅ Quick setup (just add config, no code changes)
+- ✅ **No Java Code Required** (Config only)
 
-**Example**: CUSTOMER_INTERFACE
+**Example Configuration**:
 ```json
 {
   "CUSTOMER_INTERFACE": {
-    "dataSourceQuery": "SELECT c FROM Customer c",
+    "dataSourceQuery": "SELECT CUSTOMER_ID, NAME, EMAIL FROM CUSTOMERS",
+    "keySetColumn": "CUSTOMER_ID",
     "outputFormat": "XML",
     "chunkSize": 1000
   }
@@ -94,333 +37,201 @@ This is a **production-ready template application** for batch file generation fr
 
 ---
 
-### Specialized Approach (For Complex Data)
+### 2. Specialized Approach (For Complex Data)
 
 **Components**:
-- `Order.java` + `LineItem.java` - JPA entities
-- `OrderDto.java` + `LineItemDto.java` - Data transfer objects
-- `OrderBatchConfig.java` - Custom batch configuration
-- `OrderItemProcessor.java` - Order-specific validation
-- `OrderItemReader.java` - Pagination-aware reader
+- `Order.java` + `LineItem.java` - **JPA Entities**
+- `OrderDto.java` - Data Transfer Object
+- `OrderBatchConfig.java` - Custom Spring Batch configuration
+- `OrderItemReader.java` - **Executes JPQL** with Two-Step fetching
 - `OrderItemWriter.java` - Hierarchical XML generation
-- `OrderRowMapper.java` - Entity → DTO conversion with transformations
-- `OrderStepExecutionListener.java` - Step status tracking
-- `OrderRepository.java` - Custom JPA queries
 
 **When to use**:
 - ⚠️ Nested relationships (Order → LineItems)
 - ⚠️ Date/timestamp formatting
 - ⚠️ Data enrichment or denormalization
-- ⚠️ Custom validation logic
 - ⚠️ Hierarchical output structure
-
-**Example**: ORDER_INTERFACE with custom processing
 
 ---
 
 ## Key Design Patterns
 
 ### 1. Configuration-Driven Processing
+Define new interfaces in `interface-config.json` without recompiling code.
 
-**Concept**: Define new interfaces in `interface-config.json` without code changes
+### 2. Hybrid Query Strategy
+*   **Dynamic Jobs:** Use **Native SQL** (Table Names).
+  *   *Example:* `SELECT * FROM ORDERS WHERE STATUS = 'A'`
+*   **Custom Jobs:** Use **JPQL** (Entity Names).
+  *   *Example:* `SELECT o FROM Order o JOIN FETCH o.lineItems`
 
-**File**: `src/main/resources/interface-config.json`
-```json
-{
-  "interfaces": {
-    "INTERFACE_NAME": {
-      "name": "INTERFACE_NAME",
-      "dataSourceQuery": "SELECT i FROM InterfaceEntity i",
-      "chunkSize": 1000,
-      "outputFormat": "XML",
-      "outputFileExtension": "xml",
-      "enabled": true
-    }
-  }
-}
-```
+### 3. Async Batch Processing
+API triggers jobs asynchronously. The client receives a `202 Accepted` and polls for status.
 
-### 2. JPQL-Only Query Language
-
-**Concept**: All queries use JPQL (Java Persistence Query Language), not native SQL
-
-**Requirement**: JPA entity classes required for every table/view
-
-**Example**:
-```
-✅ Correct:  SELECT o FROM Order o WHERE o.status = 'ACTIVE'
-❌ Wrong:    SELECT * FROM orders WHERE status = 'ACTIVE'
-```
-
-### 3. REST API with Async Batch Processing
-
-**Concept**: API triggers batch jobs asynchronously, client polls for status
-
-**Endpoints**:
-```
-POST   /api/v1/file-generation/generate        - Trigger job
-GET    /api/v1/file-generation/status/{jobId}  - Check status
-GET    /api/v1/file-generation/pending         - List pending jobs
-GET    /api/v1/file-generation/health          - Health check
-```
-
-### 4. Auto-Generated Filenames and Paths
-
-**Concept**: Filenames and output directories are not configurable per request
-
-**Why**: Security and consistency
-
-**Setup**: Configured in `application.properties`
-```properties
-file.generation.output-directory=/opt/cbs/generated-files/
-```
-
-**Filename format**: `{interfaceType}_{timestamp}.{extension}`
-
-### 5. Entity-Only vs Entity+DTO Pattern
-
-**Decision**:
-- **Simple flat data** → Entity only (DynamicItemReader handles it)
-- **Complex nested/transformed data** → Entity + DTO (custom reader/writer)
+### 4. Atomic State Machine
+Job status transitions (PENDING -> QUEUED -> PROCESSING -> COMPLETED) are handled atomically in the database to prevent race conditions in a clustered environment.
 
 ---
 
-## How to Build Applications From This Template
+## How to Add New Interfaces (The Workflow)
 
-### Step 1: Create JPA Entity Classes
+### Path A: The "Low Code" Way (Dynamic)
+*Use for 90% of interfaces.*
 
-For each table/view you need to query, create a JPA entity:
+1.  **Write SQL**: Construct a valid Native SQL query for your database.
+2.  **Update Config**: Add entry to `interface-config.json`.
+3.  **Reload**: Call the `POST /api/v1/admin/reload-config` endpoint.
+4.  **Done**: The interface is live.
 
-```java
-@Entity
-@Table(name = "TABLE_NAME")
-public class TableEntity {
-    @Id
-    @Column(name = "ID")
-    private String id;
+### Path B: The "Java" Way (Custom)
+*Use for complex/nested data.*
 
-    @Column(name = "COLUMN_NAME")
-    private String columnName;
+1.  **Create Entity**: Map your table to a Java class (`src/main/java/.../entity/MyTable.java`).
+2.  **Create DTO**: Define your output structure.
+3.  **Create Batch Config**: Implement a `Configuration` class defining your Step/Job beans.
+4.  **Deploy**: Recompile and deploy the WAR/JAR.
 
-    // getters/setters
-}
-```
+---
 
-### Step 2: Add Interface Configuration
+## Build & Deploy
 
-Add entry to `src/main/resources/interface-config.json`:
+### Prerequisites
+*   Java 8
+*   Maven 3.6+
+*   Oracle Database
 
-```json
-{
-  "NEW_INTERFACE": {
-    "name": "NEW_INTERFACE",
-    "dataSourceQuery": "SELECT t FROM TableEntity t",
-    "chunkSize": 1000,
-    "outputFormat": "XML",
-    "outputFileExtension": "xml",
-    "enabled": true
-  }
-}
-```
+### Commands
 
-### Step 3: Deploy and Test
-
+**Build JAR (Embedded Tomcat)**
 ```bash
-# Build
 mvn clean package
-
 # Run
-java -jar target/file-generator-1.0.0-exec.jar \
-  --spring.datasource.url=jdbc:oracle:thin:@10.253.182.53:1521:CBSEXIM \
-  --spring.datasource.username=CBSDEV \
-  --spring.datasource.password=CBSDEV \
-  --auth.token.enable-validation=false
-
-# Test API
-curl -X POST http://localhost:8080/cbs-file-generator/api/v1/file-generation/generate \
-  -H "Content-Type: application/json" \
-  -H "X-DB-Token: your-token" \
-  -d '{"interfaceType": "NEW_INTERFACE"}'
+java -jar target/file-generator-1.0.0-exec.jar
 ```
 
-### Step 4 (Optional): For Complex Data, Create DTO Classes
-
-If you need transformation or nested structures:
-
-1. Create DTO classes (`NewInterfaceDto.java`)
-2. Create RowMapper (`NewInterfaceRowMapper.java`)
-3. Create custom ItemReader/Processor/Writer
-4. Create custom BatchConfig
-5. Update BatchJobLauncher routing logic
-
----
-
-## Technology Stack
-
-| Component            | Version                          | Purpose                                  |
-|----------------------|----------------------------------|------------------------------------------|
-| **Spring Boot**      | 1.5.22                           | Application framework                    |
-| **Spring Batch**     | -                                | Batch processing                         |
-| **Spring Data JPA**  | -                                | Database access                          |
-| **Quartz Scheduler** | 2.3.0                            | Job scheduling                           |
-| **BeanIO**           | 2.1.0                            | Format mapping (CSV, fixed-length, etc.) |
-| **Oracle JDBC**      | 21.1.0                           | Database driver                          |
-| **Java**             | 8                                | Language                                 |
-| **Maven**            | 3.6+                             | Build tool                               |
-| **Tomcat**           | Embedded (JAR) or External (WAR) | Web server                               |
-
---- 
-
-## Build Options
-
-### JAR File (Embedded Tomcat - for Testing)
-
-```bash
-mvn clean package
-# Output: target/file-generator-1.0.0-exec.jar
-# Run: java -jar target/file-generator-1.0.0-exec.jar \
-  --spring.datasource.url=jdbc:oracle:thin:@10.253.182.53:1521:CBSEXIM \
-  --spring.datasource.username=CBSDEV \
-  --spring.datasource.password=CBSDEV \
-  --auth.token.enable-validation=false
-```
-
-- ✅ Includes embedded Tomcat
-- ✅ Ready to run immediately
-- ✅ Good for development and testing
-
-### WAR File (External Tomcat - for Production)
-
+**Build WAR (External Tomcat)**
 ```bash
 mvn clean package -Pwar
-# Output: target/file-generator.war
-# Deploy to: $CATALINA_HOME/webapps/
+# Deploy target/file-generator.war to Tomcat webapps/
 ```
-
-- ✅ Optimized for external Tomcat
-- ✅ Smaller file size (no embedded server)
-- ✅ Good for production deployment
 
 ---
 
-## File Structure
+## Documentation Index
+
+- **AGENTS.md** - Developer guidelines & Code Style
+- **BATCH_ARCHITECTURE.md** - Deep dive into Dynamic vs Specialized logic
+- **JPA_ENTITY_SETUP.md** - Guide for creating Entities (for Custom jobs)
+- **OUTPUT_FORMATS.md** - How to configure XML vs CSV vs Fixed-Length
+- **XSD_VALIDATION.md** - Setting up post-generation validation
+- **DEPLOYMENT.md** - Installation guide
+
+---
+
+## File Structure Snapshot
 
 ```
 src/main/java/com/silverlakesymmetri/cbs/fileGenerator/
+├── FileGeneratorApplication.java           <- Main entry point
 ├── batch/
-│   ├── custom/
-│   │   ├── OrderBatchConfig.java           ← Example: specialized batch config
-│   │   ├── OrderItemProcessor.java         ← Example: specialized processor
-│   │   ├── OrderItemReader.java            ← Example: specialized reader
-│   │   ├── OrderItemWriter.java            ← Example: specialized writer
-│   │   └── OrderRowMapper.java             ← Example: entity→DTO mapper
-│   │   └── OrderStepExecutionListener.java ← Example: specialized step execution listener
-│   ├── BeanIOFormatWriter.java             ← Generic BeanIO writer
-│   ├── DynamicBatchConfig.java             ← Generic batch config
-│   ├── DynamicItemProcessor.java           ← Generic processor
-│   ├── DynamicItemReader.java              ← Generic reader
-│   ├── DynamicItemWriter.java              ← Generic writer
-│   ├── DynamicJobExecutionListener.java    ← Job listener
-│   ├── DynamicStepExecutionListener.java   ← Step listener
-│   ├── GenericXMLWriter.java               ← Generic XML writer
-│   ├── OutputFormatWriter.java             ← Generic output format writer
-│   └── OutputFormatWriterFactory.java      ← Factory for selecting appropriate output format writer
+│   ├── BatchCleanupTasklet.java            <- Deletes stale files & DB rows
+│   ├── BeanIOFormatWriter.java             <- Generic BeanIO writer
+│   ├── DynamicBatchConfig.java             <- Generic batch config
+│   ├── DynamicItemProcessor.java           <- Generic processor
+│   ├── DynamicItemReader.java              <- Generic reader
+│   ├── DynamicItemWriter.java              <- Generic writer
+│   ├── DynamicJobExecutionListener.java    <- Job listener
+│   ├── DynamicStepExecutionListener.java   <- Step listener
+│   ├── FileValidationTasklet.java          <- Validates output against XSD
+│   ├── GenericXMLWriter.java               <- Generic XML writer
+│   ├── MaintenanceBatchConfig.java         <- Configures the cleanup job
+│   ├── OutputFormatWriter.java             <- Generic output format writer
+│   ├── OutputFormatWriterFactory.java      <- Factory for selecting appropriate output format writer
+│   └── custom/
+│       ├── OrderBatchConfig.java           <- Example: specialized batch config
+│       ├── OrderItemProcessor.java         <- Example: specialized processor
+│       ├── OrderItemReader.java            <- Example: specialized reader
+│       ├── OrderItemWriter.java            <- Example: specialized writer
+│       ├── OrderRowMapper.java             <- Example: entity->DTO mapper
+│       └── OrderStepExecutionListener.java <- Example: specialized step listener
 ├── config/
-│   ├── model/
-│   │   ├── InterfaceConfig.java            ← Config model
-│   │   └── InterfaceConfigWrapper.java     ← Wrapper for interface-config.json
-│   ├── DatabaseConfig.java                 ← Database configuration
-│   ├── InterfaceConfigLoader.java          ← Interface configuration loader
-│   ├── QuartzConfig.java                   ← Quartz scheduler configuration
-│   ├── SecurityConfig.java                 ← Security configuration
-│   └── TomcatConfig.java                   ← Tomcat configuration
+│   ├── AsyncConfig.java                    <- ThreadPool for @Async tasks
+│   ├── AutowiringSpringBeanJobFactory.java <- Injects Spring beans into Quartz
+│   ├── BatchInfrastructureConfig.java      <- Core Batch engine config
+│   ├── DatabaseConfig.java                 <- Database configuration
+│   ├── InterfaceConfigLoader.java          <- Interface configuration loader
+│   ├── QuartzConfiguration.java            <- Quartz scheduler configuration
+│   ├── SchedulerStartupRunner.jav          <- Starts Quartz on app boot
+│   ├── SecurityConfig.java                 <- Security configuration
+│   ├── TomcatConfig.java                   <- Tomcat configuration
+│   └── model/
+│       ├── InterfaceConfig.java            <- Interface Config model
+│       └── InterfaceConfigWrapper.java     <- Wrapper for interface-config.json
+├── constants/
+│   ├── BatchMetricsConstants.java          <- Metric key definitions
+│   └── FileGenerationConstants.java        <- Global app constants
 ├── controller/
-│   └── FileGenerationController.java       ← REST endpoints
+│   ├── AdminController.java                <- Admin REST endpoints
+│   └── FileGenerationController.java       <- File Generation REST endpoints
 ├── dto/
-│   ├── DynamicRecord.java                  ← Generic record holder for dynamic data
-│   ├── FileGenerationRequest.java          ← API request (interfaceType only)
-│   ├── FileGenerationResponse.java         ← API response
-│   ├── LineItemDto.java                    ← Example: nested DTO
-│   └── OrderDto.java                       ← Example: complex DTO
+│   ├── ApiResponse.java                    <- Standard HTTP response wrapper
+│   ├── ColumnType.java                     <- Enum for dynamic data types
+│   ├── DynamicRecord.java                  <- Generic record holder for dynamic data
+│   ├── FileGenerationRequest.java          <- API request
+│   ├── FileGenerationResponse.java         <- API response
+│   ├── LineItemDto.java                    <- Example: nested DTO
+│   ├── OrderDto.java                       <- Example: complex DTO
+│   └── PagedResponse.java                  <- Wrapper for paginated results
+│   └── RecordSchema.java                   <- Metadata for dynamic columns
 ├── entity/
-│   ├── AppConfig.java                      ← Application config
-│   ├── DbToken.java                        ← Auth tokens
-│   ├── FileGeneration.java                 ← Tracks job execution
-│   ├── LineItem.java                       ← Example: JPA entity
-│   └── Order.java                          ← Example: JPA entity
+│   ├── AppConfig.java                      <- Application config
+│   ├── DbToken.java                        <- Auth tokens
+│   ├── FileGeneration.java                 <- Tracks file generation job execution
+│   ├── LineItem.java                       <- Example: JPA entity
+│   └── Order.java                          <- Example: JPA entity
 ├── exception/
-│   └── GlobalExceptionHandler.java         ← Global exception handler
+│   ├── ConfigurationException.java         <- Invalid config error
+│   ├── ConflictException.java              <- HTTP 409 Conflict error
+│   ├── ForbiddenException.java             <- HTTP 403 Forbidden error
+│   ├── GlobalExceptionHandler.java         <- Global exception handler
+│   ├── GoneException.java                  <- HTTP 410 Gone error
+│   ├── LifecycleException.java             <- Job state transition error
+│   └── NotFoundException.java              <- HTTP 404 Not Found error
+├── health/
+│   ├── BatchQueueHealthIndicator.java      <- Monitors pending job queue
+│   └── QuartzHealthIndicator.java          <- Monitors scheduler status
 ├── repository/
-│   ├── AppConfigRepository.java            ← Config access
-│   ├── DbTokenRepository.java              ← Token access
-│   ├── FileGenerationRepository.java       ← Job tracking
-│   └── OrderRepository.java                ← Example: custom queries
-├── service/
-│   ├── AppConfigService.java               ← Config service
-│   ├── BatchJobLauncher.java               ← Job routing
-│   ├── FileFinalizationService.java        ← Finalizes file generation
-│   └── FileGenerationService.java          ← Business logic
+│   ├── AppConfigRepository.java            <- Config access
+│   ├── DbTokenRepository.java              <- Token access
+│   ├── FileGenerationRepository.java       <- Job tracking
+│   └── OrderRepository.java                <- Example: custom queries
 ├── scheduler/
-│   └── FileGenerationScheduler.java        ← Job scheduling
+│   └── BatchJobLauncherJob.java            <- Quartz job triggering Batch
+│   └── FileGenerationScheduler.java        <- Job scheduling
+│   └── MaintenanceScheduler.java           <- Quartz job triggering Cleanup
 ├── security/
-│   ├── TokenAuthenticationFilter.java      ← Token authentication filter
-│   └── TokenValidator.java                 ← Token validator
+│   ├── CorrelationIdFilter.java            <- Adds Request ID to MDC logs
+│   ├── TokenAuthenticationFilter.java      <- Token authentication filter
+│   └── TokenValidator.java                 <- Token validator
 ├── service/
-│   ├── AppConfigService.java               ← Config service
-│   ├── BatchJobLauncher.java               ← Job routing
-│   ├── FileFinalizationService.java        ← Finalizes file generation
-│   └── FileGenerationService.java          ← Business logic
-├── util/
-├── validation/
-│   └── XsdValidator.java                   ← Optional XSD validation
-└── FileGeneratorApplication.java           ← Main entry point
+│   ├── AppConfigService.java               <- App Config service
+│   ├── BatchJobLauncher.java               <- Job routing
+│   ├── FileFinalizationService.java        <- Finalizes file generation
+│   ├── FileGenerationService.java          <- Business logic
+│   └── FileGenerationStatus.java           <- Enum for Job lifecycle states
+── validation/
+    └── XsdValidator.java                   <- Optional XSD validation
 
 src/main/resources/
-├── application.properties                  ← App configuration
-├── interface-config.json                   ← Interface definitions
-├── db/
-│   └── schema.sql                          ← Database schema
+├── application.properties                  <- App configuration
+├── interface-config.json                   <- Interface definitions
 ├── beanio/
-│   ├── order-mapping.xml                   ← Example: BeanIO mapping
-│   └── (other format mappings)
+│   └── (mapping files)
+├── db/
+│   └── schema.sql                          <- Database schema
 └── xsd/
-    ├── order_schema.xsd                    ← Example: XSD schema
+    ├── order_schema.xsd                    <- Example: XSD schema
     └── (other schemas)
+
+src/test/java/com/silverlakesymmetri/cbs/fileGenerator/  <- Unit tests
 ```
-
----
-
-## Next Steps for Your Template
-
-You now have a **complete, documented, production-ready template** with:
-
-1. ✅ Clear architecture (generic and specialized approaches)
-2. ✅ Comprehensive documentation (7 markdown files)
-3. ✅ Working examples (Order/LineItem with full implementation)
-4. ✅ Reusable components (DynamicItemReader/Processor/Writer)
-5. ✅ Configuration-driven extensibility (interface-config.json)
-6. ✅ Multiple build options (JAR and WAR)
-
-### To Use This Template for New Applications:
-
-1. **Clone the repository**
-2. **Update database connection** in `application.properties`
-3. **Create JPA entities** for your tables (follow JPA_ENTITY_SETUP.md)
-4. **Add interface configs** to `interface-config.json`
-5. **Build and deploy** using provided commands
-6. **Test via REST API** using provided examples
-
-Everything else is already handled by the framework!
-
----
-
-## Support Resources
-
-- **JPA_ENTITY_SETUP.md** - How to create entities
-- **BATCH_ARCHITECTURE.md** - How the system works
-- **DEPLOYMENT.md** - How to build and deploy
-- **OUTPUT_FORMATS.md** - Output format options
-- **XSD_VALIDATION.md** - Validation setup (optional)
-- **AGENTS.md** - Developer commands
-
-All documentation is current and reflects the actual implementation.
