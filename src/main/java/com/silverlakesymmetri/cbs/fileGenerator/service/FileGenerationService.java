@@ -4,16 +4,16 @@ import com.silverlakesymmetri.cbs.fileGenerator.entity.FileGeneration;
 import com.silverlakesymmetri.cbs.fileGenerator.exception.ConflictException;
 import com.silverlakesymmetri.cbs.fileGenerator.exception.LifecycleException;
 import com.silverlakesymmetri.cbs.fileGenerator.repository.FileGenerationRepository;
+import com.silverlakesymmetri.cbs.fileGenerator.retry.DbRetryable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.TransientDataAccessException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
-import org.springframework.retry.annotation.Backoff;
 import org.springframework.retry.annotation.Recover;
-import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -55,7 +55,7 @@ public class FileGenerationService {
 			fg.setStatus(FileGenerationStatus.PENDING);
 			fg.setCreatedBy(createdBy);
 			fg.setInterfaceType(interfaceType);
-			fg.setCreatedDate(new Timestamp(System.currentTimeMillis()));
+			fg.setCreatedDate(now());
 
 			FileGeneration saved = fileGenerationRepository.save(fg);
 
@@ -63,7 +63,7 @@ public class FileGenerationService {
 					saved.getJobId(), fileName, interfaceType);
 
 			// STRUCTURED LOGGING for Creation
-			logger.info("[JOB_CREATED] jobId='{}' interface='{}' fileName='{}' user='{}'",
+			logger.info("[JOB_CREATED] jobId={} interface={} fileName={} user={}",
 					saved.getJobId(),
 					interfaceType,
 					fileName,
@@ -79,14 +79,7 @@ public class FileGenerationService {
 	}
 
 	/* ===================== STATUS ===================== */
-	@Retryable(
-			value = {
-					org.springframework.dao.TransientDataAccessException.class,
-					org.springframework.orm.ObjectOptimisticLockingFailureException.class
-			},
-			maxAttempts = 3,
-			backoff = @Backoff(delay = 2000)
-	)
+	@DbRetryable
 	@Transactional
 	public void markQueued(String jobId) {
 		validateJobId(jobId);
@@ -94,42 +87,21 @@ public class FileGenerationService {
 		transitionStatus(jobId, FileGenerationStatus.QUEUED, null);
 	}
 
-	@Retryable(
-			value = {
-					org.springframework.dao.TransientDataAccessException.class,
-					org.springframework.orm.ObjectOptimisticLockingFailureException.class
-			},
-			maxAttempts = 3,
-			backoff = @Backoff(delay = 2000)
-	)
+	@DbRetryable
 	@Transactional
 	public void markProcessing(String jobId) {
 		validateJobId(jobId);
 		transitionStatus(jobId, FileGenerationStatus.PROCESSING, null);
 	}
 
-	@Retryable(
-			value = {
-					org.springframework.dao.TransientDataAccessException.class,
-					org.springframework.orm.ObjectOptimisticLockingFailureException.class
-			},
-			maxAttempts = 3,
-			backoff = @Backoff(delay = 2000)
-	)
+	@DbRetryable
 	@Transactional
 	public void markCompleted(String jobId) {
 		validateJobId(jobId);
 		transitionStatus(jobId, FileGenerationStatus.COMPLETED, null);
 	}
 
-	@Retryable(
-			value = {
-					org.springframework.dao.TransientDataAccessException.class,
-					org.springframework.orm.ObjectOptimisticLockingFailureException.class
-			},
-			maxAttempts = 3,
-			backoff = @Backoff(delay = 2000)
-	)
+	@DbRetryable
 	@Transactional
 	public void markFailed(String jobId, String errorMessage) {
 		validateJobId(jobId);
@@ -144,27 +116,47 @@ public class FileGenerationService {
 	}
 
 	@Recover
-	public void recover(Exception e, String jobId) {
-		logger.error("[RECOVER] Failed after retries for jobId={}", jobId, e);
-		// Here you could send an alert to an IT support Slack channel or email
+	public void recoverOptimisticLock(
+			ObjectOptimisticLockingFailureException e, String jobId) {
+
+		logger.error("[RECOVER][OPTIMISTIC_LOCK] jobId={}", jobId, e);
 	}
 
-	// Recovery for markCompleted
 	@Recover
-	public void recoverCompleted(Exception e, String jobId) {
-		logger.error("[RECOVER] Failed to mark COMPLETED after retries for jobId={}", jobId, e);
+	public void recoverTransient(
+			TransientDataAccessException e, String jobId) {
+
+		logger.error("[RECOVER][TRANSIENT_DB] jobId={}", jobId, e);
 	}
 
-	// Recovery for markFailed (Matches parameters)
 	@Recover
-	public void recoverFailed(Exception e, String jobId, String errorMessage) {
-		logger.error("[RECOVER] Failed to mark FAILED for jobId={} with error='{}'. Original exception: {}",
-				jobId, errorMessage, e.getMessage(), e);
+	@Transactional
+	public void recoverFailed(
+			ObjectOptimisticLockingFailureException e,
+			String jobId,
+			String errorMessage) {
+
+		logger.error("[RECOVER][FAILED][OPTIMISTIC_LOCK] jobId={}, error={}",
+				jobId, errorMessage, e);
+
+		try {
+			transitionStatus(jobId, FileGenerationStatus.FAILED, "RETRY_EXHAUSTED");
+		} catch (Exception ex) {
+			logger.error("[RECOVER][FAILED][SECONDARY] jobId={}", jobId, ex);
+		}
+	}
+
+	@Recover
+	public void recoverFailed(
+			TransientDataAccessException e,
+			String jobId,
+			String errorMessage) {
+
+		logger.error("[RECOVER][FAILED][TRANSIENT_DB] jobId={}, error={}",
+				jobId, errorMessage, e);
 	}
 
 	private void transitionStatus(String jobId, FileGenerationStatus nextStatus, String errorMessage) {
-		validateJobId(jobId);
-
 		// 1. Fetch current status for the log
 		FileGenerationStatus currentStatus = fileGenerationRepository.findStatusByJobId(jobId)
 				.orElseThrow(() -> new LifecycleException("Job not found: " + jobId));
@@ -194,7 +186,7 @@ public class FileGenerationService {
 
 		// 2. STRUCTURED LOGGING
 		// We use a key-value format that is easy to grep or parse into JSON
-		logger.info("[STATUS_CHANGE] jobId='{}' prevStatus='{}' nextStatus='{}' error='{}'",
+		logger.info("[STATUS_CHANGE] jobId={} prevStatus={} nextStatus={} error={}",
 				jobId,
 				currentStatus,
 				nextStatus,
@@ -202,14 +194,7 @@ public class FileGenerationService {
 	}
 
 	/* ===================== METRICS ===================== */
-	@Retryable(
-			value = {
-					org.springframework.dao.TransientDataAccessException.class,
-					org.springframework.orm.ObjectOptimisticLockingFailureException.class
-			},
-			maxAttempts = 3,
-			backoff = @Backoff(delay = 1000)
-	)
+	@DbRetryable
 	@Transactional
 	public void updateFileMetrics(String jobId, long processed, long skipped, long invalid) {
 		validateJobId(jobId);
