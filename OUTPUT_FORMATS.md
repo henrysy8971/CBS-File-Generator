@@ -1,33 +1,28 @@
 # Output Format Configuration Guide
 
 ## Overview
-
 CBS File Generator supports **multiple output formats**:
 
 **Default Format**:
-- ✅ **XML** - Automatically generated if no BeanIO mapping is specified
+- ✅ **XML** - Automatically generated using StAX (Stream-based) if no mapping is provided.
 
-**Custom Formats** (via BeanIO mapping files):
-- ✅ CSV (comma-separated values)
-- ✅ Delimited (pipe, tab, custom separators)
-- ✅ Fixed-Length text files
-- ✅ Custom formats
+**Custom Formats** (via BeanIO):
+- ✅ CSV, Pipe-Delimited, Fixed-Length, JSON (if supported by BeanIO version).
 
-**Note**: If `beanioMappingFile` is NOT specified in interface-config.json, output defaults to XML regardless of `outputFormat` value.
+---
 
 ## Quick Start
 
-### Option 1: Generic XML (No Config Needed)
-
-**Use when**: You want automatic XML generation without mapping files
+### Option 1: Generic XML (Dynamic)
+**Use when:** You want a quick dump of a database query without writing any Java code or mapping files.
 
 **Configuration** (`interface-config.json`):
 ```json
 {
   "CUSTOMER_INTERFACE": {
     "name": "CUSTOMER_INTERFACE",
-    "dataSourceQuery": "SELECT c FROM Customer c WHERE c.active = true",
-    "chunkSize": 1000,
+    "dataSourceQuery": "SELECT CUSTOMER_ID, CUSTOMER_NAME, EMAIL FROM CUSTOMERS WHERE ACTIVE = 1",
+    "keySetColumn": "CUSTOMER_ID",
     "outputFormat": "XML",
     "outputFileExtension": "xml",
     "enabled": true
@@ -35,41 +30,25 @@ CBS File Generator supports **multiple output formats**:
 }
 ```
 
-**Note**: `dataSourceQuery` must be a **JPQL query** (uses JPA entity classes like `Customer`, not raw SQL table names). Native SQL is not supported.
-
-**Result**: Automatically generates XML without mapping file
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<customer xmlns="http://www.example.com/customer">
-  <records>
-    <customer>
-      <customer_id>CUST001</customer_id>
-      <customer_name>Acme Corp</customer_name>
-      <email>contact@acme.com</email>
-      ...
-    </customer>
-  </records>
-  <totalRecords>100</totalRecords>
-</customer>
-```
-
-**Components Used**:
-- `DynamicItemWriter` (automatic XML generation)
+**⚠️ Important SQL Rule:**
+For Dynamic Jobs, `dataSourceQuery` must be **Native SQL** (table names, not entity names).
+*   **Correct:** `SELECT * FROM CUSTOMERS`
+*   **Incorrect:** `SELECT c FROM Customer c` (This is for Custom Java Jobs only)
 
 ---
 
-### Option 2: BeanIO with Custom Format
+### Option 2: BeanIO (CSV / Fixed-Length)
+**Use when:** You need a specific format layout.
 
-**Use when**: You need specific output format (CSV, Fixed-Length, etc.)
-
-**Step 1**: Add mapping file reference to `interface-config.json`:
+**Step 1: Update Config**
 ```json
 {
   "CUSTOMER_INTERFACE": {
     "name": "CUSTOMER_INTERFACE",
-    "dataSourceQuery": "SELECT c FROM Customer c WHERE c.active = true",
+    "dataSourceQuery": "SELECT CUSTOMER_ID, NAME, EMAIL FROM CUSTOMERS",
+    "keySetColumn": "CUSTOMER_ID",
     "beanioMappingFile": "customer-mapping.xml",
-    "chunkSize": 1000,
+    "streamName": "customer_csv_stream",
     "outputFormat": "CSV",
     "outputFileExtension": "csv",
     "enabled": true
@@ -77,288 +56,92 @@ CBS File Generator supports **multiple output formats**:
 }
 ```
 
-**Step 2**: Define format in mapping file (`src/main/resources/beanio/customer-mapping.xml`):
-```xml
-<stream name="customer_interfaceStream-csv" format="delimited" delimiter=",">
-  <record name="customer" class="java.util.LinkedHashMap" minOccurs="0" maxOccurs="unbounded">
-    <field name="customer_id" type="string" position="1"/>
-    <field name="customer_name" type="string" position="2"/>
-    <field name="email" type="string" position="3"/>
-    <field name="phone" type="string" position="4"/>
-  </record>
-</stream>
-```
-
-**Components Used**:
-- `DynamicItemWriter` → `BeanIOFormatWriter` → BeanIO StreamFactory
-
----
-
-## Format Examples
-
-### XML Format
-
-**Mapping** (`customer-mapping.xml`):
-```xml
-<stream name="customer_interfaceStream" format="xml">
-  <record name="customer" class="java.util.LinkedHashMap" minOccurs="0" maxOccurs="unbounded">
-    <field name="customer_id" type="string"/>
-    <field name="customer_name" type="string"/>
-    <field name="email" type="string"/>
-  </record>
-</stream>
-```
-
-**Output**:
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<customer>
-  <customer>
-    <customer_id>CUST001</customer_id>
-    <customer_name>Acme Corp</customer_name>
-    <email>contact@acme.com</email>
-  </customer>
-  <customer>
-    <customer_id>CUST002</customer_id>
-    <customer_name>Beta Inc</customer_name>
-    <email>info@beta.com</email>
-  </customer>
-</customer>
-```
-
----
-
-### CSV Format
-
-**Mapping**:
-```xml
-<stream name="customer_interfaceStream-csv" format="delimited" delimiter=",">
-  <record name="customer" class="java.util.LinkedHashMap" minOccurs="0" maxOccurs="unbounded">
-    <field name="customer_id" type="string" position="1"/>
-    <field name="customer_name" type="string" position="2"/>
-    <field name="email" type="string" position="3"/>
-  </record>
-</stream>
-```
-
-**Output**:
-```
-CUST001,Acme Corp,contact@acme.com
-CUST002,Beta Inc,info@beta.com
-CUST003,Charlie Ltd,hello@charlie.org
-```
-
----
-
-### Pipe-Delimited Format
-
-**Mapping**:
-```xml
-<stream name="customer_interfaceStream-pipe" format="delimited" delimiter="|">
-  <record name="customer" class="java.util.LinkedHashMap" minOccurs="0" maxOccurs="unbounded">
-    <field name="customer_id" type="string" position="1"/>
-    <field name="customer_name" type="string" position="2"/>
-    <field name="email" type="string" position="3"/>
-  </record>
-</stream>
-```
-
-**Output**:
-```
-CUST001|Acme Corp|contact@acme.com
-CUST002|Beta Inc|info@beta.com
-CUST003|Charlie Ltd|hello@charlie.org
-```
-
----
-
-### Fixed-Length Format
-
-**Mapping**:
-```xml
-<stream name="customer_interfaceStream-fixed" format="fixedlength">
-  <record name="customer" class="java.util.LinkedHashMap" minOccurs="0" maxOccurs="unbounded">
-    <field name="customer_id" type="string" position="1" length="10"/>
-    <field name="customer_name" type="string" position="11" length="30" align="left" padding=" "/>
-    <field name="email" type="string" position="41" length="50" align="left" padding=" "/>
-  </record>
-</stream>
-```
-
-**Output** (fixed column widths):
-```
-CUST001   Acme Corp                 contact@acme.com
-CUST002   Beta Inc                  info@beta.com
-CUST003   Charlie Ltd               hello@charlie.org
-```
-
----
-
-## BeanIO Stream Names
-
-**Important**: Stream name must match interface type pattern: `{interfacetype_lowercase}Stream`
-
-| Interface Type       | Stream Name                |
-|----------------------|----------------------------|
-| `CUSTOMER_INTERFACE` | `customer_interfaceStream` |
-| `ORDER_INTERFACE`    | `order_interfaceStream`    |
-| `INVOICE_INTERFACE`  | `invoice_interfaceStream`  |
-| `PRODUCT_INTERFACE`  | `product_interfaceStream`  |
-
-Example for ORDER_INTERFACE:
-```xml
-<stream name="order_interfaceStream" format="xml">
-  <!-- record definitions -->
-</stream>
-```
-
----
-
-## Field Type Support
-
-BeanIO supports these field types:
-
-| Type      | Description      | Example             |
-|-----------|------------------|---------------------|
-| `string`  | Text value       | "John Doe"          |
-| `int`     | Integer          | 42                  |
-| `long`    | Long integer     | 9223372036854775807 |
-| `double`  | Floating point   | 3.14159             |
-| `decimal` | Big decimal      | 1234.56             |
-| `date`    | Date with format | format="yyyy-MM-dd" |
-| `boolean` | True/false       | true                |
-
----
-
-## Advanced: Date Formatting
+**Step 2: Create Mapping File**
+File: `src/main/resources/beanio/customer-mapping.xml`
 
 ```xml
-<field name="created_date" type="date" format="yyyy-MM-dd"/>
-<field name="last_modified" type="date" format="MM/dd/yyyy HH:mm:ss"/>
-<field name="timestamp" type="date" format="yyyy-MM-dd'T'HH:mm:ss.SSS"/>
-```
-
----
-
-## Advanced: Decimal Precision
-
-```xml
-<field name="price" type="decimal" pattern="#,##0.00"/>
-<field name="percentage" type="double" pattern="0.00%"/>
-<field name="currency" type="decimal" pattern="$#,##0.00"/>
-```
-
----
-
-## Advanced: Alignment & Padding (Fixed-Length)
-
-```xml
-<!-- Left-aligned with space padding -->
-<field name="name" type="string" length="20" align="left" padding=" "/>
-
-<!-- Right-aligned with zero padding -->
-<field name="number" type="string" length="10" align="right" padding="0"/>
-
-<!-- Centered -->
-<field name="title" type="string" length="30" align="center" padding="."/>
-```
-
----
-
-## Adding a New Interface with Custom Format
-
-### Step 1: Add to `interface-config.json`
-```json
-{
-  "PRODUCT_INTERFACE": {
-    "name": "PRODUCT_INTERFACE",
-    "dataSourceQuery": "SELECT p FROM Product p WHERE p.status = 'ACTIVE'",
-    "beanioMappingFile": "product-mapping.xml",
-    "chunkSize": 1000,
-    "outputFormat": "CSV",
-    "outputFileExtension": "csv",
-    "enabled": true
-  }
-}
-```
-
-### Step 2: Create mapping file `src/main/resources/beanio/product-mapping.xml`
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
 <beanio xmlns="http://www.beanio.org/2012/03">
-  <stream name="product_interfaceStream" format="delimited" delimiter=",">
-    <record name="product" class="java.util.LinkedHashMap" minOccurs="0" maxOccurs="unbounded">
-      <field name="product_id" type="string" position="1"/>
-      <field name="product_name" type="string" position="2"/>
-      <field name="price" type="decimal" pattern="0.00" position="3"/>
-      <field name="quantity" type="int" position="4"/>
+  <!-- 'name' must match the 'streamName' defined in JSON above -->
+  <stream name="customer_csv_stream" format="delimited" delimiter=",">
+    
+    <!-- Use java.util.Map to handle DynamicRecord objects -->
+    <record name="customer" class="java.util.Map" minOccurs="0" maxOccurs="unbounded">
+      <!-- 'name' must match the column alias from your SQL query (Case Insensitive) -->
+      <field name="CUSTOMER_ID" type="string" />
+      <field name="NAME" type="string" />
+      <field name="EMAIL" type="string" />
     </record>
+    
   </stream>
 </beanio>
 ```
 
-### Step 3: Deploy
-No code changes needed! Just add config and mapping file.
+---
+
+## Format Reference
+
+### 1. XML (Generic)
+No mapping file needed. The system generates XML tags based on SQL column aliases.
+*   **Root Element:** Derived from Interface Name (e.g., `ORDER_INTERFACE` -> `<order>`) or configurable via `rootElement` in JSON.
+*   **Item Element:** `{rootElement}Item`
+
+### 2. CSV / Delimited
+Requires `beanioMappingFile`.
+```xml
+<stream name="my_stream" format="delimited" delimiter="|">
+    <!-- definitions -->
+</stream>
+```
+
+### 3. Fixed Length
+Requires `beanioMappingFile`.
+```xml
+<stream name="my_stream" format="fixedlength">
+    <record name="data" class="java.util.Map">
+        <field name="ID" length="10" align="right" padding="0" />
+        <field name="NAME" length="50" align="left" padding=" " />
+    </record>
+</stream>
+```
 
 ---
 
-## Troubleshooting
+## Troubleshooting Common Errors
 
-### Output is always XML even though I specified outputFormat
+### "BeanIO configuration not found"
+*   **Cause:** The file referenced in `beanioMappingFile` does not exist in `src/main/resources/beanio/`.
+*   **Fix:** Check the filename spelling and build the project (`mvn clean install`) to ensure resources are copied.
 
-- **Cause**: The `outputFormat` field is informational only. Actual format depends on whether `beanioMappingFile` is configured
-- **Solution**:
-  - To use XML (default): Remove `beanioMappingFile` from config
-  - To use custom format: Add `beanioMappingFile` entry with path to mapping file and create the mapping file
-  - The `outputFormat` and `outputFileExtension` fields should match your mapping file format
+### "Stream name not found"
+*   **Cause:** The `<stream name="...">` inside your XML does not match the `streamName` field in `interface-config.json`.
+*   **Fix:** Ensure they match exactly.
 
-### Error: "beanioMappingFile not configured"
-- **Cause**: You referenced BeanIO in interface-config.json but mapping file doesn't exist
-- **Solution**: Either create the mapping file or remove the `beanioMappingFile` entry to use generic XML
+### "Invalid Column Mapping" (Empty fields in output)
+*   **Cause:** The `<field name="...">` in BeanIO does not match the SQL Column Alias.
+*   **Fix:** Run the SQL query manually. If it returns `CUST_ID`, your BeanIO field must be named `CUST_ID`.
 
-### Error: "Stream name not found in mapping"
-- **Cause**: Stream name in mapping doesn't match interface name pattern
-- **Example**: Interface is `CUSTOMER_INTERFACE` but stream is named `customerStream`
-- **Solution**: Rename stream to `customer_interfaceStream`
-
-### Data not appearing in output
-- **Cause**: Field names in mapping don't match column names in query result
-- **Solution**: Check exact column names returned by query and update mapping field names
-
-### Fixed-length output not aligned
-- **Cause**: Field positions/lengths overlap or have gaps
-- **Solution**: Verify sum of all lengths equals total line length; positions should be continuous
+### "Infinite Loop" / "Job Stuck"
+*   **Cause:** You configured `keySetColumn` but forgot to add the pagination clause to your SQL.
+*   **Fix:** Update SQL to include: `AND (:lastId IS NULL OR COLUMN_NAME > :lastId) ORDER BY COLUMN_NAME`.
 
 ---
 
-## Performance Tips
+## Advanced Configuration
 
-1. **Chunk Size**: Larger chunks = fewer writes, better performance
-   ```json
-   "chunkSize": 5000  // Good for CSV, Fixed-Length
-   "chunkSize": 1000  // Good for XML (file sizes get large)
-   ```
+### Date Formatting
+In BeanIO XML:
+```xml
+<field name="DOB" type="date" format="yyyy-MM-dd" />
+```
 
-2. **Format Choice**:
-   - XML: Slower, larger files, best for structured data
-   - CSV: Faster, smaller files, best for analysis
-   - Fixed-Length: Fastest, smallest, best for legacy systems
+### Number Formatting
+In BeanIO XML:
+```xml
+<field name="AMOUNT" type="decimal" format="#0.00" />
+```
 
-3. **String Escaping**: XML requires more processing due to escaping
-
----
-
-## Reference: BeanIO Documentation
-
-Full BeanIO documentation: https://beanio.org/
-
-Common attributes:
-- `class`: Java class for record mapping (use `java.util.LinkedHashMap` for dynamic data)
-- `format`: Output format (xml, delimited, fixedlength)
-- `delimiter`: Character separator (for delimited format)
-- `position`: Field column number (for delimited/fixed)
-- `length`: Field width (for fixed-length format)
-- `type`: Field data type (string, int, date, decimal, etc.)
-- `pattern`: Number/date formatting pattern
-- `align`: Text alignment (left, right, center for fixed-length)
-- `padding`: Pad character for fixed-length fields
+### Performance Tuning
+In `interface-config.json` (or `application.properties` globally):
+*   `chunkSize`: Set to **5000** for flat files (CSV/Fixed) for better speed.
+*   `chunkSize`: Set to **1000** for XML (to manage memory usage).
+```

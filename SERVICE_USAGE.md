@@ -1,201 +1,87 @@
 # FileGenerationService - Usage Map
 
 ## Overview
-
-`FileGenerationService` is the central service for managing file generation job records in the database. It handles CRUD operations on the `FILE_GENERATION` table.
+`FileGenerationService` is the central service for managing file generation job records in the database. It handles lifecycle state transitions (PENDING -> QUEUED -> PROCESSING -> COMPLETED) and metrics updates.
 
 ---
 
 ## Where FileGenerationService is Called
 
 ### 1. FileGenerationController (REST API)
+**File**: `controller/FileGenerationController.java`
 
-**File**: `src/main/java/com/silverlakesymmetri/cbs/fileGenerator/controller/FileGenerationController.java`
+*   **Create Record**:
+    *   `createFileGeneration(...)`: Called when `POST /generate` is hit. Creates the initial **PENDING** record.
+*   **Check Status**:
+    *   `getFileGeneration(jobId)`: Called by `GET /getFileGenerationStatus/{jobId}`.
+*   **List Pending**:
+    *   `getPendingFileGenerations()`: Called by `GET /getFileGenerationsByStatus`.
 
-**Usage**:
+### 2. FileGenerationScheduler (The Poller)
+**File**: `scheduler/FileGenerationScheduler.java`
 
-#### a. Create File Generation Record
-```java
-// Line 76
-FileGeneration fileGen = fileGenerationService.createFileGeneration(
-    fileName,
-    outputDirectory,
-    userName != null ? userName : "SYSTEM",
-    interfaceType
-);
-```
-**When**: User makes POST request to `/api/v1/file-generation/generate`
-**Purpose**: Creates initial job record with PENDING status
+*   **Fetch Work**:
+    *   `getPendingFileGenerations()`: Finds jobs waiting to be run.
+*   **Claim Work (Locking)**:
+    *   `markQueued(jobId)`: **Crucial**. Atomically transitions status from `PENDING` -> `QUEUED` so no other node picks it up.
 
-#### b. Get File Generation Status
-```java
-// Line 108
-Optional<FileGeneration> fileGen = fileGenerationService.getFileGeneration(jobId);
-```
-**When**: User makes GET request to `/api/v1/file-generation/status/{jobId}`
-**Purpose**: Retrieves job details for status check
+### 3. BatchJobLauncher (The Trigger)
+**File**: `service/BatchJobLauncher.java`
 
-#### c. Get Pending File Generations
-```java
-// Line 137
-List<FileGeneration> pendingFiles = fileGenerationService.getPendingFileGenerations();
-```
-**When**: User makes GET request to `/api/v1/file-generation/pending`
-**Purpose**: Lists all jobs with PENDING status
+*   **Start Processing**:
+    *   `markProcessing(jobId)`: Transitions `PENDING/QUEUED` -> `PROCESSING` right before handing the job to Spring Batch.
+*   **Launch Failure**:
+    *   `markFailed(jobId, error)`: If Spring Batch fails to start (e.g., config error), the job is immediately failed.
 
----
+### 4. DynamicStepExecutionListener (During Batch)
+**File**: `batch/DynamicStepExecutionListener.java`
 
-### 2. DynamicJobExecutionListener (Batch Listener)
+*   **Update Metrics**:
+    *   `updateFileMetrics(jobId, processed, skipped, invalid)`: Called at the end of every step (chunk) to persist progress to the database.
 
-**File**: `src/main/java/com/silverlakesymmetri/cbs/fileGenerator/batch/DynamicJobExecutionListener.java`
+### 5. DynamicJobExecutionListener (End of Batch)
+**File**: `batch/DynamicJobExecutionListener.java`
 
-**Usage**:
-
-#### a. Update Status to PROCESSING
-```java
-// Line 30
-fileGenerationService.markProcessing(jobId);
-```
-**When**: Batch job starts
-**Purpose**: Mark job as currently processing
-
-#### b. Update with Error
-```java
-// Line 54
-fileGenerationService.markFailed(jobId, exception.getMessage());
-```
-**When**: Batch job fails
-**Purpose**: Record error message and set status to FAILED
-
-#### c. Update Status to COMPLETED
-```java
-// Line 60
-fileGenerationService.markCompleted(jobId);
-```
-**When**: Batch job completes successfully
-**Purpose**: Mark job as complete
-
-#### d. Update Record Metrics
-```java
-// Line 77
-fileGenerationService.updateFileMetrics(jobId, recordCount, skippedRecordcount, invalidRecordCount);
-```
-**When**: Batch job finishes
-**Purpose**: Store total records processed
-
-#### e. Update with Error (Final)
-```java
-// Line 82
-fileGenerationService.markFailed(jobId, errorMessage.toString());
-```
-**When**: Batch job encounters error during finalization
-**Purpose**: Record final error message
-
----
-
-### 3. BatchJobLauncher (Job Execution)
-
-**File**: `src/main/java/com/silverlakesymmetri/cbs/fileGenerator/service/BatchJobLauncher.java`
-
-**Usage**:
-
-#### a. Update with Error (Job Launch Failure)
-```java
-// Line 53
-fileGenerationService.markFailed(jobId, error);
-```
-**When**: Job fails to launch
-**Purpose**: Record job launch error
-
-#### b. Update with Error (Job Execution Failure)
-```java
-// Line 84
-fileGenerationService.markFailed(jobId, e.getMessage());
-```
-**When**: Job execution throws exception
-**Purpose**: Record execution error
-
----
-
-### 4. FileGenerationScheduler (Quartz Scheduler)
-
-**File**: `src/main/java/com/silverlakesymmetri/cbs/fileGenerator/scheduler/FileGenerationScheduler.java`
-
-**Usage**:
-
-#### Get Pending Jobs for Scheduled Processing
-```java
-// Line 38
-fileGenerationService.getPendingFileGenerations().forEach(fileGen -> {
-    // Process each pending file generation
-});
-```
-**When**: Scheduled job runs (Quartz trigger)
-**Purpose**: Fetch pending jobs to retry/process
+*   **Success**:
+    *   `markCompleted(jobId)`: Called **only** after the file is successfully finalized (renamed & hashed).
+*   **Failure**:
+    *   `markFailed(jobId, error)`: Called if the batch job crashes or file finalization fails.
 
 ---
 
 ## Data Flow Summary
 
-```
-User REST API Request
-    ↓
-FileGenerationController.generateFile()
-    ↓
-fileGenerationService.createFileGeneration()  [Create initial record]
-    ↓
-BatchJobLauncher.launchFileGenerationJob()
-    ↓
-Batch Job Executes (DynamicItemReader/Processor/Writer)
-    ↓
-DynamicJobExecutionListener.beforeJob()
-    ↓
-fileGenerationService.markProcessing(jobId)  [Update status]
-    ↓
-Batch Job Processing...
-    ↓
-DynamicJobExecutionListener.afterJob() or onError()
-    ↓
-fileGenerationService.markCompleted(jobId)
-    ↓ OR ↓
-fileGenerationService.markFailed(jobId, errMsg)
-    ↓
-fileGenerationService.updateFileMetrics(jobId, recordCount, skippedRecordCount, invalidRecordCount)
-    ↓
-User queries status
-    ↓
-FileGenerationController.getFileGenerationStatus()
-    ↓
-fileGenerationService.getFileGeneration(jobId)
-    ↓
-Return status to user
+```mermaid
+graph TD
+    A[User / Scheduler] -->|1. create| Service[FileGenerationService]
+    Service -->|PENDING| DB[(Database)]
+    
+    Scheduler -->|2. getPending| Service
+    Scheduler -->|3. markQueued| Service
+    
+    Launcher[BatchJobLauncher] -->|4. markProcessing| Service
+    
+    BatchStep[Step Listener] -->|5. updateFileMetrics| Service
+    
+    BatchJob[Job Listener] -->|6. markCompleted / markFailed| Service
 ```
 
 ---
 
-## FileGenerationService Methods
+## FileGenerationService API Reference
 
-| Method                         | Called From                                       | Purpose                                           |
-|--------------------------------|---------------------------------------------------|---------------------------------------------------|
-| `createFileGeneration()`       | FileGenerationController                          | Create initial job record                         |
-| `getFileGeneration(jobId)`     | FileGenerationController                          | Retrieve job by ID                                |
-| `getPendingFileGenerations()`  | FileGenerationController, FileGenerationScheduler | List jobs with PENDING status                     |
-| `updateFileGenerationStatus()` | DynamicJobExecutionListener                       | Update job status (PROCESSING, COMPLETED, FAILED) |
-| `markFailed()`                 | BatchJobLauncher, DynamicJobExecutionListener     | Record error and update updateFileMetrics         |
-| `updateFileMetrics()`          | DynamicJobExecutionListener                       | Store processed record count                      |
-
----
+| Method | Primary Caller | Purpose |
+|:---|:---|:---|
+| `createFileGeneration` | Controller, SchedulerJob | Creates initial `PENDING` record. |
+| `markQueued` | FileGenerationScheduler | Locks a job for execution (`PENDING` -> `QUEUED`). |
+| `markProcessing` | BatchJobLauncher | signals job execution start (`QUEUED` -> `PROCESSING`). |
+| `updateFileMetrics` | StepExecutionListener | Persists record counts (Read/Write/Skip). |
+| `markCompleted` | JobExecutionListener | Final success state (Terminal). |
+| `markFailed` | *Multiple* | Final error state (Terminal). |
 
 ## Key Observations
 
-1. **REST API Entry Point**: FileGenerationController triggers everything via FileGenerationService.createFileGeneration()
-
-2. **Batch Lifecycle**: DynamicJobExecutionListener calls FileGenerationService multiple times to track job status
-
-3. **Error Tracking**: Both BatchJobLauncher and DynamicJobExecutionListener can record errors via FileGenerationService.markFailed()
-
-4. **Status Updates**: Job status changes are tracked in sequence: PENDING → PROCESSING → COMPLETED/FAILED
-
-5. **Scheduler Integration**: FileGenerationScheduler retrieves pending jobs to potentially retry them
-
-6. **Central Hub**: FileGenerationService is the single point of contact for all file generation record management
+1.  **State Machine Enforced**: The Service enforces valid transitions (e.g., you cannot go from `FAILED` back to `PROCESSING`).
+2.  **Granular Metrics**: Metrics are updated by the **Step Listener**, not the Job Listener, ensuring intermediate progress is saved even if the job crashes later.
+3.  **Concurrency Control**: The `markQueued` method acts as a distributed lock for the Poller.
+```
