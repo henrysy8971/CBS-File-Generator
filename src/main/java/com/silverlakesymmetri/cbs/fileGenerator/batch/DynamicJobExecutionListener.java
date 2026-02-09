@@ -1,5 +1,6 @@
 package com.silverlakesymmetri.cbs.fileGenerator.batch;
 
+import com.silverlakesymmetri.cbs.fileGenerator.model.FinalizationResult;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileFinalizationService;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
 import org.slf4j.Logger;
@@ -54,10 +55,10 @@ public class DynamicJobExecutionListener implements JobExecutionListener {
 		try {
 			logger.info("Finalizing part file: {}", partFilePath);
 
-			boolean finalized = fileFinalizationService.finalizeFile(partFilePath);
+			FinalizationResult finalizationResult = fileFinalizationService.finalizeFile(partFilePath);
 
-			if (!finalized) {
-				String msg = "Atomic rename failed for " + partFilePath;
+			if (!FinalizationResult.SUCCESS.equals(finalizationResult)) {
+				String msg = "Atomic rename failed for " + partFilePath + ". Reason - " + finalizationResult.toString();
 				logger.error(msg);
 				throw new RuntimeException(msg);
 			}
