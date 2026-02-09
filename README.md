@@ -9,108 +9,108 @@ A Spring Boot microservice application for generating XML interface files from O
 
 ```
 src/main/java/com/silverlakesymmetri/cbs/fileGenerator/
-├── FileGeneratorApplication.java           ← Main entry point
+├── FileGeneratorApplication.java           <- Main entry point
 ├── batch/
-│   ├── BatchCleanupTasklet.java            ←
-│   ├── BeanIOFormatWriter.java             ← Generic BeanIO writer
-│   ├── DynamicBatchConfig.java             ← Generic batch config
-│   ├── DynamicItemProcessor.java           ← Generic processor
-│   ├── DynamicItemReader.java              ← Generic reader
-│   ├── DynamicItemWriter.java              ← Generic writer
-│   ├── DynamicJobExecutionListener.java    ← Job listener
-│   ├── DynamicStepExecutionListener.java   ← Step listener
-│   ├── FileValidationTasklet.java          ←
-│   ├── GenericXMLWriter.java               ← Generic XML writer
-│   ├── MaintenanceBatchConfig.java         ←
-│   ├── OutputFormatWriter.java             ← Generic output format writer
-│   ├── OutputFormatWriterFactory.java      ← Factory for selecting appropriate output format writer
+│   ├── BatchCleanupTasklet.java            <- Deletes stale files & DB rows
+│   ├── BeanIOFormatWriter.java             <- Generic BeanIO writer
+│   ├── DynamicBatchConfig.java             <- Generic batch config
+│   ├── DynamicItemProcessor.java           <- Generic processor
+│   ├── DynamicItemReader.java              <- Generic reader
+│   ├── DynamicItemWriter.java              <- Generic writer
+│   ├── DynamicJobExecutionListener.java    <- Job listener
+│   ├── DynamicStepExecutionListener.java   <- Step listener
+│   ├── FileValidationTasklet.java          <- Validates output against XSD
+│   ├── GenericXMLWriter.java               <- Generic XML writer
+│   ├── MaintenanceBatchConfig.java         <- Configures the cleanup job
+│   ├── OutputFormatWriter.java             <- Generic output format writer
+│   ├── OutputFormatWriterFactory.java      <- Factory for selecting appropriate output format writer
 │   └── custom/
-│       ├── OrderBatchConfig.java           ← Example: specialized batch config
-│       ├── OrderItemProcessor.java         ← Example: specialized processor
-│       ├── OrderItemReader.java            ← Example: specialized reader
-│       ├── OrderItemWriter.java            ← Example: specialized writer
-│       ├── OrderRowMapper.java             ← Example: entity→DTO mapper
-│       └── OrderStepExecutionListener.java ← Example: specialized step listener
+│       ├── OrderBatchConfig.java           <- Example: specialized batch config
+│       ├── OrderItemProcessor.java         <- Example: specialized processor
+│       ├── OrderItemReader.java            <- Example: specialized reader
+│       ├── OrderItemWriter.java            <- Example: specialized writer
+│       ├── OrderRowMapper.java             <- Example: entity->DTO mapper
+│       └── OrderStepExecutionListener.java <- Example: specialized step listener
 ├── config/
-│   ├── AsyncConfig.java                    ←
-│   ├── AutowiringSpringBeanJobFactory.java ←
-│   ├── BatchInfrastructureConfig.java      ←
-│   ├── DatabaseConfig.java                 ← Database configuration
-│   ├── InterfaceConfigLoader.java          ← Interface configuration loader
-│   ├── QuartzConfiguration.java            ← Quartz scheduler configuration
-│   ├── SchedulerStartupRunner.jav          ←
-│   ├── SecurityConfig.java                 ← Security configuration
-│   ├── TomcatConfig.java                   ← Tomcat configuration
+│   ├── AsyncConfig.java                    <- ThreadPool for @Async tasks
+│   ├── AutowiringSpringBeanJobFactory.java <- Injects Spring beans into Quartz
+│   ├── BatchInfrastructureConfig.java      <- Core Batch engine config
+│   ├── DatabaseConfig.java                 <- Database configuration
+│   ├── InterfaceConfigLoader.java          <- Interface configuration loader
+│   ├── QuartzConfiguration.java            <- Quartz scheduler configuration
+│   ├── SchedulerStartupRunner.jav          <- Starts Quartz on app boot
+│   ├── SecurityConfig.java                 <- Security configuration
+│   ├── TomcatConfig.java                   <- Tomcat configuration
 │   └── model/
-│       ├── InterfaceConfig.java            ← Interface Config model
-│       └── InterfaceConfigWrapper.java     ← Wrapper for interface-config.json
+│       ├── InterfaceConfig.java            <- Interface Config model
+│       └── InterfaceConfigWrapper.java     <- Wrapper for interface-config.json
 ├── constants/
-│   ├── BatchMetricsConstants.java          ←
-│   └── FileGenerationConstants.java        ←
+│   ├── BatchMetricsConstants.java          <- Metric key definitions
+│   └── FileGenerationConstants.java        <- Global app constants
 ├── controller/
-│   ├── AdminController.java                ← REST endpoints
-│   └── FileGenerationController.java       ← REST endpoints
+│   ├── AdminController.java                <- Admin REST endpoints
+│   └── FileGenerationController.java       <- File Generation REST endpoints
 ├── dto/
-│   ├── ApiResponse.java                    ←
-│   ├── ColumnType.java                     ←
-│   ├── DynamicRecord.java                  ← Generic record holder for dynamic data
-│   ├── FileGenerationRequest.java          ← API request
-│   ├── FileGenerationResponse.java         ← API response
-│   ├── LineItemDto.java                    ← Example: nested DTO
-│   ├── OrderDto.java                       ← Example: complex DTO
-│   └── PagedResponse.java                  ←
-│   └── RecordSchema.java                   ←
+│   ├── ApiResponse.java                    <- Standard HTTP response wrapper
+│   ├── ColumnType.java                     <- Enum for dynamic data types
+│   ├── DynamicRecord.java                  <- Generic record holder for dynamic data
+│   ├── FileGenerationRequest.java          <- API request
+│   ├── FileGenerationResponse.java         <- API response
+│   ├── LineItemDto.java                    <- Example: nested DTO
+│   ├── OrderDto.java                       <- Example: complex DTO
+│   └── PagedResponse.java                  <- Wrapper for paginated results
+│   └── RecordSchema.java                   <- Metadata for dynamic columns
 ├── entity/
-│   ├── AppConfig.java                      ← Application config
-│   ├── DbToken.java                        ← Auth tokens
-│   ├── FileGeneration.java                 ← Tracks file generation job execution
-│   ├── LineItem.java                       ← Example: JPA entity
-│   └── Order.java                          ← Example: JPA entity
+│   ├── AppConfig.java                      <- Application config
+│   ├── DbToken.java                        <- Auth tokens
+│   ├── FileGeneration.java                 <- Tracks file generation job execution
+│   ├── LineItem.java                       <- Example: JPA entity
+│   └── Order.java                          <- Example: JPA entity
 ├── exception/
-│   ├── ConfigurationException.java         ←
-│   ├── ConflictException.java              ←
-│   ├── ForbiddenException.java             ←
-│   ├── GlobalExceptionHandler.java         ← Global exception handler
-│   ├── GoneException.java                  ←
-│   ├── LifecycleException.java             ←
-│   └── NotFoundException.java              ←
+│   ├── ConfigurationException.java         <- Invalid config error
+│   ├── ConflictException.java              <- HTTP 409 Conflict error
+│   ├── ForbiddenException.java             <- HTTP 403 Forbidden error
+│   ├── GlobalExceptionHandler.java         <- Global exception handler
+│   ├── GoneException.java                  <- HTTP 410 Gone error
+│   ├── LifecycleException.java             <- Job state transition error
+│   └── NotFoundException.java              <- HTTP 404 Not Found error
 ├── health/
-│   ├── BatchQueueHealthIndicator.java      ←
-│   └── QuartzHealthIndicator.java          ←
+│   ├── BatchQueueHealthIndicator.java      <- Monitors pending job queue
+│   └── QuartzHealthIndicator.java          <- Monitors scheduler status
 ├── repository/
-│   ├── AppConfigRepository.java            ← Config access
-│   ├── DbTokenRepository.java              ← Token access
-│   ├── FileGenerationRepository.java       ← Job tracking
-│   └── OrderRepository.java                ← Example: custom queries
+│   ├── AppConfigRepository.java            <- Config access
+│   ├── DbTokenRepository.java              <- Token access
+│   ├── FileGenerationRepository.java       <- Job tracking
+│   └── OrderRepository.java                <- Example: custom queries
 ├── scheduler/
-│   └── BatchJobLauncherJob.java            ←
-│   └── FileGenerationScheduler.java        ← Job scheduling
-│   └── MaintenanceScheduler.java           ←
+│   └── BatchJobLauncherJob.java            <- Quartz job triggering Batch
+│   └── FileGenerationScheduler.java        <- Job scheduling
+│   └── MaintenanceScheduler.java           <- Quartz job triggering Cleanup
 ├── security/
-│   ├── CorrelationIdFilter.java            ←
-│   ├── TokenAuthenticationFilter.java      ← Token authentication filter
-│   └── TokenValidator.java                 ← Token validator
+│   ├── CorrelationIdFilter.java            <- Adds Request ID to MDC logs
+│   ├── TokenAuthenticationFilter.java      <- Token authentication filter
+│   └── TokenValidator.java                 <- Token validator
 ├── service/
-│   ├── AppConfigService.java               ← App Config service
-│   ├── BatchJobLauncher.java               ← Job routing
-│   ├── FileFinalizationService.java        ← Finalizes file generation
-│   ├── FileGenerationService.java          ← Business logic
-│   └── FileGenerationStatus.java           ← 
+│   ├── AppConfigService.java               <- App Config service
+│   ├── BatchJobLauncher.java               <- Job routing
+│   ├── FileFinalizationService.java        <- Finalizes file generation
+│   ├── FileGenerationService.java          <- Business logic
+│   └── FileGenerationStatus.java           <- Enum for Job lifecycle states
 ── validation/
-    └── XsdValidator.java                   ← Optional XSD validation
+    └── XsdValidator.java                   <- Optional XSD validation
 
 src/main/resources/
-├── application.properties                  ← App configuration
-├── interface-config.json                   ← Interface definitions
+├── application.properties                  <- App configuration
+├── interface-config.json                   <- Interface definitions
 ├── beanio/
 │   └── (mapping files)
 ├── db/
-│   └── schema.sql                          ← Database schema
+│   └── schema.sql                          <- Database schema
 └── xsd/
-    ├── order_schema.xsd                    ← Example: XSD schema
+    ├── order_schema.xsd                    <- Example: XSD schema
     └── (other schemas)
 
-src/test/java/com/silverlakesymmetri/cbs/fileGenerator/  ← Unit tests
+src/test/java/com/silverlakesymmetri/cbs/fileGenerator/  <- Unit tests
 ```
 
 ## Technology Stack
@@ -143,7 +143,7 @@ src/test/java/com/silverlakesymmetri/cbs/fileGenerator/  ← Unit tests
 - Audit trail with created/updated dates
 
 ### 3. Spring Batch File Generation
-- **Memory-Efficient Batch Reading:** Implements `ItemStreamReader` with keyset pagination to process millions of records without exhausting memory, while supporting batch restarts.
+- **Memory-Efficient Batch Reading:** Implements `ItemStreamReader` with key set pagination to process millions of records without exhausting memory, while supporting batch restarts.
 - **Chunking:** Processes 1000 records per transaction chunk by default, balancing memory usage and performance. In case of failure, only the current chunk is rolled back.
 - Configurable item processors for validation
 - Multiple output format support (CSV, XML, etc.)
@@ -170,22 +170,39 @@ src/test/java/com/silverlakesymmetri/cbs/fileGenerator/  ← Unit tests
 ### 7. Atomic File Finalization & Integrity
 - **Safety First:** Files are written with a `.part` extension during processing.
 - **Atomic Rename:** Files are only moved to their final name upon successful Batch completion.
-- **Checksum Verification:** The system calculates a SHA-256 hash post-generation and verifies it before marking the job as `COMPLETED`.
+- **Checksum Verification:** The system calculates an SHA-256 hash post-generation and verifies it before marking the job as `COMPLETED`.
 
 ### 8. Race Condition Protection
 - **Optimistic Locking:** Uses JPA `@Version` to prevent duplicate batch executions for the same jobId.
 - **Async Guarding:** The `BatchJobLauncher` performs a status pre-check to ensure only `PENDING` jobs can transition to `PROCESSING`.
 
 ### 9. REST API Endpoints
-All endpoints (except health) require a valid `X-DB-Token` in the header.
 
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| **POST** | `/api/v1/file-generation/generate` | Queues a new job (Returns 202 Accepted) |
-| **GET** | `/api/v1/file-generation/status/{jobId}` | Returns status, metrics, and error messages |
-| **GET** | `/api/v1/file-generation/pending` | Lists all jobs currently in `PENDING` state |
-| **GET** | `/api/v1/file-generation/health` | Service and interface status |
+### File Generation Endpoints
+*Base Path:* `/api/v1/file-generation`
 
+| Method   | Endpoint                           | Description                                                                                                                                                    |
+|:---------|:-----------------------------------|:---------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **POST** | `/generate`                        | Queues a new file generation job based on the interface type. Checks for existing running jobs and validates configuration. Returns `202 Accepted` on success. |
+| **GET**  | `/getFileGenerationStatus/{jobId}` | Retrieves the current status, record counts, and any error messages for a specific job ID.                                                                     |
+| **GET**  | `/getFileGenerationsByStatus`      | Lists jobs filtered by status (e.g., `PENDING`, `COMPLETED`, `FAILED`) with pagination support.                                                                |
+| **GET**  | `/downloadFileByJobId/{jobId}`     | Downloads the generated file for a `COMPLETED` job. Supports HTTP Range requests for resumable downloads.                                                      |
+| **GET**  | `/interfaces`                      | Returns a list of all currently enabled interface configurations available in the system.                                                                      |
+| **GET**  | `/getConfigInfo/{interfaceType}`   | Returns the detailed configuration settings (format, schema, extension, etc.) for a specific interface type.                                                   |
+
+### Admin & Scheduler Endpoints
+*Base Path:* `/api/v1/admin`
+
+| Method   | Endpoint                             | Description                                                                                                          |
+|:---------|:-------------------------------------|:---------------------------------------------------------------------------------------------------------------------|
+| **POST** | `/scheduler/trigger/{interfaceType}` | Manually triggers an immediate Quartz job for a specific interface, bypassing the defined Cron schedule.             |
+| **POST** | `/scheduler/force-run`               | Forces the Poller job (`FILE_GEN_POLL_JOB`) to run immediately to pick up pending requests.                          |
+| **POST** | `/scheduler/pause`                   | Pauses the entire Quartz scheduler (stops all future triggers).                                                      |
+| **POST** | `/scheduler/resume`                  | Resumes the Quartz scheduler from a paused state.                                                                    |
+| **GET**  | `/scheduler/jobs`                    | Lists all jobs currently registered in the Quartz scheduler with their next fire times.                              |
+| **GET**  | `/scheduler/status`                  | Returns detailed status of all scheduled triggers, including previous run time, next run time, and Cron expressions. |
+| **POST** | `/cleanup`                           | Manually triggers the system maintenance job (`cleanupJob`) to purge stale files and database records.               |
+| **POST** | `/reload-config`                     | Hot-reloads the `interface-config.json` file from the classpath without restarting the application.                  |
 ## Database Schema
 
 ### IF_APP_CONFIG Table
@@ -232,11 +249,34 @@ Tracks file generation job execution
 Key configuration properties in `application.properties`:
 
 ```properties
+# Hibernate dialect for Oracle 12c
+spring.jpa.database-platform=org.hibernate.dialect.Oracle12cDialect
+
+# Fully qualified Oracle JDBC driver class
+# Required for connecting to Oracle databases
+spring.datasource.driver-class-name=oracle.jdbc.OracleDriver
+
+# JDBC connection URL for Oracle (SID-based)
+# Uses environment variables with sensible defaults:
+# - DB_HOST : database server hostname or IP
+# - DB_PORT : listener port (default 1521)
+# - DB_SID  : Oracle SID
+spring.datasource.url=jdbc:oracle:thin:@${DB_HOST:10.253.182.53}:${DB_PORT:1521}:${DB_SID:CBSEXIM}
+
+# Database username
+# Can be overridden using the DB_USERNAME environment variable
+spring.datasource.username=${DB_USERNAME:CBSDEV}
+
+# Database password
+# Should be provided via environment variable in non-dev environments
+spring.datasource.password=${DB_PASSWORD:CBSDEV}
+
+# SQL query used to validate connections before using them
+# Simple lightweight query for Oracle
+spring.datasource.hikari.connection-test-query=SELECT 1 FROM DUAL
+
 # File Generation
 file.generation.output-directory=/opt/cbs/generated-files/
-file.generation.archive-directory=/opt/cbs/archived-files/
-file.generation.temp-directory=/opt/cbs/temp-files/
-file.generation.log-directory=/opt/cbs/logs/
 file.generation.chunk-size=1000
 
 # Authentication
