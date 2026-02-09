@@ -17,7 +17,6 @@ public interface AppConfigRepository extends JpaRepository<AppConfig, Long> {
 	// Initial load: all active configs
 	List<AppConfig> findByActiveTrue();
 
-	// Partial refresh: active configs updated after last refresh
-	List<AppConfig> findByActiveTrueAndUpdatedDateAfter(LocalDateTime lastModified);
-
+	// Refresh: configs updated after last refresh
+	List<AppConfig> findByUpdatedDateAfter(LocalDateTime lastModified);
 }

@@ -97,8 +97,8 @@ public class AppConfigService {
 	public void refreshCache() {
 		LocalDateTime startTime = LocalDateTime.now(); // Capture start time
 
-		// Get all changes (both newly active and newly inactive)
-		List<AppConfig> changes = appConfigRepository.findByActiveTrueAndUpdatedDateAfter(lastRefresh);
+		// Find ALL changes, regardless of active status
+		List<AppConfig> changes = appConfigRepository.findByUpdatedDateAfter(lastRefresh);
 
 		for (AppConfig cfg : changes) {
 			if (cfg.isActive()) {
