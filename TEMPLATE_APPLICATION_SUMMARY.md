@@ -230,7 +230,11 @@ Add entry to `src/main/resources/interface-config.json`:
 mvn clean package
 
 # Run
-java -jar target/file-generator-1.0.0-exec.jar --DB_PASSWORD=<your-db-password>
+java -jar target/file-generator-1.0.0-exec.jar \
+  --spring.datasource.url=jdbc:oracle:thin:@10.253.182.53:1521:CBSEXIM \
+  --spring.datasource.username=CBSDEV \
+  --spring.datasource.password=CBSDEV \
+  --auth.token.enable-validation=false
 
 # Test API
 curl -X POST http://localhost:8080/cbs-file-generator/api/v1/file-generation/generate \
@@ -274,7 +278,11 @@ If you need transformation or nested structures:
 ```bash
 mvn clean package
 # Output: target/file-generator-1.0.0-exec.jar
-# Run: java -jar target/file-generator-1.0.0-exec.jar --DB_PASSWORD=<your-db-password>
+# Run: java -jar target/file-generator-1.0.0-exec.jar \
+  --spring.datasource.url=jdbc:oracle:thin:@10.253.182.53:1521:CBSEXIM \
+  --spring.datasource.username=CBSDEV \
+  --spring.datasource.password=CBSDEV \
+  --auth.token.enable-validation=false
 ```
 
 - ✅ Includes embedded Tomcat
