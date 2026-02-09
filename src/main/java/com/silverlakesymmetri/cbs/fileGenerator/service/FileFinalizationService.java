@@ -59,7 +59,7 @@ public class FileFinalizationService {
 			canonicalPath = partFilePaths.getPartPath().toAbsolutePath().normalize();
 		} catch (SecurityException e) {
 			logger.error("IO exception while getting real path {}", partFilePath, e);
-			return FinalizationResult.IO_ERROR;
+			return FinalizationResult.SECURITY_ERROR;
 		}
 
 		Object lock = fileLocks.computeIfAbsent(canonicalPath, k -> new Object());
@@ -108,7 +108,7 @@ public class FileFinalizationService {
 
 		} catch (SecurityException e) {
 			logger.error("Security exception during finalization of {}", partPath, e);
-			result = FinalizationResult.IO_ERROR;
+			result = FinalizationResult.SECURITY_ERROR;
 			return result;
 
 		} finally {
