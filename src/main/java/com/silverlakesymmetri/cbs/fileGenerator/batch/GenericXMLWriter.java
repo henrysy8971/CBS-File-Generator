@@ -29,6 +29,7 @@ public class GenericXMLWriter implements OutputFormatWriter {
 	private String rootElement;
 	private String itemElement;
 	private long recordCount = 0;
+	private long skippedCount = 0;
 	private boolean headerWritten = false;
 	private boolean stepSuccessful = false;
 	private final Object lock = new Object(); // Thread-safety for write operations
@@ -110,13 +111,15 @@ public class GenericXMLWriter implements OutputFormatWriter {
 				if (record != null) {
 					writeRecordXml(record);
 					recordCount++;
+				} else {
+					skippedCount++;
 				}
 			}
 			xmlStreamWriter.flush();
 			outputStream.flush();
 		}
 
-		logger.debug("Chunk written: {} records, total so far: {}", items.size(), recordCount);
+		logger.debug("Chunk written: {} records, total written: {}, total skipped: {}", items.size(), recordCount, skippedCount);
 	}
 
 	private void writeHeader() throws XMLStreamException {
@@ -200,6 +203,11 @@ public class GenericXMLWriter implements OutputFormatWriter {
 	@Override
 	public long getRecordCount() {
 		return recordCount;
+	}
+
+	@Override
+	public long getSkippedCount() {
+		return skippedCount;
 	}
 
 	@Override

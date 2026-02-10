@@ -71,7 +71,7 @@ public class BatchCleanupTasklet implements Tasklet {
 			return;
 		}
 
-		if (!Files.exists(rootPath)) {
+		if (!Files.exists(rootPath, LinkOption.NOFOLLOW_LINKS)) {
 			logger.warn("Storage directory does not exist, skipping file cleanup: {}", locDir);
 			return;
 		}

@@ -30,6 +30,7 @@ import org.springframework.web.bind.annotation.*;
 import javax.validation.Valid;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
@@ -234,7 +235,7 @@ public class FileGenerationController {
 			throw new ForbiddenException("Invalid file path");
 		}
 
-		if (!Files.exists(resolvedPath)) {
+		if (!Files.exists(resolvedPath, LinkOption.NOFOLLOW_LINKS)) {
 			throw new GoneException("File has been archived or deleted from disk");
 		}
 

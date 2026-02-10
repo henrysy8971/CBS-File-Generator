@@ -19,6 +19,7 @@ public class DynamicItemWriter implements OutputFormatWriter, ItemStreamWriter<D
 	private static final Logger logger = LoggerFactory.getLogger(DynamicItemWriter.class);
 	private static final String CONTEXT_KEY_PART_FILE = "dynamic.writer.partFilePath";
 	private static final String CONTEXT_KEY_RECORD_COUNT = "dynamic.writer.recordCount";
+	private static final String CONTEXT_KEY_SKIPPED_COUNT = "dynamic.writer.skippedCount";
 	private final OutputFormatWriterFactory writerFactory;
 
 	private OutputFormatWriter delegateWriter;
@@ -64,6 +65,7 @@ public class DynamicItemWriter implements OutputFormatWriter, ItemStreamWriter<D
 		if (delegateWriter != null) {
 			executionContext.putString(CONTEXT_KEY_PART_FILE, delegateWriter.getPartFilePath());
 			executionContext.putLong(CONTEXT_KEY_RECORD_COUNT, delegateWriter.getRecordCount());
+			executionContext.putLong(CONTEXT_KEY_SKIPPED_COUNT, delegateWriter.getSkippedCount());
 		}
 	}
 
@@ -87,6 +89,11 @@ public class DynamicItemWriter implements OutputFormatWriter, ItemStreamWriter<D
 	@Override
 	public long getRecordCount() {
 		return delegateWriter != null ? delegateWriter.getRecordCount() : 0;
+	}
+
+	@Override
+	public long getSkippedCount() {
+		return delegateWriter != null ? delegateWriter.getSkippedCount() : 0;
 	}
 
 	@Override

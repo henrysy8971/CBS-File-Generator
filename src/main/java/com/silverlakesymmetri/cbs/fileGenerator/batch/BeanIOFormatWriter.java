@@ -10,12 +10,17 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -31,10 +36,14 @@ public class BeanIOFormatWriter implements OutputFormatWriter {
 	private static final Map<String, StreamFactory> FACTORY_CACHE = new ConcurrentHashMap<>();
 	private final InterfaceConfigLoader interfaceConfigLoader;
 	private final AtomicLong recordCount = new AtomicLong(0);
+	private final AtomicLong skippedCount = new AtomicLong(0);
 
 	private BeanWriter beanIOWriter;
 	private BufferedWriter bufferedWriter;
 	private String partFilePath;
+
+	@Value("${file.generation.external.config-dir:}")
+	private String externalConfigDir;
 
 	@Autowired
 	public BeanIOFormatWriter(InterfaceConfigLoader interfaceConfigLoader) {
@@ -82,18 +91,37 @@ public class BeanIOFormatWriter implements OutputFormatWriter {
 
 	private StreamFactory getOrCreateFactory(String mappingFile) {
 		return FACTORY_CACHE.computeIfAbsent(mappingFile, file -> {
-			ClassPathResource resource = new ClassPathResource("beanio/" + file);
+			// 1. Try File System First
+			if (StringUtils.hasText(externalConfigDir)) {
+				String dir = externalConfigDir.trim();
+				Path externalPath = Paths.get(dir, "beanio", file);
 
-			if (!resource.exists()) {
-				throw new IllegalArgumentException("BeanIO mapping file not found: " + resource.getPath());
+				if (!externalPath.startsWith(Paths.get(dir).toAbsolutePath().normalize())) {
+					logger.warn("BeanIO mapping file path traversal attempt blocked: {}", mappingFile);
+				} else if (Files.exists(externalPath, LinkOption.NOFOLLOW_LINKS) && Files.isReadable(externalPath)) {
+					try (InputStream is = Files.newInputStream(externalPath)) {
+						StreamFactory factory = StreamFactory.newInstance();
+						factory.load(is);
+						return factory;
+					} catch (IOException e) {
+						logger.warn("Failed to get external path input stream: {}", externalPath, e);
+					}
+				}
 			}
 
-			try (InputStream in = resource.getInputStream()) {
-				StreamFactory factory = StreamFactory.newInstance();
-				factory.load(in);
-				return factory;
-			} catch (IOException e) {
-				throw new UncheckedIOException("Failed to load BeanIO mapping file: " + resource.getPath(), e);
+			// 2. Fallback to Classpath
+			ClassPathResource resource = new ClassPathResource("beanio/" + file);
+
+			if (resource.exists()) {
+				try (InputStream in = resource.getInputStream()) {
+					StreamFactory factory = StreamFactory.newInstance();
+					factory.load(in);
+					return factory;
+				} catch (IOException e) {
+					throw new UncheckedIOException("Failed to load BeanIO mapping file: " + resource.getPath(), e);
+				}
+			} else {
+				throw new IllegalArgumentException("BeanIO mapping file not found: " + resource.getPath());
 			}
 		});
 	}
@@ -106,29 +134,37 @@ public class BeanIOFormatWriter implements OutputFormatWriter {
 		for (DynamicRecord record : items) {
 			try {
 				beanIOWriter.write(record.asMap());
-				recordCount.addAndGet(items.size());
+				recordCount.incrementAndGet();
 			} catch (BeanWriterException e) {
 				logger.error("Failed to write record: {}", record, e);
+				skippedCount.incrementAndGet();
 				// Optional: Throw exception to fail job, or track separate skip count
 			}
 		}
 	}
 
 	@Override
-	public void close() throws Exception {
+	public void close() {
 		try {
 			if (beanIOWriter != null) beanIOWriter.close();
+		} catch (Exception e) {
+			logger.warn("Error closing beanIOWriter", e);
+		}
+		try {
 			if (bufferedWriter != null) bufferedWriter.close();
-			logger.info("BeanIO writer closed. Total records this session: {}", recordCount);
-		} finally {
-			this.beanIOWriter = null;
-			this.bufferedWriter = null;
+		} catch (Exception e) {
+			logger.warn("Error closing bufferedWriter", e);
 		}
 	}
 
 	@Override
 	public long getRecordCount() {
 		return recordCount.get();
+	}
+
+	@Override
+	public long getSkippedCount() {
+		return skippedCount.get();
 	}
 
 	@Override
@@ -150,5 +186,10 @@ public class BeanIOFormatWriter implements OutputFormatWriter {
 			logger.info("Existing records in file {}: {}", file.getPath(), lines);
 			return lines;
 		}
+	}
+
+	public static void clearFactoryCache() {
+		FACTORY_CACHE.clear();
+		logger.info("BeanIO Factory Cache cleared.");
 	}
 }

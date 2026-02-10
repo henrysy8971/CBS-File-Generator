@@ -1,9 +1,11 @@
 package com.silverlakesymmetri.cbs.fileGenerator.controller;
 
+import com.silverlakesymmetri.cbs.fileGenerator.batch.BeanIOFormatWriter;
 import com.silverlakesymmetri.cbs.fileGenerator.config.InterfaceConfigLoader;
 import com.silverlakesymmetri.cbs.fileGenerator.dto.PagedResponse;
 import com.silverlakesymmetri.cbs.fileGenerator.exception.ConflictException;
 import com.silverlakesymmetri.cbs.fileGenerator.exception.NotFoundException;
+import com.silverlakesymmetri.cbs.fileGenerator.validation.XsdValidator;
 import org.quartz.*;
 import org.quartz.impl.matchers.GroupMatcher;
 import org.slf4j.Logger;
@@ -28,16 +30,18 @@ public class AdminController {
 	private final JobLauncher jobLauncher;
 	private final Job cleanupJob;
 	private final Scheduler scheduler;
+	private final XsdValidator xsdValidator;
 	private final InterfaceConfigLoader interfaceConfigLoader;
 
 	@Autowired
 	public AdminController(JobLauncher jobLauncher,
 						   @Qualifier("cleanupJob") Job cleanupJob,
-						   Scheduler scheduler,
+						   Scheduler scheduler, XsdValidator xsdValidator,
 						   InterfaceConfigLoader interfaceConfigLoader) {
 		this.jobLauncher = jobLauncher;
 		this.cleanupJob = cleanupJob;
 		this.scheduler = scheduler;
+		this.xsdValidator = xsdValidator;
 		this.interfaceConfigLoader = interfaceConfigLoader;
 	}
 
@@ -75,10 +79,18 @@ public class AdminController {
 
 	@PostMapping("/reload-config")
 	public ResponseEntity<String> reloadConfig() {
-		logger.info("Admin request: Reloading interface-config.json from classpath");
+		logger.info("Admin request: Reloading configurations...");
+
+		// 1. Reload JSON
 		interfaceConfigLoader.refreshConfigs();
-		int count = interfaceConfigLoader.getAllConfigs().size();
-		return ResponseEntity.ok("Configuration reloaded successfully. Total interfaces: " + count);
+
+		// 2. Clear XSD Cache
+		xsdValidator.clearCache();
+
+		// 3. Clear BeanIO Cache
+		BeanIOFormatWriter.clearFactoryCache();
+
+		return ResponseEntity.ok("Configuration and Caches reloaded successfully.");
 	}
 
 	/**
