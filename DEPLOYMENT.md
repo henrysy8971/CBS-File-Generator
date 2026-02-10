@@ -46,7 +46,7 @@ The application does **not** auto-create tables in Production (`initialize-schem
     *   **Quartz**: `QRTZ_JOB_DETAILS`, `QRTZ_TRIGGERS`, etc.
 
 **Initial Security Setup**:
-Insert a token for your client application so it can access the API immediately:
+Insert a token for your client application, so it can access the API immediately:
 ```sql
 INSERT INTO IF_DB_TOKEN (TOKEN_ID, TOKEN_VALUE, APPLICATION_NAME, ACTIVE, ISSUED_DATE)
 VALUES (IF_DB_TOKEN_SEQ.NEXTVAL, 'your-production-secret-token-uuid', 'ADMIN_CLIENT', 1, SYSTIMESTAMP);

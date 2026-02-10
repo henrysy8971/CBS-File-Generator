@@ -70,14 +70,14 @@ graph TD
 
 ## FileGenerationService API Reference
 
-| Method | Primary Caller | Purpose |
-|:---|:---|:---|
-| `createFileGeneration` | Controller, SchedulerJob | Creates initial `PENDING` record. |
-| `markQueued` | FileGenerationScheduler | Locks a job for execution (`PENDING` -> `QUEUED`). |
-| `markProcessing` | BatchJobLauncher | signals job execution start (`QUEUED` -> `PROCESSING`). |
-| `updateFileMetrics` | StepExecutionListener | Persists record counts (Read/Write/Skip). |
-| `markCompleted` | JobExecutionListener | Final success state (Terminal). |
-| `markFailed` | *Multiple* | Final error state (Terminal). |
+| Method                 | Primary Caller           | Purpose                                                 |
+|:-----------------------|:-------------------------|:--------------------------------------------------------|
+| `createFileGeneration` | Controller, SchedulerJob | Creates initial `PENDING` record.                       |
+| `markQueued`           | FileGenerationScheduler  | Locks a job for execution (`PENDING` -> `QUEUED`).      |
+| `markProcessing`       | BatchJobLauncher         | signals job execution start (`QUEUED` -> `PROCESSING`). |
+| `updateFileMetrics`    | StepExecutionListener    | Persists record counts (Read/Write/Skip).               |
+| `markCompleted`        | JobExecutionListener     | Final success state (Terminal).                         |
+| `markFailed`           | *Multiple*               | Final error state (Terminal).                           |
 
 ## Key Observations
 
