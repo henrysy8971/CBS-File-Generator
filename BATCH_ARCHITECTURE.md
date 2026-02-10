@@ -90,9 +90,11 @@ public Job selectJobByInterfaceType(String interfaceType) {
       "description": "Dynamic Job (Native SQL)",
       "dataSourceQuery": "SELECT INVOICE_ID, AMOUNT, STATUS FROM INVOICES WHERE STATUS = 'ACTIVE'",
       "keySetColumn": "INVOICE_ID",
-      "chunkSize": 1000,
-      "outputFormat": "XML",
-      "outputFileExtension": "xml",
+      "beanioMappingFile": "invoice_mapping.xml",
+      "haveHeaders": false,
+      "outputFormat": "CSV",
+      "outputFileExtension": "csv",
+      "dynamic": true,
       "enabled": true
     },
     "ORDER_INTERFACE": {
@@ -123,8 +125,8 @@ It is critical to use the correct query language for the architecture you are ta
 | Feature | Generic Dynamic Job | Specialized Custom Job |
 |:---|:---|:---|
 | **Query Language** | **Native SQL** | **JPQL** |
-| **Refers To** | Database Tables (`INVOICES`) | Java Entities (`Invoice`) |
-| **Selects** | Columns (`INV_ID`) | Objects (`i`) |
+| **Refers To** | Database Tables (`INVOICES`) | Java Entities (`Order`) |
+| **Selects** | Columns (`INVOICE_ID`) | Objects (`i`) |
 | **Java Code** | None required | Entity, DTO, Repository required |
 | **Relationships** | Flat (Joins flatten data) | Hierarchical (Parent/Child) |
 

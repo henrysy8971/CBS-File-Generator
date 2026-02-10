@@ -33,6 +33,7 @@ public class FileGenerationService {
 	}
 
 	// ==================== Create ====================
+	@Transactional
 	public FileGeneration createFileGeneration(String fileName,
 											   String filePath,
 											   String createdBy,
@@ -160,6 +161,12 @@ public class FileGenerationService {
 		// 1. Fetch current status for the log
 		FileGenerationStatus currentStatus = fileGenerationRepository.findStatusByJobId(jobId)
 				.orElseThrow(() -> new LifecycleException("Job not found: " + jobId));
+
+		// Idempotency Check
+		if (currentStatus == nextStatus) {
+			logger.info("Job {} is already in status {}. No transition needed.", jobId, nextStatus);
+			return;
+		}
 
 		// Prevent updates to terminal jobs
 		if (currentStatus.isTerminal()) {

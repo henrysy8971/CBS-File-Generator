@@ -41,13 +41,13 @@ curl -X POST **http://localhost:8080/cbs-file-generator/api/v1/admin/scheduler/f
 **Key Parameter Details**
 
 *   **Pagination Defaults:**
-    *   page: default0
-    *   size: default10(Admin) or10(File Generation)
+    *   page: default 0
+    *   size: default 10 (Admin) or 10 (File Generation)
 *   **Status Query values:**
-*   **Valid values:** PENDING,PROCESSING,STOPPED,FINALIZING,COMPLETED,FAILED
+*   **Valid values:** PENDING, QUEUED, PROCESSING, STOPPED, FINALIZING, COMPLETED, FAILED
 *   **Special Headers:**
-    *   X-User-Name: Used in/generate to track who requested the file. Defaults toSYSTEM.
-    *   X-DB-Token: (Handled by yourTokenAuthenticationFilter) Required for all protected paths above.
+    *   **X-User-Name:** Used in **/generate** to track who requested the file. Defaults toSYSTEM.
+    *   **X-DB-Token:** (Handled by **TokenAuthenticationFilter**) Required for all protected paths above.
 
 All of these endpoints require a valid DB Token in the request header.
 
@@ -55,7 +55,7 @@ Here is the breakdown of why and how this is applied:
 
 **1. The Global Rule**
 
-Since both theAdminController(/api/v1/admin) and theFileGenerationController(/api/v1/file-generation) fall under the/api/path, the**TokenAuthenticationFilter**will intercept**every single request**to those endpoints.
+Since both the AdminController (**/api/v1/admin**) and the FileGenerationController(**/api/v1/file-generation**) fall under the /api/ path, the **TokenAuthenticationFilter** will intercept **every single request** to those endpoints.
 
 **2. Required Header**
 
@@ -66,14 +66,14 @@ For any of those requests to succeed, you must include the header defined in **a
 
 **3. The Exceptions (No Token Required)**
 
-The only endpoints that**do not**require a token are the system health and info endpoints, because they are explicitly bypassed in theTokenAuthenticationFilter.java logic:
+The only endpoints that **do not** require a token are the system **health** and **info** endpoints, because they are explicitly bypassed in the TokenAuthenticationFilter.java logic:
 *   /actuator/**
 *   /health/**
 *   /info
 
 **4. The "Master Switch"**
 
-If you are testing locally and want to disable the token requirement for all endpoints, you can change this setting in your application.properties:
+If you are testing locally and want to disable the token requirement for all endpoints, you can change this setting in your **application.properties**:
 
 **auth.token.enable-validation=false**
 
@@ -90,4 +90,4 @@ When this is false, the filter still runs, but it immediately calls filterChain.
 | /actuator/health           | NO              | Explicitly skipped in Filter logic |
 | /actuator/info             | NO              | Explicitly skipped in Filter logic |
 
-**Security Note:** In a production banking environment, it is highly recommended to keep the token validation enabled for all/api/endpoints to prevent unauthorized users from triggering massive batch jobs or cleaning up system metadata.
+**Security Note:** In a production banking environment, it is highly recommended to keep the token validation enabled for all /api/ endpoints to prevent unauthorized users from triggering massive batch jobs or cleaning up system metadata.
