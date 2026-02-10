@@ -4,7 +4,7 @@ import com.silverlakesymmetri.cbs.fileGenerator.entity.AppConfig;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
-import java.time.LocalDateTime;
+import java.sql.Timestamp;
 import java.util.List;
 import java.util.Optional;
 
@@ -18,5 +18,5 @@ public interface AppConfigRepository extends JpaRepository<AppConfig, Long> {
 	List<AppConfig> findByActiveTrue();
 
 	// Refresh: configs updated after last refresh
-	List<AppConfig> findByUpdatedDateAfter(LocalDateTime lastModified);
+	List<AppConfig> findByUpdatedDateAfter(Timestamp lastModified);
 }

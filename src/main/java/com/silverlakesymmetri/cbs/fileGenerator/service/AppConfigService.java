@@ -11,7 +11,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.PostConstruct;
 import java.sql.Timestamp;
-import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -23,7 +22,7 @@ public class AppConfigService {
 	private static final Logger logger = LoggerFactory.getLogger(AppConfigService.class);
 	private final Map<String, String> cache = new ConcurrentHashMap<>();
 	private final AppConfigRepository appConfigRepository;
-	private LocalDateTime lastRefresh = LocalDateTime.MIN;
+	private Timestamp lastRefresh = new Timestamp(0L);
 
 	@Autowired
 	public AppConfigService(AppConfigRepository appConfigRepository) {
@@ -34,7 +33,7 @@ public class AppConfigService {
 	public void initCache() {
 		List<AppConfig> configs = appConfigRepository.findByActiveTrue();
 		configs.forEach(cfg -> cache.put(cfg.getConfigKey(), cfg.getConfigValue()));
-		lastRefresh = LocalDateTime.now();
+		lastRefresh = new Timestamp(System.currentTimeMillis());
 		logger.info("AppConfig cache initialized with {} entries", cache.size());
 	}
 
@@ -64,9 +63,10 @@ public class AppConfigService {
 		config.setConfigType(type);
 		config.setDescription(description);
 		config.setActive(true);
-		config.setUpdatedDate(Timestamp.valueOf(LocalDateTime.now()));
+		Timestamp now = new Timestamp(System.currentTimeMillis());
+		config.setUpdatedDate(now);
 		if (config.getCreatedDate() == null) {
-			config.setCreatedDate(Timestamp.valueOf(LocalDateTime.now()));
+			config.setCreatedDate(now);
 		}
 
 		AppConfig saved = appConfigRepository.save(config);
@@ -82,7 +82,7 @@ public class AppConfigService {
 	public void disableConfig(String key) {
 		appConfigRepository.findByConfigKey(key).ifPresent(cfg -> {
 			cfg.setActive(false);
-			cfg.setUpdatedDate(Timestamp.valueOf(LocalDateTime.now()));
+			cfg.setUpdatedDate(new Timestamp(System.currentTimeMillis()));
 			appConfigRepository.save(cfg);
 			cache.remove(key);
 			logger.info("Configuration disabled: key={}", key);
@@ -95,7 +95,7 @@ public class AppConfigService {
 	@Transactional
 	@Scheduled(fixedDelayString = "${app.config.cache.refresh-interval-ms:300000}") // default 5 min
 	public void refreshCache() {
-		LocalDateTime startTime = LocalDateTime.now(); // Capture start time
+		Timestamp startTime = new Timestamp(System.currentTimeMillis());
 
 		// Find ALL changes, regardless of active status
 		List<AppConfig> changes = appConfigRepository.findByUpdatedDateAfter(lastRefresh);
