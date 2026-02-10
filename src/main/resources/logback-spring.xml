@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+
+	<!-- ================================================================= -->
+	<!-- PROPERTIES                                                        -->
+	<!-- ================================================================= -->
+	<!-- Store logs in a 'logs' directory relative to execution, or /var/log/cbs if configured -->
+	<property name="LOG_PATH" value="${LOG_PATH:-logs}"/>
+	<property name="LOG_ARCHIVE" value="${LOG_PATH}/archive"/>
+
+	<!--
+	  Pattern Explanation:
+	  %d       : Date (yyyy-MM-dd HH:mm:ss.SSS)
+	  %level   : Log Level (INFO, ERROR)
+	  %thread  : Thread Name (useful for debugging Async/Batch threads)
+	  %X{requestId} : THE CRITICAL PART. Pulls ID from MDC (CorrelationIdFilter)
+	  %logger  : Class name (shortened to 36 chars)
+	  %msg     : The log message
+	-->
+	<property name="CONSOLE_LOG_PATTERN"
+			  value="%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(%-5level) %clr([%15.15t]){faint} %clr([%X{requestId}]){cyan} %clr(%-40.40logger{39}){cyan} : %msg%n"/>
+
+	<property name="FILE_LOG_PATTERN"
+			  value="%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%15.15t] [%X{requestId}] %-40.40logger{39} : %msg%n"/>
+
+	<!-- ================================================================= -->
+	<!-- APPENDER: CONSOLE (For Dev / Docker)                              -->
+	<!-- ================================================================= -->
+	<include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+	<include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+	<!-- ================================================================= -->
+	<!-- APPENDER: MAIN APP FILE (Rolling)                                 -->
+	<!-- ================================================================= -->
+	<appender name="FILE-ROLLING" class="ch.qos.logback.core.rolling.RollingFileAppender">
+		<file>${LOG_PATH}/cbs-file-generator.log</file>
+
+		<encoder>
+			<pattern>${FILE_LOG_PATTERN}</pattern>
+			<charset>UTF-8</charset>
+		</encoder>
+
+		<rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+			<!-- Rollover daily -->
+			<fileNamePattern>${LOG_ARCHIVE}/cbs-file-generator.%d{yyyy-MM-dd}.%i.log.gz</fileNamePattern>
+
+			<!-- Keep 30 days of history -->
+			<maxHistory>30</maxHistory>
+
+			<!-- Total size cap for all logs (e.g. 3GB) -->
+			<totalSizeCap>3GB</totalSizeCap>
+
+			<timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
+				<!-- Or rollover if file exceeds 10MB -->
+				<maxFileSize>10MB</maxFileSize>
+			</timeBasedFileNamingAndTriggeringPolicy>
+		</rollingPolicy>
+	</appender>
+
+	<!-- ================================================================= -->
+	<!-- APPENDER: ERROR FILE (Only errors, for alerts)                    -->
+	<!-- ================================================================= -->
+	<appender name="ERROR-FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+		<file>${LOG_PATH}/cbs-error.log</file>
+		<filter class="ch.qos.logback.classic.filter.LevelFilter">
+			<level>ERROR</level>
+			<onMatch>ACCEPT</onMatch>
+			<onMismatch>DENY</onMismatch>
+		</filter>
+		<encoder>
+			<pattern>${FILE_LOG_PATTERN}</pattern>
+		</encoder>
+		<rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+			<fileNamePattern>${LOG_ARCHIVE}/cbs-error.%d{yyyy-MM-dd}.log.gz</fileNamePattern>
+			<maxHistory>60</maxHistory>
+		</rollingPolicy>
+	</appender>
+
+	<!-- ================================================================= -->
+	<!-- LOGGERS (Tuning)                                                  -->
+	<!-- ================================================================= -->
+
+	<!-- YOUR APPLICATION: Debug level for dev, Info for prod -->
+	<logger name="com.silverlakesymmetri" level="DEBUG" additivity="false">
+		<appender-ref ref="CONSOLE"/>
+		<appender-ref ref="FILE-ROLLING"/>
+		<appender-ref ref="ERROR-FILE"/>
+	</logger>
+
+	<!-- SPRING BATCH: Info is usually enough. Debug is very verbose. -->
+	<logger name="org.springframework.batch" level="INFO"/>
+
+	<!-- QUARTZ: Info prevents logs every time a trigger fires -->
+	<logger name="org.quartz" level="INFO"/>
+
+	<!-- HIBERNATE: Set to DEBUG to see SQL, INFO to hide it -->
+	<logger name="org.hibernate.SQL" level="INFO"/>
+	<logger name="org.hibernate.type.descriptor.sql.BasicBinder" level="TRACE"/>
+
+	<!-- ROOT LOGGER -->
+	<root level="INFO">
+		<appender-ref ref="CONSOLE"/>
+		<appender-ref ref="FILE-ROLLING"/>
+		<appender-ref ref="ERROR-FILE"/>
+	</root>
+
+</configuration>

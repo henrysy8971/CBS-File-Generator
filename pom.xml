@@ -5,7 +5,7 @@
         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
     <groupId>com.silverlakesymmetri.cbs</groupId>
-    <artifactId>file-generator</artifactId>
+    <artifactId>cbs-file-generator</artifactId>
     <version>1.0.0</version>
     <packaging>jar</packaging>
 
@@ -137,7 +137,7 @@
             <id>jar</id>
             <activation><activeByDefault>true</activeByDefault></activation>
             <build>
-                <finalName>file-generator-${project.version}</finalName>
+                <finalName>cbs-file-generator-${project.version}</finalName>
                 <plugins>
                     <plugin>
                         <groupId>org.springframework.boot</groupId>
@@ -147,9 +147,6 @@
                                 <goals>
                                     <goal>repackage</goal>
                                 </goals>
-                                <configuration>
-                                    <classifier>exec</classifier>
-                                </configuration>
                             </execution>
                         </executions>
                     </plugin>
@@ -159,7 +156,7 @@
         <profile>
             <id>war</id>
             <build>
-                <finalName>file-generator-${project.version}</finalName>
+                <finalName>cbs-file-generator-${project.version}</finalName>
                 <plugins>
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>

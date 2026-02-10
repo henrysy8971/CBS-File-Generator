@@ -22,7 +22,7 @@ import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationC
 public class InterfaceConfigLoader {
 	private static final Logger logger = LoggerFactory.getLogger(InterfaceConfigLoader.class);
 
-	@Value("classpath:interface-config.json")
+	@Value("${file.generation.interface-config-path:classpath:interface-config.json}")
 	private Resource configResource;
 
 	private final ObjectMapper objectMapper;

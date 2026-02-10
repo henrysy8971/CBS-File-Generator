@@ -7,7 +7,7 @@ Before deploying the application, ensure the target environment meets these requ
 *   **Operating System**: Linux (RHEL/CentOS recommended) or Windows Server.
 *   **Java Runtime**: **JDK 8** (Required for Spring Boot 1.5 compatibility).
 *   **Database**: Oracle 12c or 19c.
-*   **Disk Space**: Sufficient storage for generated files (`/opt/cbs/generated-files/`) and logs.
+*   **Disk Space**: Sufficient storage for generated files (`/u1/symmetri/products/cbs-file-generator/data/generated-files`) and logs.
 *   **Network**: Access to the Oracle DB port (1521) and allow inbound traffic on the App port (8080).
 
 ---
@@ -21,7 +21,7 @@ Contains the server inside the artifact. Easiest to run.
 
 ```bash
 mvn clean package -DskipTests
-# Artifact created at: target/cbs-file-generator.jar
+# Artifact created at: target/cbs-file-generator-1.0.0.jar
 ```
 
 ### Option B: WAR File (Legacy Enterprise)
@@ -29,7 +29,7 @@ Use this if deploying to an existing standalone Apache Tomcat 8.5/9.0 server.
 
 ```bash
 mvn clean package -Pwar -DskipTests
-# Artifact created at: target/cbs-file-generator.war
+# Artifact created at: target/cbs-file-generator-1.0.0.war
 ```
 
 ---
@@ -57,27 +57,27 @@ COMMIT;
 
 ## 📂 Production Directory Layout
 
-We recommend creating a structured directory on the server (e.g., `/opt/cbs-file-generator`) to separate the binary, config, and data.
+We recommend creating a structured directory on the server (e.g., `/u1/symmetri/products/cbs-file-generator/`) to separate the binary, config, and data.
 
 ```text
-/opt/cbs-file-generator/
+/u1/symmetri/products/cbs-file-generator/
 ├── bin/
-│   └── cbs-file-generator.jar    (The application binary)
+│   └── cbs-file-generator-1.0.0.jar    (The application binary)
 ├── config/
-│   ├── application.properties    (Environment overrides)
-│   ├── interface-config.json     (Interface definitions)
-│   └── logback-spring.xml        (Optional: Custom logging)
-├── logs/                         (App logs go here)
+│   ├── application.properties          (Environment overrides)
+│   ├── interface-config.json           (Interface definitions)
+│   └── logback-spring.xml              (Optional: Custom logging)
+├── logs/                               (App logs go here)
 └── data/
-    ├── generated/                (Output files appear here)
-    └── temp/                     (Temporary processing)
+    ├── generated-files/                (Output files appear here)
+    └── temp/                           (Temporary processing)
 ```
 
 ---
 
 ## ⚙️ Configuration (Externalizing Properties)
 
-Do not rely on the `application.properties` inside the JAR. Create a production override file at `/opt/cbs-file-generator/config/application.properties`.
+Do not rely on the `application.properties` inside the JAR. Create a production override file at `/u1/symmetri/products/cbs-file-generator/config/application.properties`.
 
 **Minimal Production Configuration:**
 
@@ -91,7 +91,7 @@ spring.datasource.username=CBS_APP_USER
 spring.datasource.password=ComplexPassword123
 
 # File Paths (Ensure OS User has Write Permissions!)
-file.generation.output-directory=/opt/cbs-file-generator/data/generated/
+file.generation.output-directory=/u1/symmetri/products/cbs-file-generator/data/generated-files/
 
 # Threading (Adjust based on CPU)
 spring.task.execution.pool.max-size=20
@@ -114,8 +114,8 @@ spring.quartz.properties.org.quartz.jobStore.isClustered=true
 Run the JAR pointing to the external configuration folder.
 
 ```bash
-java -jar /opt/cbs-file-generator/bin/cbs-file-generator.jar \
-  --spring.config.location=file:/opt/cbs-file-generator/config/application.properties
+java -jar /u1/symmetri/products/cbs-file-generator/bin/cbs-file-generator.jar \
+  --spring.config.location=file:/u1/symmetri/products/cbs-file-generator/config/application.properties
 ```
 
 **Memory Tuning Example:**
@@ -131,7 +131,7 @@ java -Xms1024m -Xmx2048m -jar cbs-file-generator.jar ...
 ```xml
 <Context>
     <Environment name="spring.config.location" 
-                 value="file:/opt/cbs-file-generator/config/application.properties" 
+                 value="file:/u1/symmetri/products/cbs-file-generator/config/application.properties" 
                  type="java.lang.String"/>
 </Context>
 ```
@@ -164,7 +164,7 @@ Check that `cbs-file-generator.log` is created in the logs directory and shows `
 ### Hot Reloading Configuration
 If you need to add a new interface or change a SQL query **without restarting the server**:
 
-1.  Edit `/opt/cbs-file-generator/config/interface-config.json`.
+1.  Edit `/u1/symmetri/products/cbs-file-generator/config/interface-config.json`.
 2.  Call the reload endpoint:
     ```bash
     curl -X POST http://localhost:8080/cbs-file-generator/api/v1/admin/reload-config \
