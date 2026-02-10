@@ -106,12 +106,12 @@ public class BeanIOFormatWriter implements OutputFormatWriter {
 		for (DynamicRecord record : items) {
 			try {
 				beanIOWriter.write(record.asMap());
+				recordCount.addAndGet(items.size());
 			} catch (BeanWriterException e) {
 				logger.error("Failed to write record: {}", record, e);
+				// Optional: Throw exception to fail job, or track separate skip count
 			}
 		}
-
-		recordCount.addAndGet(items.size());
 	}
 
 	@Override

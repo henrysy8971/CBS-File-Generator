@@ -141,6 +141,6 @@ public class OrderItemReader implements ItemStreamReader<OrderDto> {
 	public void close() {
 		// Cleanup resources like the resultIterator or temporary files
 		this.resultIterator = null;
-		logger.info("DynamicItemReader closed. Total records read: {}", totalProcessed);
+		logger.info("OrderItemReader closed. Total records read: {}", totalProcessed);
 	}
 }
