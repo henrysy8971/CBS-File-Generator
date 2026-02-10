@@ -2,7 +2,6 @@ package com.silverlakesymmetri.cbs.fileGenerator.entity;
 
 import javax.persistence.*;
 import java.sql.Timestamp;
-import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "IF_APP_CONFIG")
@@ -37,11 +36,11 @@ public class AppConfig {
 	}
 
 	public AppConfig(String configKey, String configValue) {
+		Timestamp now = new Timestamp(System.currentTimeMillis());
 		this.configKey = configKey;
 		this.configValue = configValue;
-		this.createdDate = Timestamp.valueOf(LocalDateTime.now());
-		this.updatedDate = Timestamp.valueOf(LocalDateTime.now());
-		this.active = true;
+		this.createdDate = now;
+		this.updatedDate = now;
 	}
 
 	public Long getId() {

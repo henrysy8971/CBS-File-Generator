@@ -8,7 +8,7 @@
 - **Build WAR without tests**: `mvn clean package -Pwar -DskipTests`
 - **Run tests**: `mvn test`
 - **Run locally**: `mvn spring-boot:run`
-- - **Clean Oracle Schema**: Manual execution of `src/main/resources/db/schema.sql` (Liquibase not configured).
+- **Clean Oracle Schema**: Manual execution of `src/main/resources/db/schema.sql` (Liquibase not configured).
 
 ## Architecture & Codebase Structure
 
@@ -39,13 +39,13 @@
 ### 1. Persistence & Concurrency
 - **Optimistic Locking**: Always use `@Version` on the `FileGeneration` entity to support the retry logic.
 - **Status Updates**: Methods updating job status (`markCompleted`, `markFailed`) must be `@Retryable` to handle database row-lock contention.
-- **Identity Generation**: Use `GenerationType.SEQUENCE` with `allocationSize = 1` to match Oracle sequences. Avoid `IDENTITY` columns to ensure compatibility with legacy Hibernate versions.
+- **Identity Generation**: Use `GenerationType.IDENTITY` to leverage Oracle 12c+ native identity columns (`GENERATED ALWAYS AS IDENTITY`). This simplifies the schema by avoiding separate Sequence objects.
 - **LOBs**: Ensure any `CLOB` column in Oracle is annotated with `@Lob` in the JPA entity.
 - **Java 8 Time**: Avoid `LocalDateTime` in entities unless `hibernate-java8` is present. Use `java.sql.Timestamp` for maximum compatibility with Spring Boot 1.5.
 
 ### 2. Threading & Scoping
 - **Step Scope**: Any class holding execution state (writers, readers, processors) **must** be annotated with `@StepScope`.
-- **State Isolation**: Do not `@Autowire` step-scoped beans into Singleton factories. Use `applicationContext.getBean(Class)` to fetch fresh instances per step execution.
+- **State Isolation**: Step-scoped beans injected into Singletons act as **Proxies.** For dynamic bean selection (e.g., choosing XML vs BeanIO Writer at runtime), use applicationContext.getBean(Class) inside the Factory to resolve the specific instance needed.
 - **Thread Safety**: `SimpleDateFormat` is forbidden in static contexts. Use Java 8 `java.time.format.DateTimeFormatter`.
 
 ### 3. XML & File I/O
