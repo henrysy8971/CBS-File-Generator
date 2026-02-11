@@ -85,7 +85,7 @@ public class AdminController {
 		interfaceConfigLoader.refreshConfigs();
 
 		// 2. Clear XSD Cache
-		xsdValidator.clearCache();
+		xsdValidator.clearSchemaCache();
 
 		// 3. Clear BeanIO Cache
 		BeanIOFormatWriter.clearFactoryCache();

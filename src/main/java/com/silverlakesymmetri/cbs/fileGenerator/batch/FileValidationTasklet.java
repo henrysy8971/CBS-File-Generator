@@ -49,10 +49,12 @@ public class FileValidationTasklet implements Tasklet {
 		}
 		partFilePath = partFilePath.trim();
 
-		// 2. Retrieve interfaceType
-		String interfaceType = String.valueOf(chunkContext.getStepContext()
+		Object param = chunkContext.getStepContext()
 				.getJobParameters()
-				.getOrDefault("interfaceType", "UNKNOWN"));
+				.get("interfaceType");
+
+		// 2. Retrieve interfaceType
+		String interfaceType = param != null ? param.toString() : "UNKNOWN";
 
 		// 3. Load interface configuration
 		InterfaceConfig interfaceConfig = interfaceConfigLoader.getConfig(interfaceType);
@@ -68,13 +70,18 @@ public class FileValidationTasklet implements Tasklet {
 		String xsdSchema = interfaceConfig.getXsdSchemaFile();
 		boolean isValid = xsdValidator.validateFullFile(file, xsdSchema);
 
-		if (!isValid && strictMode) {
-			throw new ValidationException("XSD validation failed for file: " +
-					file.getAbsolutePath() + ", interface: " + interfaceType);
+		if (!isValid) {
+			if (strictMode) {
+				throw new ValidationException("XSD validation failed for file: " +
+						file.getAbsolutePath() + ", interface: " + interfaceType);
+			} else {
+				logger.warn("XSD validation failed (lenient mode) for file: {}, interface: {}",
+						file.getAbsolutePath(), interfaceType);
+				return RepeatStatus.FINISHED;
+			}
 		}
 
 		logger.info("XSD validation successful for file: {}, interface: {}", file.getAbsolutePath(), interfaceType);
-
 		return RepeatStatus.FINISHED;
 	}
 

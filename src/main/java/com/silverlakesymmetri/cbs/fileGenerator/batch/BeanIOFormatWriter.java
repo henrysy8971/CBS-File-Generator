@@ -3,9 +3,7 @@ package com.silverlakesymmetri.cbs.fileGenerator.batch;
 import com.silverlakesymmetri.cbs.fileGenerator.config.InterfaceConfigLoader;
 import com.silverlakesymmetri.cbs.fileGenerator.config.model.InterfaceConfig;
 import com.silverlakesymmetri.cbs.fileGenerator.dto.DynamicRecord;
-import org.beanio.BeanWriter;
-import org.beanio.BeanWriterException;
-import org.beanio.StreamFactory;
+import org.beanio.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.batch.core.configuration.annotation.StepScope;
@@ -94,15 +92,15 @@ public class BeanIOFormatWriter implements OutputFormatWriter {
 			// 1. Try File System First
 			if (StringUtils.hasText(externalConfigDir)) {
 				String dir = externalConfigDir.trim();
-				Path externalPath = Paths.get(dir, "beanio", file);
+				Path baseDir = Paths.get(dir).toAbsolutePath().normalize();
+				Path externalPath = baseDir.resolve("beanio").resolve(file).normalize();
 
-				if (!externalPath.startsWith(Paths.get(dir).toAbsolutePath().normalize())) {
-					logger.warn("BeanIO mapping file path traversal attempt blocked: {}", mappingFile);
+				if (!externalPath.startsWith(baseDir)) {
+					logger.warn("BeanIO mapping file path traversal attempt blocked: {}", file);
 				} else if (Files.exists(externalPath, LinkOption.NOFOLLOW_LINKS) && Files.isReadable(externalPath)) {
 					try (InputStream is = Files.newInputStream(externalPath)) {
-						StreamFactory factory = StreamFactory.newInstance();
-						factory.load(is);
-						return factory;
+						return loadFactoryFromStream(is, externalPath.toString());
+					} catch (IllegalStateException ignored) {
 					} catch (IOException e) {
 						logger.warn("Failed to get external path input stream: {}", externalPath, e);
 					}
@@ -112,16 +110,14 @@ public class BeanIOFormatWriter implements OutputFormatWriter {
 			// 2. Fallback to Classpath
 			ClassPathResource resource = new ClassPathResource("beanio/" + file);
 
-			if (resource.exists()) {
-				try (InputStream in = resource.getInputStream()) {
-					StreamFactory factory = StreamFactory.newInstance();
-					factory.load(in);
-					return factory;
-				} catch (IOException e) {
-					throw new UncheckedIOException("Failed to load BeanIO mapping file: " + resource.getPath(), e);
-				}
-			} else {
-				throw new IllegalArgumentException("BeanIO mapping file not found: " + resource.getPath());
+			if (!resource.exists() || !resource.isReadable()) {
+				throw new IllegalArgumentException("BeanIO mapping file not found / not readable: " + resource.getPath());
+			}
+
+			try (InputStream is = resource.getInputStream()) {
+				return loadFactoryFromStream(is, resource.getPath());
+			} catch (IOException e) {
+				throw new UncheckedIOException("Failed to load BeanIO mapping file: " + resource.getPath(), e);
 			}
 		});
 	}
@@ -188,6 +184,24 @@ public class BeanIOFormatWriter implements OutputFormatWriter {
 		}
 	}
 
+	private StreamFactory loadFactoryFromStream(InputStream is, String filePath) {
+		StreamFactory factory = StreamFactory.newInstance();
+		try {
+			factory.load(is);
+			return factory;
+		} catch (BeanIOConfigurationException e) {
+			logger.error("BeanIO configuration error while loading mapping file: {}", filePath, e);
+		} catch (BeanIOException e) {
+			logger.error("BeanIO I/O error while parsing mapping file: {}", filePath, e);
+		} catch (IOException e) {
+			logger.error("I/O error while reading mapping file stream: {}", filePath, e);
+		}
+		throw new IllegalStateException("Failed to load BeanIO mapping file: " + filePath);
+	}
+
+	/**
+	 * Clear cached factory (useful for tests or hot reload scenarios).
+	 */
 	public static void clearFactoryCache() {
 		FACTORY_CACHE.clear();
 		logger.info("BeanIO Factory Cache cleared.");

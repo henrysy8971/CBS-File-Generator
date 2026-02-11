@@ -23,6 +23,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -41,7 +42,6 @@ public class XsdValidator {
 	private static final Logger logger = LoggerFactory.getLogger(XsdValidator.class);
 	@Value("${file.generation.external.config-dir:}")
 	private String externalConfigDir;
-	private static final String CLASSPATH_XSD_DIR = "xsd/";
 
 	@Value("${validation.xsd.strict-mode:false}")
 	private boolean strictMode;
@@ -50,7 +50,7 @@ public class XsdValidator {
 	 * Thread-safe cache for loaded schemas.
 	 * Null values indicate schema load failure.
 	 */
-	private final Map<String, Optional<Schema>> schemaCache = new ConcurrentHashMap<>();
+	private static final Map<String, Optional<Schema>> SCHEMA_CACHE = new ConcurrentHashMap<>();
 
 	/**
 	 * Validates a full file on disk.
@@ -73,23 +73,23 @@ public class XsdValidator {
 			return executeValidation(source, schemaFileName.trim());
 		} catch (IllegalArgumentException e) {
 			// Thrown if the Path or URI is invalid
-			logger.error("Invalid path or argument while opening XML file for validation: {}",
-					xmlFile.getAbsolutePath(), e);
+			logStrictMode(e, "Invalid path or argument while opening XML file for validation: {}",
+					xmlFile.getAbsolutePath());
 			return !strictMode;
 		} catch (UnsupportedOperationException e) {
 			// Thrown if the file system does not support the operation
-			logger.error("Unsupported file system operation while opening XML file for validation: {}",
-					xmlFile.getAbsolutePath(), e);
+			logStrictMode(e, "Unsupported file system operation while opening XML file for validation: {}",
+					xmlFile.getAbsolutePath());
 			return !strictMode;
 		} catch (IOException e) {
 			// I/O issues: file locked, deleted mid-read, disk error, etc.
-			logger.error("I/O error while opening XML file for validation: {}",
-					xmlFile.getAbsolutePath(), e);
+			logStrictMode(e, "I/O error while opening XML file for validation: {}",
+					xmlFile.getAbsolutePath());
 			return !strictMode;
 		} catch (SecurityException e) {
 			// SecurityManager or OS-level permission issues
-			logger.error("Security exception while opening XML file for validation: {}",
-					xmlFile.getAbsolutePath(), e);
+			logStrictMode(e, "Security exception while opening XML file for validation: {}",
+					xmlFile.getAbsolutePath());
 			return !strictMode;
 		}
 	}
@@ -99,20 +99,18 @@ public class XsdValidator {
 	 */
 	private boolean executeValidation(StreamSource source, String schemaFileName) {
 		try {
-			Schema schema = getOrLoadSchema(schemaFileName);
-			if (schema == null) {
+			Optional<Schema> schema = getOrLoadSchema(schemaFileName);
+			if (!schema.isPresent()) {
 				logger.warn("Schema not found: {}. StrictMode: {}", schemaFileName, strictMode);
 				return !strictMode;
 			}
 
-			validateXml(source, schema);
+			validateXml(source, schema.get(), schemaFileName);
 			return true;
 		} catch (SAXParseException e) {
-			logger.error("XSD Validation Error at Line: {}, Column: {}. Reason: {}",
-					e.getLineNumber(), e.getColumnNumber(), e.getMessage(), e);
 			return !strictMode;
 		} catch (Exception e) {
-			logger.error("Unexpected validation error for schema {}: {}", schemaFileName, e.getMessage(), e);
+			logStrictMode(e, "Unexpected validation error for schema {}: {}", schemaFileName, e.getMessage());
 			return !strictMode;
 		}
 	}
@@ -120,57 +118,49 @@ public class XsdValidator {
 	/**
 	 * Load schema from cache or classpath.
 	 */
-	private Schema getOrLoadSchema(String schemaFileName) {
-		return schemaCache.computeIfAbsent(schemaFileName, this::loadSchema)
-				.orElse(null);
-	}
+	private Optional<Schema> getOrLoadSchema(String schemaFileName) {
+		schemaFileName = schemaFileName.trim().toLowerCase(Locale.ROOT);
+		return SCHEMA_CACHE.computeIfAbsent(schemaFileName, file -> {
+			// 1. Try File System First
+			if (StringUtils.hasText(externalConfigDir)) {
+				String dir = externalConfigDir.trim();
+				Path baseDir = Paths.get(dir).toAbsolutePath().normalize();
+				Path externalPath = baseDir.resolve("xsd").resolve(file).normalize();
 
-	/**
-	 * Load XSD schema safely from external directory or classpath.
-	 */
-	private Optional<Schema> loadSchema(String schemaFileName) {
-		// 1. Try File System First
-		if (StringUtils.hasText(externalConfigDir)) {
-			String dir = externalConfigDir.trim();
-			Path externalPath = Paths.get(dir, "xsd", schemaFileName).toAbsolutePath().normalize();
+				if (!externalPath.startsWith(baseDir)) {
+					logger.error("Schema file path traversal attempt blocked: {}", file);
+				} else if (Files.exists(externalPath, LinkOption.NOFOLLOW_LINKS) && Files.isReadable(externalPath)) {
+					try (InputStream is = Files.newInputStream(externalPath)) {
+						return createSchemaFromStream(is, externalPath.toString());
+					} catch (IOException e) {
+						logStrictMode(e, "Failed to get external path input stream: {}", externalPath.toString());
+						// Don't return empty yet, try classpath fallback
+					}
+				}
+			}
 
-			if (!externalPath.startsWith(Paths.get(dir).toAbsolutePath().normalize())) {
-				logger.error("Schema file path traversal attempt blocked: {}", schemaFileName);
+			// 2. Fallback to Classpath
+			ClassPathResource resource = new ClassPathResource("xsd/" + file);
+
+			if (!resource.exists() || !resource.isReadable()) {
+				logger.warn("XSD schema not found in External or Classpath locations: {}", file);
 				return Optional.empty();
 			}
 
-			if (Files.exists(externalPath, LinkOption.NOFOLLOW_LINKS) && Files.isReadable(externalPath)) {
-				try (InputStream is = Files.newInputStream(externalPath)) {
-					return createSchemaFromStream(is, externalPath.toString());
-				} catch (IOException e) {
-					logStrictMode(e, "Failed to get external path input stream: {}", externalPath.toString());
-					// Don't return empty yet, try classpath fallback
-				}
+			try (InputStream is = resource.getInputStream()) {
+				return createSchemaFromStream(is, resource.getPath());
+			} catch (IOException e) {
+				logStrictMode(e, "Failed to get classpath resource input stream: {}", file);
+				return Optional.empty();
 			}
-		}
-
-		// 2. Fallback to Classpath
-		String classpathPath = CLASSPATH_XSD_DIR + schemaFileName;
-		ClassPathResource resource = new ClassPathResource(classpathPath);
-
-		if (!resource.exists() || !resource.isReadable()) {
-			logger.warn("XSD schema not found in External or Classpath locations: {}", schemaFileName);
-			return Optional.empty();
-		}
-
-		try (InputStream is = resource.getInputStream()) {
-			return createSchemaFromStream(is, classpathPath);
-		} catch (IOException e) {
-			logStrictMode(e, "Failed to get classpath resource input stream: {}", classpathPath);
-			return Optional.empty();
-		}
+		});
 	}
 
 	/**
 	 * Clear cached schemas (useful for tests or hot reload scenarios).
 	 */
-	public void clearCache() {
-		schemaCache.clear();
+	public void clearSchemaCache() {
+		SCHEMA_CACHE.clear();
 		logger.info("XSD schema cache cleared");
 	}
 
@@ -179,7 +169,7 @@ public class XsdValidator {
 	 *
 	 * @throws SAXParseException for any validation or IO failure
 	 */
-	private void validateXml(StreamSource source, Schema schema) throws SAXParseException {
+	private void validateXml(StreamSource source, Schema schema, String schemaFileName) throws SAXParseException {
 		// Validator is NOT thread-safe. Must be created per validation request.
 		Validator validator = schema.newValidator();
 		try {
@@ -194,8 +184,8 @@ public class XsdValidator {
 			}
 			validator.validate(source);
 		} catch (SAXParseException e) {
-			logStrictMode(e, "XSD Validation Error at Line: {}, Column: {}. Reason: {}",
-					e.getLineNumber(), e.getColumnNumber(), e.getMessage());
+			logStrictMode(e, "XSD Validation. Schema: {}, Error at Line: {}, Column: {}. Reason: {}",
+					schemaFileName, e.getLineNumber(), e.getColumnNumber(), e.getMessage());
 			throw e; // Re-throw so executeValidation can handle strictMode logic
 		} catch (SAXException e) {
 			logStrictMode(e, "XSD validation failed due to SAX error: {}", e.getMessage());
@@ -210,15 +200,29 @@ public class XsdValidator {
 		SchemaFactory factory = SchemaFactory.newInstance(XMLConstants.W3C_XML_SCHEMA_NS_URI);
 		try {
 			factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
-			return Optional.of(factory.newSchema(new StreamSource(is)));
+			factory.setProperty(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+			factory.setProperty(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
+			StreamSource source = new StreamSource(is);
+			source.setSystemId(filePath);
+			return Optional.of(factory.newSchema(source));
 		} catch (SAXException | IllegalArgumentException e) {
-			logger.error("Failed to create Schema from stream: {}", filePath, e);
+			logStrictMode(e, "Failed to create Schema from stream: {}", filePath);
 			return Optional.empty();
 		}
 	}
 
 	private void logStrictMode(Exception e, String msg, Object... args) {
-		if (strictMode) logger.error(msg, args, e);
-		else logger.warn(msg, args, e);
+		if (strictMode) {
+			logger.error(msg, append(args, e));
+		} else {
+			logger.warn(msg, append(args, e));
+		}
+	}
+
+	private Object[] append(Object[] args, Exception e) {
+		Object[] newArgs = new Object[args.length + 1];
+		System.arraycopy(args, 0, newArgs, 0, args.length);
+		newArgs[args.length] = e;
+		return newArgs;
 	}
 }
