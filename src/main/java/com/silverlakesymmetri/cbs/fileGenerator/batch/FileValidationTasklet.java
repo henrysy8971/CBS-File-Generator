@@ -14,6 +14,7 @@ import org.springframework.batch.repeat.RepeatStatus;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -58,7 +59,7 @@ public class FileValidationTasklet implements Tasklet {
 
 		// 3. Load interface configuration
 		InterfaceConfig interfaceConfig = interfaceConfigLoader.getConfig(interfaceType);
-		if (interfaceConfig == null || interfaceConfig.getXsdSchemaFile() == null) {
+		if (interfaceConfig == null || !StringUtils.hasText(interfaceConfig.getXsdSchemaFile())) {
 			logger.info("No XSD schema configured for interface {}. Skipping validation.", interfaceType);
 			return RepeatStatus.FINISHED;
 		}
@@ -67,8 +68,8 @@ public class FileValidationTasklet implements Tasklet {
 		File file = new File(partFilePath);
 		ensureFileReadable(file);
 
-		String xsdSchema = interfaceConfig.getXsdSchemaFile();
-		boolean isValid = xsdValidator.validateFullFile(file, xsdSchema);
+		String xsdSchemaFile = interfaceConfig.getXsdSchemaFile();
+		boolean isValid = xsdValidator.validateFullFile(file, xsdSchemaFile);
 
 		if (!isValid) {
 			if (strictMode) {

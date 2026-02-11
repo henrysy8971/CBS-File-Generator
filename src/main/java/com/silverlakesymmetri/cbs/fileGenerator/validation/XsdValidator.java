@@ -23,7 +23,6 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -70,7 +69,7 @@ public class XsdValidator {
 		try (InputStream is = Files.newInputStream(xmlFile.toPath())) {
 			StreamSource source = new StreamSource(is);
 			source.setSystemId(xmlFile.getAbsolutePath());
-			return executeValidation(source, schemaFileName.trim());
+			return executeValidation(source, schemaFileName);
 		} catch (IllegalArgumentException e) {
 			// Thrown if the Path or URI is invalid
 			logStrictMode(e, "Invalid path or argument while opening XML file for validation: {}",
@@ -119,7 +118,6 @@ public class XsdValidator {
 	 * Load schema from cache or classpath.
 	 */
 	private Optional<Schema> getOrLoadSchema(String schemaFileName) {
-		schemaFileName = schemaFileName.trim().toLowerCase(Locale.ROOT);
 		return SCHEMA_CACHE.computeIfAbsent(schemaFileName, file -> {
 			// 1. Try File System First
 			if (StringUtils.hasText(externalConfigDir)) {

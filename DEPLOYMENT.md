@@ -67,6 +67,8 @@ We recommend creating a structured directory on the server (e.g., `/u1/symmetri/
 │   ├── application.properties          (Environment overrides)
 │   ├── interface-config.json           (Interface definitions)
 │   └── logback-spring.xml              (Optional: Custom logging)
+│       ├── beanio                      (beanIO mapping files)
+│       └── xsd                         (XSD Validation files)
 ├── logs/                               (App logs go here)
 └── data/
     ├── generated-files/                (Output files appear here)
