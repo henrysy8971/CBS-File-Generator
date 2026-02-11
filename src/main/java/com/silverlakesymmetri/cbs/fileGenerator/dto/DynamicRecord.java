@@ -13,15 +13,19 @@ public class DynamicRecord extends AbstractMap<String, Object> {
 
 	public void setValue(String name, Object value) {
 		int idx = schema.getIndex(name);
-		if (idx != -1) {
-			values[idx] = value;
+		if (idx == -1) {
+			throw new IllegalArgumentException("Unknown column name: " + name);
 		}
+		values[idx] = value;
 	}
 
 	public void setValue(int index, Object value) {
-		if (index >= 0 && index < values.length) {
-			values[index] = value;
+		if (index < 0 || index >= values.length) {
+			throw new IndexOutOfBoundsException(
+					"Invalid column index " + index + ". Must be between 0 and " + (values.length - 1)
+			);
 		}
+		values[index] = value;
 	}
 
 	@Override
@@ -60,7 +64,10 @@ public class DynamicRecord extends AbstractMap<String, Object> {
 
 	public ColumnType getType(String name) {
 		int idx = schema.getIndex(name);
-		return (idx != -1) ? schema.getType(idx) : ColumnType.STRING;
+		if (idx == -1) {
+			throw new IllegalArgumentException("Unknown column name: " + name);
+		}
+		return schema.getType(idx);
 	}
 
 	/**

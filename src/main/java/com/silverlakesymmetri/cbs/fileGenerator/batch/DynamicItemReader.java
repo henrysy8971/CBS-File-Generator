@@ -22,6 +22,7 @@ import javax.persistence.Tuple;
 import javax.persistence.TupleElement;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 @Component
 @StepScope
@@ -186,7 +187,7 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 			}
 
 			// RecordSchema uses lowercase keys for case-insensitive matching
-			names.add(alias.toLowerCase());
+			names.add(alias.toLowerCase(Locale.ROOT));
 
 			// Map raw Java types (String, BigDecimal, etc.) to our ColumnType enum
 			types.add(ColumnType.fromJavaValue(tuple.get(i)));
@@ -198,7 +199,7 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 		// 3. Resolve KeySet Configuration (The most important part for Paging)
 		if (keySetColumnName != null) {
 			// Lookup the index based on the JSON configuration name
-			int idx = sharedSchema.getIndex(keySetColumnName.toLowerCase());
+			int idx = sharedSchema.getIndex(keySetColumnName.toLowerCase(Locale.ROOT));
 
 			if (idx != -1) {
 				this.keySetColumnIndex = idx;

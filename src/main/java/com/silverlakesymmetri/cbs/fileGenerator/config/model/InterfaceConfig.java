@@ -1,5 +1,7 @@
 package com.silverlakesymmetri.cbs.fileGenerator.config.model;
 
+import java.util.Locale;
+
 /**
  * Configuration for a data interface used in batch file generation.
  * Designed to be restart-safe and compatible with keySet-pagination readers.
@@ -7,7 +9,7 @@ package com.silverlakesymmetri.cbs.fileGenerator.config.model;
 public class InterfaceConfig {
 	/* ================= Defaults ================= */
 	public static final OutputFormat DEFAULT_OUTPUT_FORMAT = OutputFormat.XML;
-	public static final String DEFAULT_FILE_EXTENSION = OutputFormat.XML.name().toLowerCase();
+	public static final String DEFAULT_FILE_EXTENSION = OutputFormat.XML.name().toLowerCase(Locale.ROOT);
 
 	/* ================= Core (Mandatory, Immutable) ================= */
 	private String name;
