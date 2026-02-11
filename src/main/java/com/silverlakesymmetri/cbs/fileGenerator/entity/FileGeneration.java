@@ -16,6 +16,9 @@ public class FileGeneration {
 	@Column(name = "JOB_ID", nullable = false, unique = true)
 	private String jobId;
 
+	@Column(name = "IDEMPOTENCY_KEY", unique = true, length = 100)
+	private String idempotencyKey;
+
 	@Column(name = "INTERFACE_TYPE", length = 100)
 	private String interfaceType;
 
@@ -96,6 +99,14 @@ public class FileGeneration {
 
 	public void setJobId(String jobId) {
 		this.jobId = jobId;
+	}
+
+	public String getIdempotencyKey() {
+		return idempotencyKey;
+	}
+
+	public void setIdempotencyKey(String idempotencyKey) {
+		this.idempotencyKey = idempotencyKey;
 	}
 
 	public String getInterfaceType() {

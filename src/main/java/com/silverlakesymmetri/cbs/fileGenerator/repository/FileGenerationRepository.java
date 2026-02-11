@@ -75,4 +75,6 @@ public interface FileGenerationRepository extends JpaRepository<FileGeneration, 
 	);
 
 	long countByStatus(FileGenerationStatus status);
+
+	Optional<FileGeneration> findByIdempotencyKey(String idempotencyKey);
 }

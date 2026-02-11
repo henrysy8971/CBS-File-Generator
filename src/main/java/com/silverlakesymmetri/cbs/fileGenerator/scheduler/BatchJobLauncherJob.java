@@ -43,6 +43,13 @@ public class BatchJobLauncherJob extends QuartzJobBean {
 	protected void executeInternal(JobExecutionContext jobExecutionContext) throws JobExecutionException {
 		JobDataMap dataMap = jobExecutionContext.getMergedJobDataMap();
 		String interfaceType = dataMap.getString("interfaceType");
+
+		// Generate Idempotency Key
+		// Use Scheduled Fire Time so if Quartz misfires or retries,
+		// it generates the exact same key.
+		long fireTime = jobExecutionContext.getScheduledFireTime().getTime();
+		String idempotencyKey = interfaceType + "_SCHED_" + fireTime;
+
 		String requestId = "SCHED-" + UUID.randomUUID();
 
 		logger.info("Quartz triggering scheduled generation for: {}", interfaceType);
@@ -56,7 +63,11 @@ public class BatchJobLauncherJob extends QuartzJobBean {
 			String fileName = interfaceType + "_" + UUID.randomUUID() + "." + ext;
 
 			FileGeneration fileGen = fileGenerationService.createFileGeneration(
-					fileName, outputDir, "QUARTZ_SCHEDULER", interfaceType
+					fileName,
+					outputDir,
+					"QUARTZ_SCHEDULER",
+					interfaceType,
+					idempotencyKey
 			);
 
 			// Immediately mark as QUEUED.

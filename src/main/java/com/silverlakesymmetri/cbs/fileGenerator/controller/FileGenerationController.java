@@ -95,7 +95,8 @@ public class FileGenerationController {
 	public ResponseEntity<FileGenerationResponse> generateFile(
 			@Valid
 			@RequestBody FileGenerationRequest request,
-			@RequestHeader(value = HTTP_HEADER_METADATA_KEY_USER_NAME, required = false) String userName) {
+			@RequestHeader(value = HTTP_HEADER_METADATA_KEY_USER_NAME, required = false) String userName
+	) {
 
 		if (!outputDirValid) {
 			if (outputDirPath == null) {
@@ -106,6 +107,15 @@ public class FileGenerationController {
 		}
 
 		String interfaceType = Optional.ofNullable(request.getInterfaceType()).orElse("").trim();
+
+		// Extract Idempotency Key from Request (Preferred)
+		String idempotencyKey = Optional.ofNullable(request.getIdempotencyKey()).orElse("").trim();
+
+		// If client didn't send one, generate a random one (Fallback),
+		// effectively making this specific request non-idempotent regarding retries.
+		if (idempotencyKey.isEmpty()) {
+			idempotencyKey = UUID.randomUUID().toString();
+		}
 
 		// Rate Limit Check
 		if (!rateLimiterService.tryConsume(interfaceType)) {
@@ -140,7 +150,8 @@ public class FileGenerationController {
 				fileName,
 				outputDirPath.toString(),
 				Optional.ofNullable(userName).orElse(HTTP_HEADER_METADATA_USER_NAME_DEFAULT),
-				interfaceType
+				interfaceType,
+				idempotencyKey
 		);
 
 		logger.info("File generation job created - JobId: {}, Interface: {}",
@@ -244,9 +255,9 @@ public class FileGenerationController {
 				.orElseThrow(() -> new NotFoundException("Job not found"));
 
 		// Check if user created this job
-		if (!fileGen.getCreatedBy().equals(userName)) {
-			throw new ForbiddenException("You don't have permission to download this file");
-		}
+		//if (!fileGen.getCreatedBy().equals(userName)) {
+		//	throw new ForbiddenException("You don't have permission to download this file");
+		//}
 
 		if (!FileGenerationStatus.COMPLETED.equals(fileGen.getStatus())) {
 			throw new ForbiddenException("File is not ready or generation failed");

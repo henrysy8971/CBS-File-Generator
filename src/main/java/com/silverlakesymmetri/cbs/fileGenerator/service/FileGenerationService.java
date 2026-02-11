@@ -38,7 +38,18 @@ public class FileGenerationService {
 			String fileName,
 			String filePath,
 			String createdBy,
-			String interfaceType) {
+			String interfaceType,
+			String idempotencyKey) {
+
+		// 1. Idempotency Check
+		if (idempotencyKey != null && !idempotencyKey.isEmpty()) {
+			Optional<FileGeneration> existing = fileGenerationRepository.findByIdempotencyKey(idempotencyKey);
+			if (existing.isPresent()) {
+				logger.info("Idempotent request: returning existing job {} for key {}",
+						existing.get().getJobId(), idempotencyKey);
+				return existing.get();
+			}
+		}
 
 		validateNonEmpty(fileName, "fileName");
 		validateNonEmpty(filePath, "filePath");
@@ -48,6 +59,7 @@ public class FileGenerationService {
 		try {
 			FileGeneration fg = new FileGeneration();
 			fg.setJobId(UUID.randomUUID().toString());
+			fg.setIdempotencyKey(idempotencyKey);
 			fg.setFileName(fileName);
 			fg.setFilePath(filePath);
 			fg.setStatus(FileGenerationStatus.PENDING);
@@ -69,6 +81,11 @@ public class FileGenerationService {
 
 			return saved;
 		} catch (DataIntegrityViolationException e) {
+			// Handle race condition where two threads inserted same key at exact same time
+			if (idempotencyKey != null) {
+				return fileGenerationRepository.findByIdempotencyKey(idempotencyKey)
+						.orElseThrow(() -> new ConflictException("Concurrent creation conflict", e));
+			}
 			// DB-level enforcement: unique active job per interface
 			throw new ConflictException(
 					"A job for this interface is already running", e

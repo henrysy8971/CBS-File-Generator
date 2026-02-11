@@ -2,8 +2,6 @@ package com.silverlakesymmetri.cbs.fileGenerator.dto;
 
 import org.hibernate.validator.constraints.NotBlank;
 
-import javax.validation.constraints.Max;
-import javax.validation.constraints.Min;
 import javax.validation.constraints.Pattern;
 import javax.validation.constraints.Size;
 
@@ -14,6 +12,9 @@ public class FileGenerationRequest {
 	@Size(max = INTERFACE_TYPE_LENGTH)
 	@Pattern(regexp = "^[A-Za-z0-9_]+$")
 	private String interfaceType; // Required: must match key in interface-config.json
+
+	// Optional: Client can provide their own unique ID per request
+	private String idempotencyKey;
 
 	public FileGenerationRequest() {
 	}
@@ -28,5 +29,13 @@ public class FileGenerationRequest {
 
 	public void setInterfaceType(String interfaceType) {
 		this.interfaceType = interfaceType;
+	}
+
+	public String getIdempotencyKey() {
+		return idempotencyKey;
+	}
+
+	public void setIdempotencyKey(String idempotencyKey) {
+		this.idempotencyKey = idempotencyKey;
 	}
 }
