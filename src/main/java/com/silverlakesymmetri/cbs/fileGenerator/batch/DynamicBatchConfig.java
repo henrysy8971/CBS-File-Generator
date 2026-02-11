@@ -25,6 +25,7 @@ public class DynamicBatchConfig {
 	private final DynamicItemProcessor dynamicItemProcessor;
 	private final DynamicItemWriter dynamicItemWriter;
 	private final FileValidationTasklet fileValidationTasklet;
+	private final BatchCleanupTasklet batchCleanupTasklet;
 
 	@Value("${file.generation.chunk-size:1000}")
 	private int chunkSize;
@@ -37,7 +38,8 @@ public class DynamicBatchConfig {
 			DynamicItemReader dynamicItemReader,
 			DynamicItemProcessor dynamicItemProcessor,
 			DynamicItemWriter dynamicItemWriter,
-			FileValidationTasklet fileValidationTasklet
+			FileValidationTasklet fileValidationTasklet,
+			BatchCleanupTasklet batchCleanupTasklet
 	) {
 		this.jobBuilderFactory = jobBuilderFactory;
 		this.stepBuilderFactory = stepBuilderFactory;
@@ -46,6 +48,7 @@ public class DynamicBatchConfig {
 		this.dynamicItemProcessor = dynamicItemProcessor;
 		this.dynamicItemWriter = dynamicItemWriter;
 		this.fileValidationTasklet = fileValidationTasklet;
+		this.batchCleanupTasklet = batchCleanupTasklet;
 	}
 
 	@Bean
@@ -67,8 +70,9 @@ public class DynamicBatchConfig {
 				.incrementer(new RunIdIncrementer())
 				.listener(sharedJobListener)
 				.start(dynamicFileGenerationStep())
-				.on(BatchStatus.COMPLETED.name()).to(dynamicValidationStep()) // Only validate if success
-				.on("*").fail() // Fail if anything else happens
+				.on(BatchStatus.COMPLETED.name()).to(dynamicValidationStep())
+				.from(dynamicFileGenerationStep()).on("*").to(cleanupStep())
+				.from(cleanupStep()).on("*").fail()
 				.end()
 				.build();
 	}
@@ -85,8 +89,28 @@ public class DynamicBatchConfig {
 				.reader(dynamicItemReader)
 				.processor(dynamicItemProcessor)
 				.writer(dynamicItemWriter)
+				// --- Fault Tolerance Configuration ---
+				.faultTolerant()
+				// 1. Retry Logic (Only retry temporary issues)
+				.retry(org.springframework.dao.TransientDataAccessException.class) // DB Deadlocks/Timeouts
+				.retry(java.sql.SQLTransientConnectionException.class) // DB Connection blips
+				.noRetry(java.sql.SQLSyntaxErrorException.class) // Bad SQL (Permanent)
+				.retryLimit(3)
+				// 2. Skip Logic (Skip processing errors, but stop on IO errors)
+				.skip(Exception.class) // Default: Skip processing logic errors
+				.noSkip(java.io.IOException.class) // STOP on Disk Full / Permission denied
+				.noSkip(java.io.FileNotFoundException.class) // STOP if file missing
+				// Skip up to 100 bad records
+				.skipLimit(100)
 				.listener(new DynamicStepExecutionListener(dynamicItemWriter, fileGenerationService))
 				.allowStartIfComplete(true) // allows restart with .part handling
+				.build();
+	}
+
+	@Bean
+	public Step cleanupStep() {
+		return stepBuilderFactory.get("cleanupStep")
+				.tasklet(batchCleanupTasklet)
 				.build();
 	}
 }

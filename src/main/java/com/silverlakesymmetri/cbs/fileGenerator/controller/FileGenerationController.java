@@ -10,6 +10,7 @@ import com.silverlakesymmetri.cbs.fileGenerator.exception.*;
 import com.silverlakesymmetri.cbs.fileGenerator.service.BatchJobLauncher;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationStatus;
+import com.silverlakesymmetri.cbs.fileGenerator.service.RateLimiterService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -48,6 +49,7 @@ public class FileGenerationController {
 	private final FileGenerationService fileGenerationService;
 	private final BatchJobLauncher batchJobLauncher;
 	private final InterfaceConfigLoader interfaceConfigLoader;
+	private final RateLimiterService rateLimiterService;
 	private volatile boolean outputDirValid;
 	private volatile Path outputDirPath = null;
 	private final AtomicBoolean initialized = new AtomicBoolean(false);
@@ -56,11 +58,15 @@ public class FileGenerationController {
 	private String outputDirectory;
 
 	@Autowired
-	public FileGenerationController(FileGenerationService fileGenerationService, BatchJobLauncher batchJobLauncher,
-									InterfaceConfigLoader interfaceConfigLoader) {
+	public FileGenerationController(
+			FileGenerationService fileGenerationService,
+			BatchJobLauncher batchJobLauncher,
+			InterfaceConfigLoader interfaceConfigLoader,
+			RateLimiterService rateLimiterService) {
 		this.fileGenerationService = fileGenerationService;
 		this.batchJobLauncher = batchJobLauncher;
 		this.interfaceConfigLoader = interfaceConfigLoader;
+		this.rateLimiterService = rateLimiterService;
 	}
 
 	// ==================== Startup Initialization ====================
@@ -100,6 +106,13 @@ public class FileGenerationController {
 		}
 
 		String interfaceType = Optional.ofNullable(request.getInterfaceType()).orElse("").trim();
+
+		// Rate Limit Check
+		if (!rateLimiterService.tryConsume(interfaceType)) {
+			logger.warn("Rate limit exceeded for interface: {}", interfaceType);
+			return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+					.body(buildErrorResponse(interfaceType, "Rate limit exceeded. Please try again in a few seconds."));
+		}
 
 		// ===== Interface configuration validation =====
 		InterfaceConfig interfaceConfig = interfaceConfigLoader.getConfig(interfaceType);
@@ -218,7 +231,9 @@ public class FileGenerationController {
 	}
 
 	@GetMapping("/downloadFileByJobId/{jobId}")
-	public ResponseEntity<Resource> downloadFileByJobId(@PathVariable String jobId) throws IOException {
+	public ResponseEntity<Resource> downloadFileByJobId(
+			@PathVariable String jobId,
+			@RequestHeader(value = HTTP_HEADER_METADATA_KEY_USER_NAME, required = false) String userName) {
 		// 1. Directory safety check (Volatile check)
 		if (!outputDirValid || outputDirPath == null) {
 			throw new ConfigurationException("Output storage is unavailable");
@@ -227,6 +242,11 @@ public class FileGenerationController {
 		// 2. DB Metadata check
 		FileGeneration fileGen = fileGenerationService.getFileGeneration(jobId)
 				.orElseThrow(() -> new NotFoundException("Job not found"));
+
+		// Check if user created this job
+		if (!fileGen.getCreatedBy().equals(userName)) {
+			throw new ForbiddenException("You don't have permission to download this file");
+		}
 
 		if (!FileGenerationStatus.COMPLETED.equals(fileGen.getStatus())) {
 			throw new ForbiddenException("File is not ready or generation failed");
@@ -309,5 +329,14 @@ public class FileGenerationController {
 		response.setLast(page.isLast());
 
 		return response;
+	}
+
+	// Helper to build a quick error response if you don't have one
+	private FileGenerationResponse buildErrorResponse(String interfaceType, String msg) {
+		FileGenerationResponse res = new FileGenerationResponse();
+		res.setStatus("FAILED");
+		res.setMessage(msg);
+		res.setInterfaceType(interfaceType);
+		return res;
 	}
 }

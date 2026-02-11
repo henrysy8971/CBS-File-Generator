@@ -19,6 +19,7 @@ import java.util.Set;
 public class DynamicItemProcessor implements ItemProcessor<DynamicRecord, DynamicRecord> {
 	private static final Logger logger = LoggerFactory.getLogger(DynamicItemProcessor.class);
 	private StepExecution stepExecution;
+
 	// Circuit Breaker: If more than this many records fail, abort the job.
 	// Default to 100 or configure via properties.
 	@Value("${file.generation.processor.max-skip-count:100}")
@@ -30,19 +31,18 @@ public class DynamicItemProcessor implements ItemProcessor<DynamicRecord, Dynami
 		// Initialize metrics
 		initializeMetric(BatchMetricsConstants.KEY_PROCESSED);
 		initializeMetric(BatchMetricsConstants.KEY_SKIPPED);
+		// Note: KEY_SKIPPED is now tracked by Spring Batch natively,
+		// but we keep KEY_INVALID for business-specific validation tracking.
 		initializeMetric(BatchMetricsConstants.KEY_INVALID);
 	}
 
 	@Override
 	public DynamicRecord process(DynamicRecord record) {
 		try {
-			// 1. Validate Input
+			// 1. Validate Input (Empty Record)
+			// Return null here to FILTER (not count as error/skip)
 			if (record == null || record.isEmpty()) {
-				long skipped = incrementMetric(BatchMetricsConstants.KEY_SKIPPED);
 				logger.debug("Skipping empty record");
-				if (skipped > maxSkipCount) {
-					circuitBreak(skipped);
-				}
 				return null;
 			}
 
@@ -62,11 +62,18 @@ public class DynamicItemProcessor implements ItemProcessor<DynamicRecord, Dynami
 			logger.error("Error processing record: {}", record, e);
 
 			// 5. Circuit Breaker
+			// If we exceed the limit, we throw a FATAL exception (RuntimeException)
+			// that is NOT skipped by default configuration, crashing the job.
 			if (invalidCount > maxSkipCount) {
 				circuitBreak(invalidCount);
 			}
 
-			return null;
+			// 6. Trigger Skip
+			// By re-throwing, we tell Spring Batch to:
+			//   a. Rollback the transaction (if needed)
+			//   b. Increment the Skip Count
+			//   c. Continue to the next item
+			throw new RuntimeException("Skipping invalid record", e);
 		}
 	}
 
@@ -82,10 +89,8 @@ public class DynamicItemProcessor implements ItemProcessor<DynamicRecord, Dynami
 
 	// ================= Metrics =================
 	private void initializeMetric(String key) {
-		if (stepExecution == null) {
-			return;
-		}
-		if (!stepExecution.getExecutionContext().containsKey(key)) {
+		if (stepExecution != null &&
+				!stepExecution.getExecutionContext().containsKey(key)) {
 			stepExecution.getExecutionContext().putLong(key, 0L);
 		}
 	}
@@ -100,29 +105,24 @@ public class DynamicItemProcessor implements ItemProcessor<DynamicRecord, Dynami
 
 	// ================= Metrics Accessors =================
 	public long getProcessedCount() {
-		if (stepExecution == null) {
-			return 0;
-		}
-		return stepExecution.getExecutionContext().getLong(BatchMetricsConstants.KEY_PROCESSED, 0L);
+		return stepExecution != null ?
+				stepExecution.getExecutionContext().getLong(BatchMetricsConstants.KEY_PROCESSED, 0L) : 0;
 	}
 
 	public long getSkippedCount() {
-		if (stepExecution == null) {
-			return 0;
-		}
-		return stepExecution.getExecutionContext().getLong(BatchMetricsConstants.KEY_SKIPPED, 0L);
+		return stepExecution != null ?
+				stepExecution.getExecutionContext().getLong(BatchMetricsConstants.KEY_INVALID, 0L) : 0;
 	}
 
 	public long getInvalidCount() {
-		if (stepExecution == null) {
-			return 0;
-		}
-		return stepExecution.getExecutionContext().getLong(BatchMetricsConstants.KEY_INVALID, 0L);
+		return stepExecution != null ? stepExecution.getExecutionContext().getLong(BatchMetricsConstants.KEY_INVALID, 0L) : 0;
 	}
 
 	private void circuitBreak(long count) {
 		String errorMsg = String.format("Too many processing errors (%d). Aborting job to prevent silent failure.", count);
 		logger.error(errorMsg);
-		throw new RuntimeException(errorMsg);
+		// Throwing a specialized exception or RuntimeException here.
+		// Ideally, ensure this exception class is NOT in the .skip() list in BatchConfig.
+		throw new IllegalStateException(errorMsg);
 	}
 }
