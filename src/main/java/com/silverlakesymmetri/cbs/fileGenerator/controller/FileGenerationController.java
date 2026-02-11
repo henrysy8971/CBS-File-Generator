@@ -30,6 +30,8 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.validation.Valid;
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -50,7 +52,7 @@ public class FileGenerationController {
 	private final BatchJobLauncher batchJobLauncher;
 	private final InterfaceConfigLoader interfaceConfigLoader;
 	private final RateLimiterService rateLimiterService;
-	private volatile boolean outputDirValid;
+	private final AtomicBoolean outputDirValid = new AtomicBoolean(false);
 	private volatile Path outputDirPath = null;
 	private final AtomicBoolean initialized = new AtomicBoolean(false);
 
@@ -77,14 +79,14 @@ public class FileGenerationController {
 		String dir = outputDirectory == null ? "" : outputDirectory.trim();
 		if (dir.isEmpty()) {
 			logger.error("Output directory not configured");
-			outputDirValid = false;
+			outputDirValid.set(false);
 		} else {
 			outputDirPath = Paths.get(dir).toAbsolutePath().normalize();
 			try {
 				Files.createDirectories(outputDirPath);
-				outputDirValid = Files.isWritable(outputDirPath);
+				outputDirValid.set(Files.isWritable(outputDirPath));
 			} catch (Exception e) {
-				outputDirValid = false;
+				outputDirValid.set(false);
 				logger.error("Failed to initialize output directory", e);
 			}
 		}
@@ -98,7 +100,7 @@ public class FileGenerationController {
 			@RequestHeader(value = HTTP_HEADER_METADATA_KEY_USER_NAME, required = false) String userName
 	) {
 
-		if (!outputDirValid) {
+		if (!outputDirValid.get()) {
 			if (outputDirPath == null) {
 				throw new ConfigurationException("Output directory is not set");
 			} else {
@@ -246,7 +248,7 @@ public class FileGenerationController {
 			@PathVariable String jobId,
 			@RequestHeader(value = HTTP_HEADER_METADATA_KEY_USER_NAME, required = false) String userName) {
 		// 1. Directory safety check (Volatile check)
-		if (!outputDirValid || outputDirPath == null) {
+		if (!outputDirValid.get() || outputDirPath == null) {
 			throw new ConfigurationException("Output storage is unavailable");
 		}
 
@@ -264,8 +266,8 @@ public class FileGenerationController {
 		}
 
 		// Validate incoming filename BEFORE using it
-		String fileName = fileGen.getFileName();
-		if (fileName == null || fileName.contains("..") || fileName.contains("\\") || fileName.contains("/")) {
+		String fileName = sanitizeFileName(fileGen.getFileName());
+		if (fileName.contains("..") || fileName.contains("\\") || fileName.contains("/")) {
 			logger.error("Security Alert: Malicious filename in database jobId={}: {}", jobId, fileName);
 			throw new ForbiddenException("Invalid file path");
 		}
@@ -292,9 +294,16 @@ public class FileGenerationController {
 			logger.warn("MIME detection failed for {}", fileGen.getFileName());
 		}
 
+		// Encode for RFC 5987
+		String encodedFileName = encodeRFC5987(fileName);
+
+		String contentDisposition =
+				"attachment; filename=\"" + fileName + "\"; " +
+						"filename*=UTF-8''" + encodedFileName;
+
 		// 6. Build Response with Range Support
 		return ResponseEntity.ok()
-				.header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + fileGen.getFileName() + "\"")
+				.header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition)
 				// Signal to browsers/download managers that we support Range requests
 				.header(HttpHeaders.ACCEPT_RANGES, "bytes")
 				.contentType(MediaType.parseMediaType(contentType))
@@ -349,5 +358,18 @@ public class FileGenerationController {
 		res.setMessage(msg);
 		res.setInterfaceType(interfaceType);
 		return res;
+	}
+
+	private String encodeRFC5987(String value) {
+		try {
+			return URLEncoder.encode(value, "UTF-8")
+					.replace("+", "%20");
+		} catch (UnsupportedEncodingException e) {
+			throw new IllegalStateException("UTF-8 not supported", e);
+		}
+	}
+
+	private String sanitizeFileName(String name) {
+		return name.replaceAll("[\\r\\n\"]", "_");
 	}
 }
