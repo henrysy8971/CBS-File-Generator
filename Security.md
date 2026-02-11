@@ -48,21 +48,15 @@ To allow a new client to access the API, insert a record into the `IF_DB_TOKEN` 
 **SQL Script (Oracle):**
 ```sql
 INSERT INTO IF_DB_TOKEN (
-    TOKEN_ID,
     TOKEN_VALUE,
     APPLICATION_NAME,
     ISSUED_BY,
-    ISSUED_DATE,
-    EXPIRY_DATE,
-    ACTIVE
+    ISSUED_DATE
 ) VALUES (
-    IF_DB_TOKEN_SEQ.NEXTVAL,               -- Sequence
     'a1b2c3d4-e5f6-4789-abcd-ef1234567890', -- The Secret Token (Use UUID)
-    'CBS_PORTAL_WEB',                      -- Name of calling system
-    'ADMIN_USER',                          -- Creator
-    SYSTIMESTAMP,                          -- Created Now
-    SYSTIMESTAMP + 365,                    -- Expires in 1 Year
-    1                                      -- 1 = Active, 0 = Revoked
+    'CBS_PORTAL_WEB',                       -- Name of calling system
+    'ADMIN_USER',                           -- Creator
+    SYSTIMESTAMP                            -- Created Now
 );
 COMMIT;
 ```
@@ -86,7 +80,7 @@ curl -X POST http://localhost:8080/cbs-file-generator/api/v1/file-generation/gen
 4.  **Body (JSON):** `{"interfaceType": "ORDER_INTERFACE"}`
 
 **C. Java (RestTemplate)**
-```java
+```
 String url = "http://localhost:8080/cbs-file-generator/api/v1/file-generation/generate";
 
 // 1. Setup Headers

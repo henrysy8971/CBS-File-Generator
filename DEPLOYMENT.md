@@ -48,8 +48,8 @@ The application does **not** auto-create tables in Production (`initialize-schem
 **Initial Security Setup**:
 Insert a token for your client application, so it can access the API immediately:
 ```sql
-INSERT INTO IF_DB_TOKEN (TOKEN_ID, TOKEN_VALUE, APPLICATION_NAME, ACTIVE, ISSUED_DATE)
-VALUES (IF_DB_TOKEN_SEQ.NEXTVAL, 'your-production-secret-token-uuid', 'ADMIN_CLIENT', 1, SYSTIMESTAMP);
+INSERT INTO IF_DB_TOKEN ( TOKEN_VALUE, APPLICATION_NAME, ISSUED_BY, ISSUED_DATE)
+VALUES ('a1b2c3d4-e5f6-4789-abcd-ef1234567890', 'CBS_PORTAL_WEB', 'ADMIN_USER', SYSTIMESTAMP);
 COMMIT;
 ```
 
@@ -93,7 +93,11 @@ spring.datasource.username=CBS_APP_USER
 spring.datasource.password=ComplexPassword123
 
 # File Paths (Ensure OS User has Write Permissions!)
-file.generation.output-directory=/u1/symmetri/products/cbs-file-generator/data/generated-files/
+base.dir=/u1/symmetri/products/cbs-file-generator
+file.generation.external.config-dir=${base.dir}/config
+file.generation.output-directory=${base.dir}/data/generated-files
+file.generation.interface-config-path=${file.generation.external.config-dir}/interface-config.json
+LOG_PATH=${LOG_PATH:${base.dir}/logs}
 
 # Threading (Adjust based on CPU)
 spring.task.execution.pool.max-size=20
@@ -106,9 +110,7 @@ validation.xsd.strict-mode=false
 # Clustering (Set to true if running multiple instances)
 spring.quartz.properties.org.quartz.jobStore.isClustered=true
 ```
-
 ---
-
 ## 🚀 Startup Commands
 
 ### Method 1: Running the JAR (SystemD / Shell)
