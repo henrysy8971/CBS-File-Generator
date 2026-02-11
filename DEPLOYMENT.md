@@ -180,6 +180,8 @@ The application has a built-in Quartz job (`MaintenanceQuartzJob`) that runs eve
 *   It deletes files older than `file.generation.max-file-age-in-days` (Default: 30).
 *   It cleans up old Batch metadata from the database.
 
+---
+
 ### Troubleshooting Common Errors
 
 | Error                                      | Cause                                    | Solution                                                                                      |
@@ -188,3 +190,54 @@ The application has a built-in Quartz job (`MaintenanceQuartzJob`) that runs eve
 | `AccessDeniedException` (File I/O)         | Linux permissions.                       | Ensure the user running Java owns the output directory: `chown -R cbsuser:cbsgroup /opt/cbs/` |
 | `OutOfMemoryError: Java heap space`        | Large XML generation.                    | Increase `-Xmx` or reduce `chunkSize` for XML interfaces.                                     |
 | `JobInstanceAlreadyCompleteException`      | Re-running a job with same params.       | The system handles this via `RunIdIncrementer`. If manual, ensure `time` param is unique.     |
+
+---
+
+To run your application in **Debug Mode** and specify a **Custom Port**, you need to add specific arguments to your command line.
+
+Here is the breakdown:
+
+1.  **Debug Flags** (`-agentlib...`): Must go **BEFORE** `-jar`.
+2.  **Application Arguments** (`--server.port...`): Must go **AFTER** `-jar`.
+
+### The Complete Command
+
+Here is the full command to run on port **9090** with the Debugger listening on port **5005**:
+
+```bash
+java \
+  -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005 \
+  -jar /u1/symmetri/products/cbs-file-generator/bin/cbs-file-generator.jar \
+  --spring.config.location=file:/u1/symmetri/products/cbs-file-generator/config/application.properties \
+  --server.port=9090
+```
+
+---
+
+### Detailed Explanation
+
+#### 1. Debug Mode Settings
+The flag `-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=5005` enables remote debugging.
+
+*   **`transport=dt_socket`**: Uses a standard network socket.
+*   **`server=y`**: The application acts as the server waiting for the debugger to connect.
+*   **`address=5005`**: The port where your IDE (IntelliJ/Eclipse) will connect. You can change this if 5005 is busy.
+*   **`suspend=n`** (Recommended): The application starts immediately without waiting.
+*   **`suspend=y`** (For Startup Issues): The application **pauses** at startup and waits for you to connect the debugger. Use this if you need to debug `InterfaceConfigLoader` or `@PostConstruct` logic.
+
+#### 2. Setting the HTTP Port
+You can override the port defined in `application.properties` by adding this argument at the end:
+
+*   **`--server.port=9090`**: Sets the web server (Tomcat) to listen on port 9090.
+
+---
+
+### How to Connect (IntelliJ IDEA)
+
+1.  Open your project in IntelliJ.
+2.  Go to **Run** -> **Edit Configurations**.
+3.  Click **+** and select **Remote JVM Debug**.
+4.  Set **Host**: `localhost` (or the IP of the server `/u1/...` if remote).
+5.  Set **Port**: `5005`.
+6.  Start the application on the server using the command above.
+7.  Click **Debug** in IntelliJ.
