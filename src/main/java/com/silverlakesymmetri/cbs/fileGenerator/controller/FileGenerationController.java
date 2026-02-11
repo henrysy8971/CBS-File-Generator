@@ -134,6 +134,10 @@ public class FileGenerationController {
 				fileGen.getJobId(), interfaceType);
 
 		String requestId = MDC.get("requestId");
+		if (requestId == null) {
+			requestId = UUID.randomUUID().toString();  // Generate fallback
+		}
+
 		// ===== Launch batch job asynchronously =====
 		batchJobLauncher.launchFileGenerationJob(fileGen.getJobId(), interfaceType, requestId);
 
@@ -228,6 +232,13 @@ public class FileGenerationController {
 			throw new ForbiddenException("File is not ready or generation failed");
 		}
 
+		// Validate incoming filename BEFORE using it
+		String fileName = fileGen.getFileName();
+		if (fileName == null || fileName.contains("..") || fileName.contains("\\") || fileName.contains("/")) {
+			logger.error("Security Alert: Malicious filename in database jobId={}: {}", jobId, fileName);
+			throw new ForbiddenException("Invalid file path");
+		}
+
 		// 3. Security: Path Traversal Protection
 		Path resolvedPath = outputDirPath.resolve(fileGen.getFileName()).normalize();
 		if (!resolvedPath.startsWith(outputDirPath)) {
@@ -256,9 +267,6 @@ public class FileGenerationController {
 				// Signal to browsers/download managers that we support Range requests
 				.header(HttpHeaders.ACCEPT_RANGES, "bytes")
 				.contentType(MediaType.parseMediaType(contentType))
-				// Note: We DO NOT set contentLength manually here.
-				// Spring's ResourceHttpMessageConverter calculates it for the specific range requested.
-				.contentLength(Files.size(resolvedPath))
 				.body(resource);
 	}
 

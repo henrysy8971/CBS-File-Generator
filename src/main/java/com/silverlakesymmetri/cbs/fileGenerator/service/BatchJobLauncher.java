@@ -15,8 +15,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import javax.annotation.PostConstruct;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Map;
 import java.util.Optional;
@@ -94,7 +97,7 @@ public class BatchJobLauncher {
 			// Select appropriate job (specialized or dynamic)
 			Job jobToRun = selectJobByInterfaceType(interfaceType);
 
-			logger.info("Starting Batch Job [{}] for interface [{}]", jobToRun.getName(), interfaceType);
+			logger.info("Job selection - Requested: {}, Selected: {}", interfaceType, jobToRun.getName());
 
 			fileGenerationService.markProcessing(jobId); // Update status to IN_PROGRESS before launch
 
@@ -146,6 +149,25 @@ public class BatchJobLauncher {
 			if (!folder.mkdirs()) {
 				throw new IOException("Could not create directory structure for: " + outputDirectory);
 			}
+		}
+	}
+
+	@PostConstruct
+	public void validateOutputDirectory() {
+		try {
+			Path dir = Paths.get(outputDirectory).toAbsolutePath().normalize();
+			if (!Files.exists(dir)) {
+				Files.createDirectories(dir);
+			}
+			if (!Files.isDirectory(dir)) {
+				throw new IllegalStateException(outputDirectory + " is not a directory");
+			}
+			if (!Files.isWritable(dir)) {
+				throw new IllegalStateException(outputDirectory + " is not writable");
+			}
+			logger.info("Output directory validated: {}", dir);
+		} catch (IOException e) {
+			throw new IllegalStateException("Cannot initialize output directory", e);
 		}
 	}
 }

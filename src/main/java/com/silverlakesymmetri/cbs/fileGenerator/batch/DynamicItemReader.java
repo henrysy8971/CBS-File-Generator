@@ -46,7 +46,8 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 	private String lastProcessedId = null;
 	private long totalProcessed = 0;
 	private ColumnType keyColumnType;
-	private int keySetColumnIndex = -1; // Store the index once
+	private int keySetColumnIndex = -1;
+	private static final Object SCHEMA_LOCK = new Object();
 
 	@Autowired
 	public DynamicItemReader(
@@ -125,8 +126,9 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 	private void fetchNextPage() {
 		Query query = entityManager.createNativeQuery(queryString, Tuple.class);
 
-		// Use standard JPA hint, but also try using Hibernate specific if needed
-		query.setHint("javax.persistence.jdbc.fetch_size", pageSize);
+		// Oracle optimal: 100-500 rows at a time
+		int fetchSize = Math.max(100, Math.min(pageSize / 5, 500));
+		query.setHint("javax.persistence.jdbc.fetch_size", fetchSize);
 		query.setMaxResults(pageSize);
 
 		// Handle Parameter Binding
@@ -157,15 +159,15 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 			return;
 		}
 
-		// Assign results to instance variable
-		this.currentPage = tuples;
-
-		// Initialize schema from the first TUPLE if not already done
-		if (sharedSchema == null) {
-			initializeSchemaFromTuple(tuples.get(0));
+		// Initialize schema once, thread-safely
+		synchronized(SCHEMA_LOCK) {
+			if (sharedSchema == null) {
+				initializeSchemaFromTuple(tuples.get(0));
+			}
 		}
 
-		currentIndex = 0;
+		this.currentPage = tuples;
+		this.currentIndex = 0;
 		logger.debug("Fetched {} rows after lastProcessedId={}", currentPage.size(), lastProcessedId);
 	}
 
@@ -199,7 +201,7 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 		// 3. Resolve KeySet Configuration (The most important part for Paging)
 		if (keySetColumnName != null) {
 			// Lookup the index based on the JSON configuration name
-			int idx = sharedSchema.getIndex(keySetColumnName.toLowerCase(Locale.ROOT));
+			int idx = sharedSchema.getIndex(keySetColumnName);
 
 			if (idx != -1) {
 				this.keySetColumnIndex = idx;
@@ -208,10 +210,11 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 				String actualKeySetColumnName = elements.get(idx).getAlias();
 
 				// Fallback for null aliases
-				if (actualKeySetColumnName == null) {
+				if (actualKeySetColumnName == null || actualKeySetColumnName.trim().isEmpty()) {
 					actualKeySetColumnName = "column_" + idx;
 				}
 
+				this.keySetColumnName = actualKeySetColumnName;
 				// Identify the type, so we know how to bind the ":lastId" parameter
 				this.keyColumnType = sharedSchema.getType(idx);
 

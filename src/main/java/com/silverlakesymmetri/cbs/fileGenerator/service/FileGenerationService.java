@@ -39,14 +39,10 @@ public class FileGenerationService {
 											   String createdBy,
 											   String interfaceType) {
 
-		if (fileName == null || fileName.trim().isEmpty())
-			throw new IllegalArgumentException("fileName cannot be null or empty");
-		if (filePath == null || filePath.trim().isEmpty())
-			throw new IllegalArgumentException("filePath cannot be null or empty");
-		if (createdBy == null || createdBy.trim().isEmpty())
-			throw new IllegalArgumentException("createdBy cannot be null or empty");
-		if (interfaceType == null || interfaceType.trim().isEmpty())
-			throw new IllegalArgumentException("interfaceType cannot be null or empty");
+		validateNonEmpty(fileName, "fileName");
+		validateNonEmpty(filePath, "filePath");
+		validateNonEmpty(createdBy, "createdBy");
+		validateNonEmpty(interfaceType, "interfaceType");
 
 		try {
 			FileGeneration fg = new FileGeneration();
@@ -83,7 +79,7 @@ public class FileGenerationService {
 	@DbRetryable
 	@Transactional
 	public void markQueued(String jobId) {
-		validateJobId(jobId);
+		validateNonEmpty(jobId, "jobId");
 		// This transitions PENDING -> QUEUED
 		transitionStatus(jobId, FileGenerationStatus.QUEUED, null);
 	}
@@ -91,21 +87,21 @@ public class FileGenerationService {
 	@DbRetryable
 	@Transactional
 	public void markProcessing(String jobId) {
-		validateJobId(jobId);
+		validateNonEmpty(jobId, "jobId");
 		transitionStatus(jobId, FileGenerationStatus.PROCESSING, null);
 	}
 
 	@DbRetryable
 	@Transactional
 	public void markCompleted(String jobId) {
-		validateJobId(jobId);
+		validateNonEmpty(jobId, "jobId");
 		transitionStatus(jobId, FileGenerationStatus.COMPLETED, null);
 	}
 
 	@DbRetryable
 	@Transactional
 	public void markFailed(String jobId, String errorMessage) {
-		validateJobId(jobId);
+		validateNonEmpty(jobId, "jobId");
 		if (errorMessage == null) errorMessage = "UNKNOWN";
 		transitionStatus(jobId, FileGenerationStatus.FAILED, errorMessage);
 		logger.warn("File generation failed: jobId={}, error={}", jobId, errorMessage);
@@ -117,17 +113,31 @@ public class FileGenerationService {
 	}
 
 	@Recover
+	@Transactional
 	public void recoverOptimisticLock(
 			ObjectOptimisticLockingFailureException e, String jobId) {
+		logger.error("[RECOVER][OPTIMISTIC_LOCK] Retries exhausted for jobId={}", jobId, e);
 
-		logger.error("[RECOVER][OPTIMISTIC_LOCK] jobId={}", jobId, e);
+		try {
+			// Attempt to force the status to 'FAILED', so it doesn't get stuck
+			transitionStatus(jobId, FileGenerationStatus.FAILED, "OPTIMISTIC_LOCK_EXHAUSTED");
+		} catch (Exception ex) {
+			// If even the recovery fails (e.g., DB down), just log it.
+			logger.error("[RECOVER][SECONDARY] Failed to mark job as FAILED. Manual intervention required for jobId={}", jobId, ex);
+		}
 	}
 
 	@Recover
+	@Transactional
 	public void recoverTransient(
 			TransientDataAccessException e, String jobId) {
 
 		logger.error("[RECOVER][TRANSIENT_DB] jobId={}", jobId, e);
+		try {
+			transitionStatus(jobId, FileGenerationStatus.FAILED, "DB_CONNECTION_ERROR");
+		} catch (Exception ex) {
+			logger.error("[RECOVER][SECONDARY] Failed to mark job as FAILED", ex);
+		}
 	}
 
 	@Recover
@@ -204,7 +214,7 @@ public class FileGenerationService {
 	@DbRetryable
 	@Transactional
 	public void updateFileMetrics(String jobId, long processed, long skipped, long invalid) {
-		validateJobId(jobId);
+		validateNonEmpty(jobId, "jobId");
 
 		FileGenerationStatus status = fileGenerationRepository.findStatusByJobId(jobId)
 				.orElseThrow(() -> new LifecycleException("Job not found: " + jobId));
@@ -224,7 +234,7 @@ public class FileGenerationService {
 	/* ===================== Queries ===================== */
 	@Transactional(readOnly = true)
 	public Optional<FileGeneration> getFileGeneration(String jobId) {
-		validateJobId(jobId);
+		validateNonEmpty(jobId, "jobId");
 		return fileGenerationRepository.findByJobId(jobId);
 	}
 
@@ -246,15 +256,14 @@ public class FileGenerationService {
 		return new Timestamp(System.currentTimeMillis());
 	}
 
-	// ==================== Helpers ====================
-	private void validateJobId(String jobId) {
-		if (jobId == null || jobId.trim().isEmpty()) {
-			throw new IllegalArgumentException("jobId cannot be null or empty");
-		}
-	}
-
 	public long getPendingCount() {
 		// Assuming "PENDING" or "IN_PROGRESS" are your status strings
 		return fileGenerationRepository.countByStatus(FileGenerationStatus.PENDING);
+	}
+
+	private void validateNonEmpty(String value, String fieldName) {
+		if (value == null || value.trim().isEmpty()) {
+			throw new IllegalArgumentException(fieldName + " cannot be null or empty");
+		}
 	}
 }
