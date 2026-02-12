@@ -1,299 +1,350 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org" lang="">
 <head>
-    <title>CBS File Generator</title>
-    <meta charset="UTF-8"/>
-    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.0.0/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
-    <style>
-        body { background-color: #f4f6f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        .card { border: none; box-shadow: 0 0 15px rgba(0,0,0,0.05); margin-bottom: 25px; }
-        .card-header { background-color: #fff; border-bottom: 1px solid #eee; font-weight: 600; text-transform: uppercase; color: #555; }
-        .btn-action { margin-bottom: 5px; }
-        .status-badge { font-size: 85%; }
-        .navbar { box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-    </style>
+	<title>CBS File Generator</title>
+	<meta charset="UTF-8"/>
+	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+	<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" defer></script>
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
+	<style>
+		body { background-color: #f4f6f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+		.card { border: none; box-shadow: 0 0 15px rgba(0,0,0,0.05); margin-bottom: 25px; }
+		.card-header { background-color: #fff; border-bottom: 1px solid #eee; font-weight: 600; text-transform: uppercase; color: #555; }
+		.btn-action { margin-bottom: 5px; }
+		.status-badge { font-size: 85%; }
+		.navbar { box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+	</style>
+	<!-- Add CSRF token meta tags -->
+	<meta name="csrf-token" th:content="${_csrf.token}"/>
+	<meta name="csrf-header" th:content="${_csrf.headerName}"/>
 </head>
 <body>
-
 <!-- Navbar -->
 <nav class="navbar navbar-dark bg-dark">
-    <div class="container">
-        <span class="navbar-brand"><i class="fas fa-cogs"></i> CBS File Generator</span>
-        <div class="form-inline">
-            <div class="input-group">
-                <input type="password" id="apiToken" class="form-control" placeholder="X-DB-Token" style="width: 250px;">
-                <div class="input-group-append">
-                    <button class="btn btn-outline-light" onclick="saveToken()">Login</button>
-                </div>
-            </div>
-        </div>
-    </div>
+	<div class="container">
+		<span class="navbar-brand"><i class="fas fa-cogs"></i> CBS File Generator</span>
+		<div class="form-inline">
+			<div class="input-group">
+				<input type="password" id="apiToken" class="form-control" placeholder="X-DB-Token"
+					   style="width: 250px;">
+				<div class="input-group-append">
+					<button class="btn btn-outline-light" onclick="saveToken()">Login</button>
+				</div>
+			</div>
+		</div>
+	</div>
 </nav>
-
 <div class="container mt-4">
-
-    <!-- 1. System Health & Quick Actions -->
-    <div class="row">
-        <div class="col-md-4">
-            <div class="card text-center">
-                <div class="card-body">
-                    <h6 class="text-muted">API Connection</h6>
-                    <h3 id="healthStatus" class="text-secondary"><i class="fas fa-circle-notch fa-spin"></i> Checking...</h3>
-                    <button class="btn btn-sm btn-outline-info mt-2" onclick="checkHealth()">Check Connectivity</button>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-8">
-            <div class="card">
-                <div class="card-header text-danger"><i class="fas fa-user-shield"></i> Admin Operations</div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-4">
-                            <button class="btn btn-outline-dark btn-block btn-action" onclick="callAdmin('/reload-config')">
-                                <i class="fas fa-sync"></i> Reload Config
-                            </button>
-                        </div>
-                        <div class="col-md-4">
-                            <button class="btn btn-outline-danger btn-block btn-action" onclick="callAdmin('/cleanup')">
-                                <i class="fas fa-trash"></i> Force Cleanup
-                            </button>
-                        </div>
-                        <div class="col-md-4">
-                            <button class="btn btn-outline-warning btn-block btn-action" onclick="callAdmin('/scheduler/force-run')">
-                                <i class="fas fa-bolt"></i> Force Poller
-                            </button>
-                        </div>
-                    </div>
-                    <div class="row mt-2">
-                        <div class="col-md-6">
-                            <button class="btn btn-outline-secondary btn-block btn-action" onclick="callAdmin('/scheduler/pause')">
-                                <i class="fas fa-pause"></i> Pause Scheduler
-                            </button>
-                        </div>
-                        <div class="col-md-6">
-                            <button class="btn btn-outline-success btn-block btn-action" onclick="callAdmin('/scheduler/resume')">
-                                <i class="fas fa-play"></i> Resume Scheduler
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- 2. File Generation Request -->
-    <div class="card">
-        <div class="card-header text-primary"><i class="fas fa-file-export"></i> Generate File</div>
-        <div class="card-body">
-            <form id="generateForm">
-                <div class="form-row align-items-end">
-                    <div class="col-md-8">
-                        <label class="text-muted small font-weight-bold">INTERFACE TYPE</label>
-                        <select class="form-control form-control-lg" id="interfaceType">
-                            <option th:each="iface : ${interfaces}" th:value="${iface}" th:text="${iface}"></option>
-                        </select>
-                    </div>
-                    <div class="col-md-4">
-                        <button type="button" class="btn btn-primary btn-lg btn-block" onclick="triggerJob()">
-                            Generate
-                        </button>
-                    </div>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- 3. Job Monitor Table -->
-    <div class="card">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <span><i class="fas fa-list"></i> Job History (Pending & Recent)</span>
-            <button class="btn btn-sm btn-light border" onclick="location.reload()">
-                <i class="fas fa-sync-alt"></i> Refresh
-            </button>
-        </div>
-        <div class="table-responsive">
-            <table class="table table-hover mb-0" style="min-width: 800px;">
-                <thead class="thead-light">
-                <tr>
-                    <th>Job ID</th>
-                    <th>Interface</th>
-                    <th>Status</th>
-                    <th>Created</th>
-                    <th>Actions</th>
-                </tr>
-                </thead>
-                <tbody>
-                <tr th:each="job : ${jobs}">
-                    <td><code th:text="${job.jobId}"></code></td>
-                    <td th:text="${job.interfaceType}" class="font-weight-bold"></td>
-                    <td>
-                        <span th:class="'badge status-badge p-2 ' +
-                            (${job.status.name() == 'COMPLETED'} ? 'badge-success' :
-                            (${job.status.name() == 'FAILED'} ? 'badge-danger' :
-                            (${job.status.name() == 'PROCESSING'} ? 'badge-primary' : 'badge-warning')))"
-                              th:text="${job.status}">
-                        </span>
-                    </td>
-                    <td th:text="${job.createdDate}"></td>
-                    <td>
-                        <!-- Download Button -->
-                        <button th:if="${job.status.name() == 'COMPLETED'}"
-                                th:onclick="'downloadFile(\'' + ${job.jobId} + '\')'"
-                                class="btn btn-sm btn-outline-primary"><i class="fas fa-download"></i></button>
-
-                        <!-- Check Status Button -->
-                        <button class="btn btn-sm btn-outline-secondary"
-                                th:onclick="'checkJobStatus(\'' + ${job.jobId} + '\')'">
-                            <i class="fas fa-info-circle"></i>
-                        </button>
-                    </td>
-                </tr>
-                <tr th:if="${#lists.isEmpty(jobs)}">
-                    <td colspan="5" class="text-center py-4 text-muted">
-                        No pending jobs found. <br/>
-                        <small>Check the database for historical records.</small>
-                    </td>
-                </tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
+	<!-- 1. System Health & Quick Actions -->
+	<div class="row">
+		<div class="col-md-4">
+			<div class="card text-center">
+				<div class="card-body">
+					<h6 class="text-muted">API Connection</h6>
+					<h3 id="healthStatus" class="text-secondary"><i class="fas fa-circle-notch fa-spin"></i> Checking...
+					</h3>
+					<button class="btn btn-sm btn-outline-info mt-2" onclick="checkHealth()">Check Connectivity</button>
+				</div>
+			</div>
+		</div>
+		<div class="col-md-8">
+			<div class="card">
+				<div class="card-header text-danger"><i class="fas fa-user-shield"></i> Admin Operations</div>
+				<div class="card-body">
+					<div class="row">
+						<div class="col-md-4">
+							<button class="btn btn-outline-dark btn-block btn-action"
+									onclick="callAdmin('/reload-config')">
+								<i class="fas fa-sync"></i> Reload Config
+							</button>
+						</div>
+						<div class="col-md-4">
+							<button class="btn btn-outline-danger btn-block btn-action" onclick="callAdmin('/cleanup')">
+								<i class="fas fa-trash"></i> Force Cleanup
+							</button>
+						</div>
+						<div class="col-md-4">
+							<button class="btn btn-outline-warning btn-block btn-action"
+									onclick="callAdmin('/scheduler/force-run')">
+								<i class="fas fa-bolt"></i> Force Poller
+							</button>
+						</div>
+					</div>
+					<div class="row mt-2">
+						<div class="col-md-6">
+							<button class="btn btn-outline-secondary btn-block btn-action"
+									onclick="callAdmin('/scheduler/pause')">
+								<i class="fas fa-pause"></i> Pause Scheduler
+							</button>
+						</div>
+						<div class="col-md-6">
+							<button class="btn btn-outline-success btn-block btn-action"
+									onclick="callAdmin('/scheduler/resume')">
+								<i class="fas fa-play"></i> Resume Scheduler
+							</button>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	<!-- 2. File Generation Request -->
+	<div class="card">
+		<div class="card-header text-primary"><i class="fas fa-file-export"></i> Generate File</div>
+		<div class="card-body">
+			<form id="generateForm">
+				<div class="form-row align-items-end">
+					<div class="col-md-8">
+						<label class="text-muted small font-weight-bold">INTERFACE TYPE</label>
+						<select class="form-control form-control-lg" id="interfaceType">
+							<option th:each="iface : ${interfaces}" th:value="${iface}" th:text="${iface}"></option>
+						</select>
+					</div>
+					<div class="col-md-4">
+						<button type="button" class="btn btn-primary btn-lg btn-block" onclick="triggerJob()">
+							Generate
+						</button>
+					</div>
+				</div>
+			</form>
+		</div>
+	</div>
+	<!-- 3. Job Monitor Table -->
+	<div class="card">
+		<div class="card-header d-flex justify-content-between align-items-center">
+			<span><i class="fas fa-list"></i> Job History (Pending & Recent)</span>
+			<button class="btn btn-sm btn-light border" onclick="location.reload()">
+				<i class="fas fa-sync-alt"></i> Refresh
+			</button>
+		</div>
+		<div class="table-responsive">
+			<table class="table table-hover mb-0" style="min-width: 800px;">
+				<thead class="thead-light">
+				<tr>
+					<th>Job ID</th>
+					<th>Interface</th>
+					<th>Status</th>
+					<th>Created</th>
+					<th>Actions</th>
+				</tr>
+				</thead>
+				<tbody>
+				<tr th:each="job : ${jobs}">
+					<td><code th:text="${job.jobId}"></code></td>
+					<td th:text="${job.interfaceType}" class="font-weight-bold"></td>
+					<td>
+						   <span th:class="'badge status-badge p-2 ' +
+							  (${job.status.name() == 'COMPLETED'} ? 'badge-success' :
+							  (${job.status.name() == 'FAILED'} ? 'badge-danger' :
+							  (${job.status.name() == 'PROCESSING'} ? 'badge-primary' : 'badge-warning')))"
+								 th:text="${job.status}">
+						   </span>
+					</td>
+					<td th:text="${job.createdDate}"></td>
+					<td>
+						<!-- Download Button -->
+						<button th:if="${job.status.name() == 'COMPLETED'}"
+								th:onclick="'downloadFile(\'' + ${job.jobId} + '\')'"
+								class="btn btn-sm btn-outline-primary"><i class="fas fa-download"></i></button>
+						<!-- Check Status Button -->
+						<button class="btn btn-sm btn-outline-secondary"
+								th:onclick="'checkJobStatus(\'' + ${job.jobId} + '\')'">
+							<i class="fas fa-info-circle"></i>
+						</button>
+					</td>
+				</tr>
+				<tr th:if="${#lists.isEmpty(jobs)}">
+					<td colspan="5" class="text-center py-4 text-muted">
+						No pending jobs found. <br/>
+						<small>Check the database for historical records.</small>
+					</td>
+				</tr>
+				</tbody>
+			</table>
+		</div>
+	</div>
 </div>
-
 <!-- JAVASCRIPT LOGIC -->
 <script>
-    const API_BASE = '/cbs-file-generator/api/v1';
+	const API_BASE = '/cbs-file-generator/api/v1';
 
-    // --- 1. Token Handling ---
-    function saveToken() {
-        const token = document.getElementById('apiToken').value;
-        if(token) {
-            localStorage.setItem('cbs_token', token);
-            alert('Token Saved! You can now perform actions.');
-            checkHealth();
-        }
-    }
+	// --- 1. Token Handling ---
+	function saveToken() {
+		const token = document.getElementById('apiToken').value?.trim();
 
-    window.onload = function() {
-        const token = localStorage.getItem('cbs_token');
-        if(token) {
-            document.getElementById('apiToken').value = token;
-            checkHealth();
-        } else {
-            document.getElementById('healthStatus').innerHTML = '<span class="text-warning">Token Required</span>';
-        }
-    };
+		if(!token) {
+			alert('Token cannot be empty');
+			return;
+		}
 
-    function getHeaders() {
-        const token = localStorage.getItem('cbs_token');
-        if(!token) {
-            alert('Security Token Missing. Please log in at top right.');
-            return null;
-        }
-        return {
-            'Content-Type': 'application/json',
-            'X-DB-Token': token
-        };
-    }
+		if(token.length < 10) {
+			alert('Token appears invalid (too short)');
+			return;
+		}
 
-    // --- 2. Admin Actions ---
-    function callAdmin(endpoint) {
-        const headers = getHeaders();
-        if(!headers) return;
+		if(/[<>"'`]/.test(token)) {
+			 alert('Token contains invalid characters');
+			return;
+		}
 
-        if(!confirm("Are you sure you want to perform this Admin action?")) return;
+		// Send to backend to set httpOnly cookie
+		fetch(API_BASE + '/auth/set-token', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ token }),
+			credentials: 'include'
+		})
+		.then(res => {
+			if(res.ok) {
+				document.getElementById('apiToken').value = '';
+				alert('Token saved securely');
+				checkHealth();
+			} else {
+				alert('Failed to save token');
+			}
+		})
+		.catch(err => alert('Error: ' + err.message));
+	}
 
-        fetch(API_BASE + '/admin' + endpoint, {
-            method: 'POST',
-            headers: headers
-        })
-        .then(async res => {
-            const text = await res.text();
-            if(res.ok) alert("Success: " + text);
-            else alert("Error (" + res.status + "): " + text);
-        })
-        .catch(err => alert("Network Error: " + err));
-    }
+	window.onload = function() {
+		checkHealth();
+	};
 
-    // --- 3. Health Check ---
-    function checkHealth() {
-        const headers = getHeaders();
-        if(!headers) return;
+	function getHeaders() {
+		// Get CSRF token from meta tag
+		const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+		const csrfHeader = document.querySelector('meta[name="csrf-header"]')?.content;
 
-        fetch(API_BASE + '/file-generation/health', { headers: headers })
-        .then(res => {
-            if(res.ok) {
-                document.getElementById('healthStatus').innerHTML = '<span class="text-success"><i class="fas fa-check-circle"></i> Online</span>';
-            } else {
-                document.getElementById('healthStatus').innerHTML = '<span class="text-danger">Error ' + res.status + '</span>';
-            }
-        })
-        .catch(() => {
-            document.getElementById('healthStatus').innerHTML = '<span class="text-danger">Unreachable</span>';
-        });
-    }
+		const headers = {
+			'Content-Type': 'application/json'
+		};
 
-    // --- 4. User Actions ---
-    function triggerJob() {
-        const headers = getHeaders();
-        if(!headers) return;
+		// Add CSRF header if available (for POST requests)
+		if(csrfToken && csrfHeader) {
+			headers[csrfHeader] = csrfToken;
+		}
 
-        const iface = document.getElementById('interfaceType').value;
+		return headers;
+	}
 
-        fetch(API_BASE + '/file-generation/generate', {
-            method: 'POST',
-            headers: headers,
-            body: JSON.stringify({ interfaceType: iface })
-        })
-        .then(async res => {
-            const json = await res.json();
-            if(res.ok) {
-                alert("Job Started!\nID: " + json.jobId);
-                location.reload();
-            } else {
-                alert("Failed: " + (json.message || res.statusText));
-            }
-        });
-    }
+	// --- 2. Admin Actions ---
+	function callAdmin(endpoint) {
+		const headers = getHeaders();
+		if(!headers) return;
 
-    function checkJobStatus(jobId) {
-        const headers = getHeaders();
-        if(!headers) return;
+		if(!confirm("Are you sure you want to perform this Admin action?")) return;
 
-        fetch(API_BASE + '/file-generation/getFileGenerationStatus/' + jobId, { headers: headers })
-        .then(res => res.json())
-        .then(json => {
-            let info = `Status: ${json.status}\nRecords: ${json.recordCount}\nSkipped: ${json.skippedRecordCount}`;
-            if(json.message) info += `\nMsg: ${json.message}`;
-            alert(info);
-        });
-    }
+		fetch(API_BASE + '/admin' + endpoint, {
+			method: 'POST',
+			headers: headers
+		})
+		.then(async res => {
+			const text = await res.text();
+			if(res.ok) alert("Success: " + text);
+			else alert("Error (" + res.status + "): " + text);
+		})
+		.catch(err => alert("Network Error: " + err));
+	}
 
-    function downloadFile(jobId) {
-        const token = localStorage.getItem('cbs_token');
-        if(!token) return;
+	// --- 3. Health Check ---
+	function checkHealth() {
+		const headers = getHeaders();
+		if(!headers) return;
 
-        // Using fetch-blob strategy because we need custom headers
-        fetch(API_BASE + '/file-generation/downloadFileByJobId/' + jobId, {
-            headers: { 'X-DB-Token': token }
-        })
-        .then(res => {
-            if(!res.ok) throw new Error("Download failed");
-            return res.blob();
-        })
-        .then(blob => {
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = ""; // Use Content-Disposition
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-        })
-        .catch(err => alert("Download failed. File might be archived."));
-    }
+		fetch(API_BASE + '/file-generation/health', { headers: headers })
+		.then(res => {
+			if(res.ok) {
+				document.getElementById('healthStatus').innerHTML = '<span class="text-success"><i class="fas fa-check-circle"></i> Online</span>';
+			} else {
+				document.getElementById('healthStatus').innerHTML = '<span class="text-danger">Error ' + res.status + '</span>';
+			}
+		})
+		.catch(() => {
+			document.getElementById('healthStatus').innerHTML = '<span class="text-danger">Unreachable</span>';
+		});
+	}
+
+	// --- 4. User Actions ---
+	function triggerJob() {
+		const headers = getHeaders();
+		if(!headers) return;
+
+		const iface = document.getElementById('interfaceType').value;
+		if(!iface) {
+			alert('Please select an interface type');
+			return;
+		}
+
+		const button = event.target;
+		button.disabled = true;
+		button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+
+		fetch(API_BASE + '/file-generation/generate', {
+			method: 'POST',
+			headers: headers,
+			body: JSON.stringify({ interfaceType: iface })
+		})
+		.then(async res => {
+			const json = await res.json();
+			if(res.ok) {
+				alert("Job Started!\nID: " + json.jobId);
+				location.reload();
+			} else {
+				alert("Failed: " + (json.message || res.statusText));
+			}
+		})
+		.catch(err => {
+			console.error('Network error:', err);
+			alert("Network Error: " + err.message);
+		})
+		.finally(() => {
+			button.disabled = false;
+			button.innerHTML = '<i class="fas fa-file-export"></i> Generate';
+		});
+	}
+
+	function checkJobStatus(jobId) {
+		const headers = getHeaders();
+		if(!headers) return;
+
+		const encodedJobId = encodeURIComponent(jobId);
+		fetch(API_BASE + '/file-generation/getFileGenerationStatus/' + encodedJobId, { headers: headers })
+		.then(res => res.json())
+		.then(json => {
+			let info = `Status: ${json.status}\nRecords: ${json.recordCount}\nSkipped: ${json.skippedRecordCount}`;
+			if(json.message) info += `\nMsg: ${json.message}`;
+			alert(info);
+		});
+	}
+
+	function downloadFile(jobId) {
+		const token = localStorage.getItem('cbs_token');
+		if(!token) {
+			alert('Token missing');
+			return;
+		}
+
+		// Using fetch-blob strategy because we need custom headers
+		const encodedJobId = encodeURIComponent(jobId);
+		fetch(API_BASE + '/file-generation/downloadFileByJobId/' + encodedJobId, {
+			headers: { 'X-DB-Token': token }
+		})
+		.then(res => {
+			if(!res.ok) throw new Error("Download failed");
+			return res.blob();
+		})
+		.then(blob => {
+			const url = window.URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = "file.xml"; // Or extract from Content-Disposition
+			document.body.appendChild(a);
+			a.click();
+			a.remove();
+			window.URL.revokeObjectURL(url);
+		})
+		.catch(err => alert("Download failed: " + err.message));
+	}
 </script>
-
 </body>
 </html>
