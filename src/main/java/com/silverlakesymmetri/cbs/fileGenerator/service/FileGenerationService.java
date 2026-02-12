@@ -283,6 +283,11 @@ public class FileGenerationService {
 		);
 	}
 
+	@Transactional(readOnly = true)
+	public Page<FileGeneration> getAllFiles(Pageable pageable) {
+		return fileGenerationRepository.findAll(pageable);
+	}
+
 	/* ===================== Helpers ===================== */
 	private Timestamp now() {
 		return new Timestamp(System.currentTimeMillis());
