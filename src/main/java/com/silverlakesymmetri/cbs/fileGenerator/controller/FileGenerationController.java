@@ -102,7 +102,7 @@ public class FileGenerationController {
 
 		if (!outputDirValid.get()) {
 			if (outputDirPath == null) {
-				throw new ConfigurationException("Output directory is not set");
+				throw new ConfigurationException("Output directory is not set in application properties");
 			} else {
 				throw new ConfigurationException("Output directory is unavailable");
 			}
@@ -122,8 +122,7 @@ public class FileGenerationController {
 		// Rate Limit Check
 		if (!rateLimiterService.tryConsume(interfaceType)) {
 			logger.warn("Rate limit exceeded for interface: {}", interfaceType);
-			return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
-					.body(buildErrorResponse(interfaceType, "Rate limit exceeded. Please try again in a few seconds."));
+			throw new ForbiddenException("Rate limit exceeded. Please try again in a few seconds.");
 		}
 
 		// ===== Interface configuration validation =====
@@ -257,9 +256,9 @@ public class FileGenerationController {
 				.orElseThrow(() -> new NotFoundException("Job not found"));
 
 		// Check if user created this job
-		//if (!fileGen.getCreatedBy().equals(userName)) {
-		//	throw new ForbiddenException("You don't have permission to download this file");
-		//}
+		if (!fileGen.getCreatedBy().equals(userName)) {
+			throw new ForbiddenException("You don't have permission to download this file");
+		}
 
 		if (!FileGenerationStatus.COMPLETED.equals(fileGen.getStatus())) {
 			throw new ForbiddenException("File is not ready or generation failed");
@@ -268,13 +267,14 @@ public class FileGenerationController {
 		// Validate incoming filename BEFORE using it
 		String fileName = sanitizeFileName(fileGen.getFileName());
 		if (fileName.contains("..") || fileName.contains("\\") || fileName.contains("/")) {
-			logger.error("Security Alert: Malicious filename in database jobId={}: {}", jobId, fileName);
+			logger.error("Security Alert: Malicious filename in database jobId={}: {}", jobId, fileGen.getFileName());
 			throw new ForbiddenException("Invalid file path");
 		}
 
 		// 3. Security: Path Traversal Protection
-		Path resolvedPath = outputDirPath.resolve(fileGen.getFileName()).normalize();
-		if (!resolvedPath.startsWith(outputDirPath)) {
+		Path basePath = outputDirPath.toAbsolutePath().normalize();
+		Path resolvedPath = outputDirPath.resolve(fileName).normalize();
+		if (!resolvedPath.startsWith(basePath)) {
 			logger.error("Security Alert: Unauthorized path traversal attempt for jobId: {}", jobId);
 			throw new ForbiddenException("Invalid file path");
 		}
@@ -351,15 +351,6 @@ public class FileGenerationController {
 		return response;
 	}
 
-	// Helper to build a quick error response if you don't have one
-	private FileGenerationResponse buildErrorResponse(String interfaceType, String msg) {
-		FileGenerationResponse res = new FileGenerationResponse();
-		res.setStatus("FAILED");
-		res.setMessage(msg);
-		res.setInterfaceType(interfaceType);
-		return res;
-	}
-
 	private String encodeRFC5987(String value) {
 		try {
 			return URLEncoder.encode(value, "UTF-8")
@@ -370,6 +361,6 @@ public class FileGenerationController {
 	}
 
 	private String sanitizeFileName(String name) {
-		return name.replaceAll("[\\r\\n\"]", "_");
+		return name == null ? "" : name.replaceAll("[^a-zA-Z0-9._-]", "_");
 	}
 }

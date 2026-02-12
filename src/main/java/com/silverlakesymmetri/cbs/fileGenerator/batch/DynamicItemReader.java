@@ -13,13 +13,14 @@ import org.springframework.batch.item.ItemStreamReader;
 import org.springframework.batch.item.NonTransientResourceException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataAccessResourceFailureException;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Recover;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.PostConstruct;
-import javax.persistence.EntityManager;
-import javax.persistence.Query;
-import javax.persistence.Tuple;
-import javax.persistence.TupleElement;
+import javax.persistence.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -123,10 +124,36 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 		}
 	}
 
+	@Retryable(
+			value = {QueryTimeoutException.class, DataAccessResourceFailureException.class},
+			maxAttempts = 3,
+			backoff = @Backoff(delay = 1000, multiplier = 2))
 	private void fetchNextPage() {
 		Query query = entityManager.createNativeQuery(queryString, Tuple.class);
 
-		// Oracle optimal: 100-500 rows at a time
+		/*
+		 * Configure JDBC fetch size independently of page size to optimize memory
+		 * usage and network performance when querying Oracle.
+		 *
+		 * Setting fetch_size equal to pageSize may cause the JDBC driver to load the
+		 * entire result set chunk into memory at once, which can increase heap usage,
+		 * GC pressure, and network packet size for large pages.
+		 *
+		 * Instead, we calculate a bounded fetch size:
+		 *   - Minimum: 100 rows (avoid excessive round-trips for small pages)
+		 *   - Maximum: 500 rows (prevent large memory/network spikes)
+		 *   - Otherwise: pageSize / 5 (balanced subset of the requested page)
+		 *
+		 * This approach provides controlled batching between the database and the
+		 * application while still respecting the overall pageSize limit enforced by
+		 * setMaxResults().
+		 *
+		 * Note:
+		 *   - fetch_size affects how many rows are retrieved per round-trip.
+		 *   - setMaxResults() limits the total number of rows returned.
+		 *   - Values are tuned based on typical Oracle performance recommendations
+		 *     (100–500 rows per fetch).
+		 */
 		int fetchSize = Math.max(100, Math.min(pageSize / 5, 500));
 		query.setHint("javax.persistence.jdbc.fetch_size", fetchSize);
 		query.setMaxResults(pageSize);
@@ -140,7 +167,7 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 				// Convert to Long if the schema detected it as a Number previously
 				if (keyColumnType != null && keyColumnType == ColumnType.DECIMAL) {
 					try {
-						param = Long.valueOf(lastProcessedId);
+						param = new java.math.BigDecimal(lastProcessedId);
 					} catch (NumberFormatException e) {
 						throw new NonTransientResourceException("Invalid numeric lastProcessedId=" + lastProcessedId, e);
 					}
@@ -160,7 +187,7 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 		}
 
 		// Initialize schema once, thread-safely
-		synchronized(SCHEMA_LOCK) {
+		synchronized (SCHEMA_LOCK) {
 			if (sharedSchema == null) {
 				initializeSchemaFromTuple(tuples.get(0));
 			}
@@ -286,5 +313,12 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 	@Override
 	public void close() {
 		logger.info("DynamicItemReader closed. Total records read: {}", totalProcessed);
+	}
+
+
+	@Recover
+	public void recoverPageFetch(Exception e) {
+		logger.error("Failed to fetch page after retries", e);
+		throw new RuntimeException("Cannot recover from database error", e);
 	}
 }

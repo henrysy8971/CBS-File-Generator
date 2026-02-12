@@ -150,6 +150,12 @@ public class BatchJobLauncher {
 				throw new IOException("Could not create directory structure for: " + outputDirectory);
 			}
 		}
+		if (!folder.isDirectory()) {
+			throw new IOException("Path exists but is not a directory: " + outputDirectory);
+		}
+		if (!folder.canWrite()) {
+			throw new IOException("Output directory not writable: " + outputDirectory);
+		}
 	}
 
 	@PostConstruct
