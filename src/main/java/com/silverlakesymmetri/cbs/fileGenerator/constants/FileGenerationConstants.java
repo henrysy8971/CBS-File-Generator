@@ -20,6 +20,7 @@ public final class FileGenerationConstants {
 	public static final int HIGH_LOAD_THRESHOLD = 50;
 	public static final String HTTP_HEADER_METADATA_KEY_USER_NAME = "X-User-Name";
 	public static final String HTTP_HEADER_METADATA_USER_NAME_DEFAULT = "SYSTEM";
+	public static final String QUARTZ_BATCH_JOB_USER_NAME_DEFAULT = "QUARTZ_SCHEDULER";
 	public static final int INTERFACE_TYPE_LENGTH = 50;
 	public static final Set<String> ALLOWED_EXTENSIONS = new HashSet<>(Arrays.asList("xml", "csv", "txt", "json", "dat"));
 

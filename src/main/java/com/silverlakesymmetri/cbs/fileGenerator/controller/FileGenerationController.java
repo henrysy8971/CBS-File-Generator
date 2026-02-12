@@ -40,8 +40,7 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 
-import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.HTTP_HEADER_METADATA_KEY_USER_NAME;
-import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.HTTP_HEADER_METADATA_USER_NAME_DEFAULT;
+import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.*;
 
 @RestController
 @RequestMapping("/api/v1/file-generation")
@@ -255,8 +254,14 @@ public class FileGenerationController {
 		FileGeneration fileGen = fileGenerationService.getFileGeneration(jobId)
 				.orElseThrow(() -> new NotFoundException("Job not found"));
 
-		// Check if user created this job
-		if (!fileGen.getCreatedBy().equals(userName)) {
+		// Get the username of the user who created this file/job
+		String createdBy = fileGen.getCreatedBy();
+
+		// Skip permission check if the job was created by a system/default user
+		if (!Objects.equals(createdBy, HTTP_HEADER_METADATA_USER_NAME_DEFAULT)
+				&& !Objects.equals(createdBy, QUARTZ_BATCH_JOB_USER_NAME_DEFAULT)
+				&& !Objects.equals(createdBy, userName)
+		) {
 			throw new ForbiddenException("You don't have permission to download this file");
 		}
 

@@ -117,10 +117,21 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 			totalProcessed++;
 			return convertRowToRecord(row);
 		} catch (NonTransientResourceException e) {
+			// Fatal database error – rethrow immediately
+			logger.error("Non-transient resource failure while reading interface {}", interfaceType, e);
+			throw e;
+		} catch (PersistenceException e) {
+			// Likely database issue – treat as fatal
+			logger.error("Persistence error while reading interface {}", interfaceType, e);
+			throw new RuntimeException("Database read failure", e);
+		} catch (RuntimeException e) {
+			// Programming or unexpected runtime issue
+			logger.error("Unexpected runtime error while reading interface {}", interfaceType, e);
 			throw e;
 		} catch (Exception e) {
-			logger.error("Transient read error for interface {}", interfaceType, e);
-			throw new RuntimeException(e);
+			// Truly unexpected checked exception
+			logger.error("Unexpected checked exception while reading interface {}", interfaceType, e);
+			throw new RuntimeException("Unexpected read failure", e);
 		}
 	}
 

@@ -1,8 +1,10 @@
 package com.silverlakesymmetri.cbs.fileGenerator.service;
 
 import com.silverlakesymmetri.cbs.fileGenerator.entity.FileGeneration;
+import com.silverlakesymmetri.cbs.fileGenerator.entity.FileGenerationAudit;
 import com.silverlakesymmetri.cbs.fileGenerator.exception.ConflictException;
 import com.silverlakesymmetri.cbs.fileGenerator.exception.LifecycleException;
+import com.silverlakesymmetri.cbs.fileGenerator.repository.FileGenerationAuditRepository;
 import com.silverlakesymmetri.cbs.fileGenerator.repository.FileGenerationRepository;
 import com.silverlakesymmetri.cbs.fileGenerator.retry.DbRetryable;
 import org.slf4j.Logger;
@@ -26,10 +28,13 @@ import java.util.UUID;
 public class FileGenerationService {
 	private static final Logger logger = LoggerFactory.getLogger(FileGenerationService.class);
 	private final FileGenerationRepository fileGenerationRepository;
+	private final FileGenerationAuditRepository fileGenerationAuditRepository;
 
 	@Autowired
-	public FileGenerationService(FileGenerationRepository fileGenerationRepository) {
+	public FileGenerationService(FileGenerationRepository fileGenerationRepository,
+								 FileGenerationAuditRepository fileGenerationAuditRepository) {
 		this.fileGenerationRepository = fileGenerationRepository;
+		this.fileGenerationAuditRepository = fileGenerationAuditRepository;
 	}
 
 	// ==================== Create ====================
@@ -186,9 +191,11 @@ public class FileGenerationService {
 	}
 
 	private void transitionStatus(String jobId, FileGenerationStatus nextStatus, String errorMessage) {
-		// 1. Fetch current status for the log
-		FileGenerationStatus currentStatus = fileGenerationRepository.findStatusByJobId(jobId)
+		FileGeneration fileGeneration = fileGenerationRepository.findByJobId(jobId)
 				.orElseThrow(() -> new LifecycleException("Job not found: " + jobId));
+
+		// 1. Fetch current status for the log
+		FileGenerationStatus currentStatus = fileGeneration.getStatus();
 
 		// Idempotency Check
 		if (currentStatus == nextStatus) {
@@ -226,6 +233,13 @@ public class FileGenerationService {
 				currentStatus,
 				nextStatus,
 				errorMessage != null ? errorMessage : "NONE");
+
+		fileGenerationAuditRepository.save(new FileGenerationAudit(jobId,
+				currentStatus.name(),
+				nextStatus.name(),
+				fileGeneration.getCreatedBy(),
+				errorMessage != null ? errorMessage : "NONE"
+		));
 	}
 
 	/* ===================== METRICS ===================== */

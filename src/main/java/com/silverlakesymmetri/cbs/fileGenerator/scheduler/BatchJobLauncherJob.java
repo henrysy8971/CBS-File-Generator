@@ -17,6 +17,8 @@ import org.springframework.stereotype.Component;
 
 import java.util.UUID;
 
+import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.QUARTZ_BATCH_JOB_USER_NAME_DEFAULT;
+
 @Component
 @DisallowConcurrentExecution
 public class BatchJobLauncherJob extends QuartzJobBean {
@@ -65,7 +67,7 @@ public class BatchJobLauncherJob extends QuartzJobBean {
 			FileGeneration fileGen = fileGenerationService.createFileGeneration(
 					fileName,
 					outputDir,
-					"QUARTZ_SCHEDULER",
+					QUARTZ_BATCH_JOB_USER_NAME_DEFAULT,
 					interfaceType,
 					idempotencyKey
 			);
