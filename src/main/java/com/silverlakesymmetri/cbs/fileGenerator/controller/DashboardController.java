@@ -47,7 +47,7 @@ public class DashboardController {
 			Page<FileGeneration> jobPage = fileService.getAllFiles(pageRequest);
 			model.addAttribute("jobs", jobPage.getContent());
 		} catch (Exception e) {
-			logger.error("Error loading job history: {}", e.getMessage());
+			logger.error("Error loading job history: {}", e.getMessage(), e);
 			model.addAttribute("jobs", Collections.emptyList());
 			model.addAttribute("error", "Failed to load jobs");
 		}
