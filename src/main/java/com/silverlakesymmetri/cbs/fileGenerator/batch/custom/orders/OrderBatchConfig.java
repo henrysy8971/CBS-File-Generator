@@ -19,7 +19,9 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.dao.TransientDataAccessException;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.sql.SQLSyntaxErrorException;
 import java.sql.SQLTransientConnectionException;
 
 import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.ORDER_INTERFACE;
@@ -73,12 +75,9 @@ public class OrderBatchConfig {
 				.incrementer(new RunIdIncrementer())
 				.listener(sharedJobListener)
 				.start(orderFileGenerationStep())
-				// If processing succeeds, validate the file
-				.on(BatchStatus.COMPLETED.name()).to(orderFileValidationStep()) // Move to validation only on success
-				// If processing fails OR validation fails, run cleanup before stopping
+				.on(BatchStatus.COMPLETED.name()).to(orderFileValidationStep())
 				.from(orderFileGenerationStep()).on("*").to(orderCleanupStep())
 				.from(orderFileValidationStep()).on("FAILED").to(orderCleanupStep())
-				// Ensure the job actually reports as FAILED after cleanup
 				.from(orderCleanupStep()).on("*").fail()
 				.end()
 				.build();
@@ -92,24 +91,29 @@ public class OrderBatchConfig {
 	@Bean
 	public Step orderFileGenerationStep() {
 		logger.info("Configuring orderFileGenerationStep with chunk size {}", chunkSize);
+
 		return stepBuilderFactory.get("orderFileGenerationStep")
 				.<OrderDto, OrderDto>chunk(chunkSize)
 				.reader(orderItemReader)
 				.processor(orderItemProcessor)
 				.writer(orderItemWriter)
-				// --- ROBUST CONFIGURATION ---
+
+				// --- Fault Tolerance Configuration ---
 				.faultTolerant()
-				// 1. Retry Logic (for transient DB issues)
 				.retry(TransientDataAccessException.class)
 				.retry(SQLTransientConnectionException.class)
+				.noRetry(SQLSyntaxErrorException.class)
 				.retryLimit(3)
-				// 2. Skip Logic (skip bad data rows, but crash on system errors)
+
+				// Skip Logic (skip bad data rows, but crash on system errors)
 				.skip(Exception.class)
 				.noSkip(IOException.class)
+				.noSkip(FileNotFoundException.class)
 				.skipLimit(100)
-				// -----------------------------
+
+				// --- Listeners ---
 				.listener(new OrderStepExecutionListener(orderItemWriter, fileGenerationService))
-				.allowStartIfComplete(true) // allows restart with .part handling
+				.allowStartIfComplete(true)
 				.build();
 	}
 

@@ -96,22 +96,24 @@ public class DynamicBatchConfig {
 				.reader(dynamicItemReader)
 				.processor(dynamicItemProcessor)
 				.writer(dynamicItemWriter)
+
 				// --- Fault Tolerance Configuration ---
 				.faultTolerant()
-				// 1. Retry Logic (Only retry temporary issues)
-				.retry(TransientDataAccessException.class) // DB Deadlocks/Timeouts
-				.retry(SQLTransientConnectionException.class) // DB Connection blips
-				.noRetry(SQLSyntaxErrorException.class) // Bad SQL (Permanent)
+				.retry(TransientDataAccessException.class)
+				.retry(SQLTransientConnectionException.class)
+				.noRetry(SQLSyntaxErrorException.class)
 				.retryLimit(3)
-				// 2. Skip Logic (Skip processing errors, but stop on IO errors)
-				.skip(Exception.class) // Default: Skip processing logic errors
-				.noSkip(IOException.class) // STOP on Disk Full / Permission denied
-				.noSkip(FileNotFoundException.class) // STOP if file missing
+
+				// Skip Logic (Skip processing errors, but stop on IO errors)
+				.skip(Exception.class)
+				.noSkip(IOException.class)
+				.noSkip(FileNotFoundException.class)
 				// Skip up to 100 bad records
 				.skipLimit(100)
+
 				// --- Listeners ---
 				.listener(new DynamicStepExecutionListener(dynamicItemWriter, fileGenerationService))
-				.allowStartIfComplete(true) // allows restart with .part handling
+				.allowStartIfComplete(true)
 				.build();
 	}
 
