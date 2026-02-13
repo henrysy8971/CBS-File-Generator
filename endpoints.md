@@ -1,93 +1,104 @@
-**1. Admin Endpoints (AdminController)**
+# 📂 CBS File Generator - API Documentation
 
-**Base Path:** **http://localhost:8080/api/v1/admin**
+This document lists all available endpoints for the CBS File Generator application.
 
-| HTTP Method | Endpoint Path             | Description                                                          | Parameters / Notes           |
-|-------------|---------------------------|----------------------------------------------------------------------|------------------------------|
-| POST        | /cleanup                  | Triggers the Spring Batch maintenance cleanup job manually.          |                              |
-| POST        | /scheduler/pause          | Pauses the entire Quartz scheduler.                                  |                              |
-| POST        | /scheduler/resume         | Resumes the Quartz scheduler.                                        |                              |
-| POST        | /scheduler/force-run      | Forces the Poller job to run immediately (checks for PENDING files). |                              |
-| POST        | /reload-config            | Reloads the interface-config.json from the classpath into memory.    |                              |
-| POST        | /scheduler/trigger/{type} | Manually triggers a specific file generation via Quartz.             | {type}= e.g.,ORDER_INTERFACE |
-| GET         | /scheduler/jobs           | Returns a paginated list of all registered Quartz jobs.              | Query params:page,size       |
-| GET         | /scheduler/status         | Returns a paginated list of jobs with detailed run times.            | Query params:page,size       |
+## 🚀 Environment Configuration (Local)
 
-**How to call them (Examples):**
+* **Base URL:** `http://localhost:8080/cbs-file-generator`
+* **API Root:** `/api/v1`
+* **Auth Header:** `X-DB-Token` (Required for all `/api/` calls)
 
-Since these arePOST requests, you cannot just paste them into a browser address bar. You must use a tool like**Postman**,**Insomnia**, or**cURL**.
+---
 
-**Example using cURL:**
+## 1. Web Dashboards (UI)
 
-curl -X POST **http://localhost:8080/cbs-file-generator/api/v1/admin/scheduler/force-run** -H "X-DB-Token: **your_active_token_here**"
+These endpoints return HTML views and are accessible directly via a browser.
 
-* * *
+| Method | Path | Description | Access |
+| --- | --- | --- | --- |
+| **GET** | `/dashboard` | Main Job Monitoring Dashboard | Public (No Token) |
+| **GET** | `/` | Redirects to Dashboard | Public (No Token) |
 
-**2. File Generation Endpoints (FileGenerationController)**
+---
 
-**Base Path:** **http://localhost:8080/api/v1/file-generation**
+## 2. Admin Endpoints (`AdminController`)
 
-| HTTP Method | Endpoint Path                 | Description                                                 | Parameters / Notes                             |
-|-------------|-------------------------------|-------------------------------------------------------------|------------------------------------------------|
-| POST        | /generate                     | Creates a request to generate a file.                       | Body:FileGenerationRequest, Header:X-User-Name |
-| GET         | /getFileGenerationStatus/{id} | Retrieves the status and metrics of a specific job.         | {id}= UUID Job ID                              |
-| GET         | /getFileGenerationsByStatus   | Returns a paginated list of jobs filtered by status.        | Query params:status,page,size,order            |
-| GET         | /interfaces                   | Returns a list of all enabled interface types.              |                                                |
-| GET         | /getConfigInfo/{type}         | Returns the configuration details for a specific interface. | {type}= e.g.,ORDER_INTERFACE                   |
-| GET         | /downloadFileByJobId/{id}     | Downloads the final generated file if status is COMPLETED.  | {id}= UUID Job ID. Supports Stream/Range.      |
+**Base Path:** `/api/v1/admin`
 
-* * *
+| Method | Path | Description | Notes |
+| --- | --- | --- | --- |
+| **POST** | `/cleanup` | Triggers the Spring Batch maintenance cleanup. | Deletes old metadata. |
+| **POST** | `/scheduler/pause` | Pauses the entire Quartz scheduler. | Stops all polling. |
+| **POST** | `/scheduler/resume` | Resumes the Quartz scheduler. | Restarts polling. |
+| **POST** | `/scheduler/force-run` | Forces the Poller to check for PENDING files. | Immediate execution. |
+| **POST** | `/reload-config` | Reloads `interface-config.json` into memory. | No restart needed. |
+| **POST** | `/scheduler/trigger/{type}` | Manually triggers a specific generation. | e.g., `ORDER_INTERFACE` |
+| **GET** | `/scheduler/jobs` | List of all registered Quartz jobs. | Query: `page`, `size` |
+| **GET** | `/scheduler/status` | Real-time status of active jobs. | Query: `page`, `size` |
 
-**Key Parameter Details**
+---
 
-*   **Pagination Defaults:**
-    *   page: default 0
-    *   size: default 10 (Admin) or 10 (File Generation)
-*   **Status Query values:**
-*   **Valid values:** PENDING, QUEUED, PROCESSING, STOPPED, FINALIZING, COMPLETED, FAILED
-*   **Special Headers:**
-    *   **X-User-Name:** Used in **/generate** to track who requested the file. Defaults toSYSTEM.
-    *   **X-DB-Token:** (Handled by **TokenAuthenticationFilter**) Required for all protected paths above.
+## 3. File Generation Endpoints (`FileGenerationController`)
 
-All of these endpoints require a valid DB Token in the request header.
+**Base Path:** `/api/v1/file-generation`
 
-Here is the breakdown of why and how this is applied:
+| Method | Path | Description | Parameters |
+| --- | --- | --- | --- |
+| **POST** | `/generate` | Submits a file generation request. | Body: `FileGenerationRequest` |
+| **GET** | `/getFileGenerationStatus/{id}` | Gets metrics/status of a specific job. | `{id}` = Job UUID or Long ID |
+| **GET** | `/getFileGenerationsByStatus` | List of jobs filtered by status. | Query: `status`, `page` |
+| **GET** | `/interfaces` | Returns all enabled interface types. | List of Strings. |
+| **GET** | `/getConfigInfo/{type}` | Returns config details for an interface. | e.g., `XML` vs `BeanIO` |
+| **GET** | `/downloadFileByJobId/{id}` | Downloads the finalized file. | Requires `COMPLETED` status. |
 
-**1. The Global Rule**
+---
 
-Since both the AdminController (**/api/v1/admin**) and the FileGenerationController(**/api/v1/file-generation**) fall under the /api/ path, the **TokenAuthenticationFilter** will intercept **every single request** to those endpoints.
+## 4. System Monitoring (Actuator)
 
-**2. Required Header**
+These are standard Spring Boot monitoring endpoints.
 
-For any of those requests to succeed, you must include the header defined in **application.properties**:
+| Method | Path | Description |
+| --- | --- | --- |
+| **GET** | `/actuator/health` | Service and Database health status. |
+| **GET** | `/actuator/info` | Application version and info. |
+| **GET** | `/actuator/logfile` | Streams the current log file to browser. |
 
-*   **Header Name:** **X-DB-Token**
-*   **Value:** A valid token string that exists and is marked **ACTIVE** in **IF_DB_TOKEN** table.
+---
 
-**3. The Exceptions (No Token Required)**
+## 🛡️ Security & Authentication
 
-The only endpoints that **do not** require a token are the system **health** and **info** endpoints, because they are explicitly bypassed in the TokenAuthenticationFilter.java logic:
-*   /actuator/**
-*   /health/**
-*   /info
+### Token Validation
 
-**4. The "Master Switch"**
+Every request to an `/api/v1/` path must include a valid, active token from the `IF_DB_TOKEN` table.
 
-If you are testing locally and want to disable the token requirement for all endpoints, you can change this setting in your **application.properties**:
+* **Header Name:** `X-DB-Token`
+* **Header Value:** `[Your_Active_Token]`
 
-**auth.token.enable-validation=false**
+### Example Request (cURL)
 
-When this is false, the filter still runs, but it immediately calls filterChain.doFilter and skips the token check.
+```bash
+curl -X POST http://localhost:8080/cbs-file-generator/api/v1/admin/scheduler/force-run \
+  -H "X-DB-Token: 550e8400-e29b-41d4-a716-446655440000" \
+  -H "Content-Type: application/json"
 
-* * *
+```
 
-**Summary Table for Port 8080**
+### JSON Error Response
 
-| Endpoint Path              | Requires Token? | Reason                             |
-|----------------------------|-----------------|------------------------------------|
-| /api/v1/admin/**           | YES             | Matches/api/*pattern               |
-| /api/v1/file-generation/** | YES             | Matches/api/*pattern               |
-| /actuator/health           | NO              | Explicitly skipped in Filter logic |
-| /actuator/info             | NO              | Explicitly skipped in Filter logic |
+If a token is missing or invalid, the API returns:
 
-**Security Note:** In a production banking environment, it is highly recommended to keep the token validation enabled for all /api/ endpoints to prevent unauthorized users from triggering massive batch jobs or cleaning up system metadata.
+```json
+{
+  "status": "AUTH_ERROR",
+  "message": "Invalid or expired token"
+}
+
+```
+
+---
+
+## 📝 Usage Notes
+
+1. **Context Path:** Ensure all calls begin with `/cbs-file-generator`.
+2. **File Status:** Files cannot be downloaded via `/downloadFileByJobId` while they are in `PROCESSING` status (as they are still `.part` files).
+3. **Local Testing:** To disable token checks for testing, set `auth.token.enable-validation=false` in `application.properties`.

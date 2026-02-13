@@ -40,10 +40,7 @@ public class TokenAuthenticationFilter extends OncePerRequestFilter {
 	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
 									FilterChain filterChain) throws ServletException, IOException {
 
-		String requestPath = request.getRequestURI();
-		if (request.getContextPath() != null) {
-			requestPath = requestPath.substring(request.getContextPath().length());
-		}
+		String requestPath = request.getServletPath();
 
 		if (!enableValidation || shouldSkipTokenValidation(requestPath)) {
 			filterChain.doFilter(request, response);
@@ -89,6 +86,9 @@ public class TokenAuthenticationFilter extends OncePerRequestFilter {
 		// Matches your securityFilter config in SecurityConfig
 		return pathMatcher.match("/actuator/**", requestPath) ||
 				pathMatcher.match("/health/**", requestPath) ||
-				pathMatcher.match("/info", requestPath);
+				pathMatcher.match("/info", requestPath) ||
+				pathMatcher.match("/", requestPath) ||
+				pathMatcher.match("/dashboard", requestPath) ||
+				pathMatcher.match("/favicon.ico", requestPath);
 	}
 }

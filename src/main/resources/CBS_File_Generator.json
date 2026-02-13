@@ -1,0 +1,140 @@
+{
+  "info": {
+    "name": "CBS File Generator API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Admin",
+      "item": [
+        {
+          "name": "Force Run Poller",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/scheduler/force-run",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "scheduler", "force-run"]
+            }
+          }
+        },
+        {
+          "name": "Reload Config",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/admin/reload-config",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "admin", "reload-config"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "File Generation",
+      "item": [
+        {
+          "name": "Trigger Manual Generate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-User-Name",
+                "value": "PostmanUser"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"interfaceType\": \"ORDER_INTERFACE\",\n    \"parameters\": {\n        \"branchCode\": \"001\"\n    }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/file-generation/generate",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "file-generation", "generate"]
+            }
+          }
+        },
+        {
+          "name": "Get Status by Job ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/file-generation/getFileGenerationStatus/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "file-generation", "getFileGenerationStatus", "1"]
+            }
+          }
+        },
+        {
+          "name": "Download Final File",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/file-generation/downloadFileByJobId/1",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "file-generation", "downloadFileByJobId", "1"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "System Monitoring",
+      "item": [
+        {
+          "name": "Actuator Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/actuator/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["actuator", "health"]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {
+        "key": "value",
+        "value": "{{dbToken}}",
+        "type": "string"
+      },
+      {
+        "key": "key",
+        "value": "X-DB-Token",
+        "type": "string"
+      },
+      {
+        "key": "in",
+        "value": "header",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080/cbs-file-generator",
+      "type": "string"
+    },
+    {
+      "key": "dbToken",
+      "value": "a1b2c3d4-e5f6-4789-abcd-ef1234567890",
+      "type": "string"
+    }
+  ]
+}
