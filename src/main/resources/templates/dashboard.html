@@ -261,10 +261,6 @@
 		.catch(err => showToast('Error: ' + err.message, true));
 	}
 
-	window.onload = function() {
-		checkHealth();
-	};
-
 	function getHeaders() {
 		// Get CSRF token from meta tag
 		const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
@@ -366,7 +362,11 @@
 
 		const encodedJobId = encodeURIComponent(jobId);
 		fetch(API_BASE + '/file-generation/getFileGenerationStatus/' + encodedJobId, { headers: headers })
-		.then(res => res.json())
+		.then(async res => {
+			let json = {};
+			try { json = await res.json(); } catch {}
+			return json;
+		})
 		.then(json => {
 			let info = `Status: ${json.status}\nRecords: ${json.recordCount}\nSkipped: ${json.skippedRecordCount}`;
 			if(json.message) info += `\nMsg: ${json.message}`;
@@ -466,6 +466,7 @@
 	}, 15000);
 
 	document.addEventListener("DOMContentLoaded", () => {
+		checkHealth();
 
 		document.getElementById("loginBtn")
 			.addEventListener("click", saveToken);
