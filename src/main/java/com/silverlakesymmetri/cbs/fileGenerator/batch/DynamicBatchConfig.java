@@ -14,6 +14,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.dao.TransientDataAccessException;
+
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.sql.SQLSyntaxErrorException;
+import java.sql.SQLTransientConnectionException;
 
 @Configuration
 public class DynamicBatchConfig {
@@ -84,6 +90,7 @@ public class DynamicBatchConfig {
 	@Bean
 	public Step dynamicFileGenerationStep() {
 		logger.info("Configuring dynamicFileGenerationStep with chunk size {}", chunkSize);
+
 		return stepBuilderFactory.get("dynamicFileGenerationStep")
 				.<DynamicRecord, DynamicRecord>chunk(chunkSize)
 				.reader(dynamicItemReader)
@@ -92,16 +99,17 @@ public class DynamicBatchConfig {
 				// --- Fault Tolerance Configuration ---
 				.faultTolerant()
 				// 1. Retry Logic (Only retry temporary issues)
-				.retry(org.springframework.dao.TransientDataAccessException.class) // DB Deadlocks/Timeouts
-				.retry(java.sql.SQLTransientConnectionException.class) // DB Connection blips
-				.noRetry(java.sql.SQLSyntaxErrorException.class) // Bad SQL (Permanent)
+				.retry(TransientDataAccessException.class) // DB Deadlocks/Timeouts
+				.retry(SQLTransientConnectionException.class) // DB Connection blips
+				.noRetry(SQLSyntaxErrorException.class) // Bad SQL (Permanent)
 				.retryLimit(3)
 				// 2. Skip Logic (Skip processing errors, but stop on IO errors)
 				.skip(Exception.class) // Default: Skip processing logic errors
-				.noSkip(java.io.IOException.class) // STOP on Disk Full / Permission denied
-				.noSkip(java.io.FileNotFoundException.class) // STOP if file missing
+				.noSkip(IOException.class) // STOP on Disk Full / Permission denied
+				.noSkip(FileNotFoundException.class) // STOP if file missing
 				// Skip up to 100 bad records
 				.skipLimit(100)
+				// --- Listeners ---
 				.listener(new DynamicStepExecutionListener(dynamicItemWriter, fileGenerationService))
 				.allowStartIfComplete(true) // allows restart with .part handling
 				.build();

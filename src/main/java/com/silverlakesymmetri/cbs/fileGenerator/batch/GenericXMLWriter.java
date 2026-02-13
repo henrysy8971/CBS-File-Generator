@@ -3,6 +3,9 @@ package com.silverlakesymmetri.cbs.fileGenerator.batch;
 import com.silverlakesymmetri.cbs.fileGenerator.dto.DynamicRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.batch.core.ExitStatus;
+import org.springframework.batch.core.StepExecution;
+import org.springframework.batch.core.StepExecutionListener;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.stereotype.Component;
 
@@ -20,7 +23,7 @@ import java.util.Locale;
  */
 @Component
 @StepScope
-public class GenericXMLWriter implements OutputFormatWriter {
+public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListener {
 	private static final Logger logger = LoggerFactory.getLogger(GenericXMLWriter.class);
 	private XMLStreamWriter xmlStreamWriter;
 	private BufferedOutputStream outputStream;
@@ -29,12 +32,25 @@ public class GenericXMLWriter implements OutputFormatWriter {
 	private String rootElement;
 	private String itemElement;
 	private long recordCount = 0;
-	private long skippedCount = 0;
 	private boolean headerWritten = false;
 	private boolean stepSuccessful = false;
 	private final Object lock = new Object(); // Thread-safety for write operations
 
 	public GenericXMLWriter() {
+	}
+
+	@Override
+	public void beforeStep(StepExecution stepExecution) {
+		long lastWriteCount = stepExecution.getWriteCount();
+		if (lastWriteCount > 0) {
+			this.recordCount = lastWriteCount;
+			logger.info("Restart detected. Resuming XML record count from: {}", recordCount);
+		}
+	}
+
+	@Override
+	public ExitStatus afterStep(StepExecution stepExecution) {
+		return null;
 	}
 
 	@Override
@@ -53,7 +69,7 @@ public class GenericXMLWriter implements OutputFormatWriter {
 		ensureParentDirectory(outputFile);
 
 		// Check restart condition
-		boolean isRestart = outputFile.exists() && outputFile.length() > 0;
+		boolean isRestart = recordCount > 0;
 
 		try {
 			this.outputStream = new BufferedOutputStream(new FileOutputStream(outputFile, true));
@@ -111,15 +127,13 @@ public class GenericXMLWriter implements OutputFormatWriter {
 				if (record != null) {
 					writeRecordXml(record);
 					recordCount++;
-				} else {
-					skippedCount++;
 				}
 			}
 			xmlStreamWriter.flush();
 			outputStream.flush();
 		}
 
-		logger.debug("Chunk written: {} records, total written: {}, total skipped: {}", items.size(), recordCount, skippedCount);
+		logger.debug("Chunk written: {} records, total written: {}", items.size(), recordCount);
 	}
 
 	private void writeHeader() throws XMLStreamException {
@@ -207,7 +221,7 @@ public class GenericXMLWriter implements OutputFormatWriter {
 
 	@Override
 	public long getSkippedCount() {
-		return skippedCount;
+		return 0;
 	}
 
 	@Override

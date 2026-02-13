@@ -6,6 +6,9 @@ import com.silverlakesymmetri.cbs.fileGenerator.dto.DynamicRecord;
 import org.beanio.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.batch.core.ExitStatus;
+import org.springframework.batch.core.StepExecution;
+import org.springframework.batch.core.StepExecutionListener;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -29,12 +32,11 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 @Component
 @StepScope
-public class BeanIOFormatWriter implements OutputFormatWriter {
+public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionListener {
 	private static final Logger logger = LoggerFactory.getLogger(BeanIOFormatWriter.class);
 	private static final Map<String, StreamFactory> FACTORY_CACHE = new ConcurrentHashMap<>();
 	private final InterfaceConfigLoader interfaceConfigLoader;
 	private final AtomicLong recordCount = new AtomicLong(0);
-	private final AtomicLong skippedCount = new AtomicLong(0);
 
 	private BeanWriter beanIOWriter;
 	private BufferedWriter bufferedWriter;
@@ -46,6 +48,21 @@ public class BeanIOFormatWriter implements OutputFormatWriter {
 	@Autowired
 	public BeanIOFormatWriter(InterfaceConfigLoader interfaceConfigLoader) {
 		this.interfaceConfigLoader = interfaceConfigLoader;
+	}
+
+	@Override
+	public void beforeStep(StepExecution stepExecution) {
+		long lastCommittedCount = stepExecution.getWriteCount();
+		this.recordCount.set(lastCommittedCount);
+
+		if (lastCommittedCount > 0) {
+			logger.info("Restart detected. Resuming BeanIO record count from: {}", lastCommittedCount);
+		}
+	}
+
+	@Override
+	public ExitStatus afterStep(StepExecution stepExecution) {
+		return null;
 	}
 
 	@Override
@@ -62,9 +79,6 @@ public class BeanIOFormatWriter implements OutputFormatWriter {
 		// RESTART LOGIC: Check if we should append
 		boolean append = outputFile.exists() && outputFile.length() > 0;
 
-		// Reset recordCount for this session
-		recordCount.set(append ? countExistingRecords(outputFile, interfaceConfig.isHaveHeaders()) : 0);
-
 		File parent = outputFile.getParentFile();
 		if (parent != null && !parent.exists() && !parent.mkdirs()) {
 			throw new IOException("Failed to create directory: " + parent);
@@ -77,7 +91,6 @@ public class BeanIOFormatWriter implements OutputFormatWriter {
 		try {
 			StreamFactory streamFactory = getOrCreateFactory(interfaceConfig.getBeanIoMappingFile());
 			String streamName = interfaceConfig.getStreamName();
-
 			this.beanIOWriter = streamFactory.createWriter(streamName, bufferedWriter);
 
 			logger.info("BeanIO initialized [Append={}]: interface={}, file={}", append, interfaceType, partFilePath);
@@ -133,8 +146,7 @@ public class BeanIOFormatWriter implements OutputFormatWriter {
 				recordCount.incrementAndGet();
 			} catch (BeanWriterException e) {
 				logger.error("Failed to write record: {}", record, e);
-				skippedCount.incrementAndGet();
-				// Optional: Throw exception to fail job, or track separate skip count
+				throw e;
 			}
 		}
 	}
@@ -160,28 +172,12 @@ public class BeanIOFormatWriter implements OutputFormatWriter {
 
 	@Override
 	public long getSkippedCount() {
-		return skippedCount.get();
+		return 0;
 	}
 
 	@Override
 	public String getPartFilePath() {
 		return partFilePath;
-	}
-
-	private long countExistingRecords(File file, boolean hasHeader) throws IOException {
-		if (!file.exists() || file.length() == 0) return 0;
-
-		try (BufferedReader reader = new BufferedReader(
-				new InputStreamReader(Files.newInputStream(file.toPath()), StandardCharsets.UTF_8))) {
-
-			long lines = 0;
-			while (reader.readLine() != null) lines++;
-
-			if (hasHeader && lines > 0) lines--;  // subtract header
-
-			logger.info("Existing records in file {}: {}", file.getPath(), lines);
-			return lines;
-		}
 	}
 
 	private StreamFactory loadFactoryFromStream(InputStream is, String filePath) {

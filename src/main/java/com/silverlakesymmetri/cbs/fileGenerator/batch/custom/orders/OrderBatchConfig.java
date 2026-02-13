@@ -1,5 +1,6 @@
 package com.silverlakesymmetri.cbs.fileGenerator.batch.custom.orders;
 
+import com.silverlakesymmetri.cbs.fileGenerator.batch.BatchCleanupTasklet;
 import com.silverlakesymmetri.cbs.fileGenerator.batch.DynamicJobExecutionListener;
 import com.silverlakesymmetri.cbs.fileGenerator.batch.FileValidationTasklet;
 import com.silverlakesymmetri.cbs.fileGenerator.dto.OrderDto;
@@ -16,6 +17,10 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.dao.TransientDataAccessException;
+
+import java.io.IOException;
+import java.sql.SQLTransientConnectionException;
 
 import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.ORDER_INTERFACE;
 
@@ -29,6 +34,7 @@ public class OrderBatchConfig {
 	private final OrderItemProcessor orderItemProcessor;
 	private final OrderItemWriter orderItemWriter;
 	private final FileValidationTasklet fileValidationTasklet;
+	private final BatchCleanupTasklet batchCleanupTasklet;
 
 	@Value("${file.generation.chunk-size:1000}")
 	private int chunkSize;
@@ -41,7 +47,7 @@ public class OrderBatchConfig {
 			OrderItemReader orderItemReader,
 			OrderItemProcessor orderItemProcessor,
 			OrderItemWriter orderItemWriter,
-			FileValidationTasklet fileValidationTasklet
+			FileValidationTasklet fileValidationTasklet, BatchCleanupTasklet batchCleanupTasklet
 	) {
 		this.jobBuilderFactory = jobBuilderFactory;
 		this.stepBuilderFactory = stepBuilderFactory;
@@ -50,6 +56,7 @@ public class OrderBatchConfig {
 		this.orderItemProcessor = orderItemProcessor;
 		this.orderItemWriter = orderItemWriter;
 		this.fileValidationTasklet = fileValidationTasklet;
+		this.batchCleanupTasklet = batchCleanupTasklet;
 	}
 
 	// Define the Job Listener as a Bean
@@ -66,8 +73,13 @@ public class OrderBatchConfig {
 				.incrementer(new RunIdIncrementer())
 				.listener(sharedJobListener)
 				.start(orderFileGenerationStep())
+				// If processing succeeds, validate the file
 				.on(BatchStatus.COMPLETED.name()).to(orderFileValidationStep()) // Move to validation only on success
-				.on("*").fail() // Fail the job for any other status (FAILED, STOPPED)
+				// If processing fails OR validation fails, run cleanup before stopping
+				.from(orderFileGenerationStep()).on("*").to(orderCleanupStep())
+				.from(orderFileValidationStep()).on("FAILED").to(orderCleanupStep())
+				// Ensure the job actually reports as FAILED after cleanup
+				.from(orderCleanupStep()).on("*").fail()
 				.end()
 				.build();
 	}
@@ -85,8 +97,26 @@ public class OrderBatchConfig {
 				.reader(orderItemReader)
 				.processor(orderItemProcessor)
 				.writer(orderItemWriter)
+				// --- ROBUST CONFIGURATION ---
+				.faultTolerant()
+				// 1. Retry Logic (for transient DB issues)
+				.retry(TransientDataAccessException.class)
+				.retry(SQLTransientConnectionException.class)
+				.retryLimit(3)
+				// 2. Skip Logic (skip bad data rows, but crash on system errors)
+				.skip(Exception.class)
+				.noSkip(IOException.class)
+				.skipLimit(100)
+				// -----------------------------
 				.listener(new OrderStepExecutionListener(orderItemWriter, fileGenerationService))
 				.allowStartIfComplete(true) // allows restart with .part handling
+				.build();
+	}
+
+	@Bean
+	public Step orderCleanupStep() {
+		return stepBuilderFactory.get("orderCleanupStep")
+				.tasklet(batchCleanupTasklet)
 				.build();
 	}
 }

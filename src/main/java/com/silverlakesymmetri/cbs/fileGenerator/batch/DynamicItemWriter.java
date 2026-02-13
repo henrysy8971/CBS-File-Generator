@@ -3,6 +3,9 @@ package com.silverlakesymmetri.cbs.fileGenerator.batch;
 import com.silverlakesymmetri.cbs.fileGenerator.dto.DynamicRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.batch.core.ExitStatus;
+import org.springframework.batch.core.StepExecution;
+import org.springframework.batch.core.StepExecutionListener;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.item.ExecutionContext;
 import org.springframework.batch.item.ItemStreamException;
@@ -15,7 +18,7 @@ import java.util.List;
 
 @Component
 @StepScope
-public class DynamicItemWriter implements OutputFormatWriter, ItemStreamWriter<DynamicRecord> {
+public class DynamicItemWriter implements OutputFormatWriter, ItemStreamWriter<DynamicRecord>, StepExecutionListener {
 	private static final Logger logger = LoggerFactory.getLogger(DynamicItemWriter.class);
 	private static final String CONTEXT_KEY_PART_FILE = "dynamic.writer.partFilePath";
 	private static final String CONTEXT_KEY_RECORD_COUNT = "dynamic.writer.recordCount";
@@ -33,29 +36,22 @@ public class DynamicItemWriter implements OutputFormatWriter, ItemStreamWriter<D
 
 	@Override
 	public void open(ExecutionContext executionContext) throws ItemStreamException {
+		ensureDelegateInitialized();
 
-		if (delegateWriter == null) {
-			try {
-				this.delegateWriter = writerFactory.selectWriter(interfaceType);
+		try {
+			// RESTORE STATE: ExecutionContext is the source of truth for restarts
+			String existingPartFile = executionContext.getString(CONTEXT_KEY_PART_FILE, null);
+			String pathToUse = (existingPartFile != null) ? existingPartFile : outputFilePath;
 
-				// RESTORE STATE: ExecutionContext is the source of truth for restarts
-				String existingPartFile = executionContext.getString(CONTEXT_KEY_PART_FILE, null);
-				long existingCount = executionContext.getLong(CONTEXT_KEY_RECORD_COUNT, 0);
+			delegateWriter.init(pathToUse, interfaceType);
 
-				if (delegateWriter instanceof GenericXMLWriter) {
-					((GenericXMLWriter) delegateWriter).setInitialRecordCount(existingCount);
-				}
-
-				if (existingPartFile != null) {
-					delegateWriter.init(existingPartFile, interfaceType);
-					logger.info("Restart detected. Resuming [{}] from: {}", interfaceType, existingPartFile);
-				} else {
-					delegateWriter.init(outputFilePath, interfaceType);
-					logger.info("New execution. Initializing [{}] at: {}", interfaceType, outputFilePath);
-				}
-			} catch (Exception e) {
-				throw new ItemStreamException("Failed to initialize delegate writer during open()", e);
+			if (existingPartFile != null) {
+				logger.info("Restart detected. Resuming [{}] from: {}", interfaceType, existingPartFile);
+			} else {
+				logger.info("New execution. Initializing [{}] at: {}", interfaceType, outputFilePath);
 			}
+		} catch (Exception e) {
+			throw new ItemStreamException("Failed to initialize delegate writer during open()", e);
 		}
 	}
 
@@ -109,6 +105,21 @@ public class DynamicItemWriter implements OutputFormatWriter, ItemStreamWriter<D
 		delegateWriter.write(items);
 	}
 
+	@Override
+	public void beforeStep(StepExecution stepExecution) {
+		ensureDelegateInitialized();
+
+		if (delegateWriter instanceof StepExecutionListener) {
+			((StepExecutionListener) delegateWriter).beforeStep(stepExecution);
+			logger.debug("Delegate synchronized with StepExecution writeCount");
+		}
+	}
+
+	@Override
+	public ExitStatus afterStep(StepExecution stepExecution) {
+		return null;
+	}
+
 	// Setters for JobParameters (Injected by Spring Batch via @Value)
 	@Value("#{jobParameters['interfaceType']}")
 	public void setInterfaceType(String interfaceType) {
@@ -123,6 +134,20 @@ public class DynamicItemWriter implements OutputFormatWriter, ItemStreamWriter<D
 	public void setStepSuccessful(boolean success) {
 		if (delegateWriter instanceof GenericXMLWriter) {
 			((GenericXMLWriter) delegateWriter).setStepSuccessful(success);
+		}
+	}
+
+	public OutputFormatWriter getDelegate() {
+		return delegateWriter;
+	}
+
+	private void ensureDelegateInitialized() {
+		if (this.delegateWriter == null) {
+			try {
+				this.delegateWriter = writerFactory.selectWriter(interfaceType);
+			} catch (Exception e) {
+				throw new IllegalStateException("Critical: Could not create delegate writer for " + interfaceType, e);
+			}
 		}
 	}
 }

@@ -12,8 +12,6 @@ import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class RateLimiterService {
-
-	// Cache buckets per API Interface Type (e.g. ORDER_INTERFACE gets its own limit)
 	private final Map<String, Bucket> buckets = new ConcurrentHashMap<>();
 
 	public boolean tryConsume(String key) {

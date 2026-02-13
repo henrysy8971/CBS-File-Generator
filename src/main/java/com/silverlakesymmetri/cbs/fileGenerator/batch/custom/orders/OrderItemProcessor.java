@@ -1,140 +1,83 @@
 package com.silverlakesymmetri.cbs.fileGenerator.batch.custom.orders;
 
-import com.silverlakesymmetri.cbs.fileGenerator.constants.BatchMetricsConstants;
 import com.silverlakesymmetri.cbs.fileGenerator.dto.OrderDto;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.batch.core.StepExecution;
-import org.springframework.batch.core.annotation.BeforeStep;
-import org.springframework.batch.core.configuration.annotation.StepScope;
-import org.springframework.batch.item.ExecutionContext;
 import org.springframework.batch.item.ItemProcessor;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.batch.item.validator.ValidationException;
 import org.springframework.stereotype.Component;
+import org.springframework.batch.core.configuration.annotation.StepScope;
+
+import java.util.Optional;
 
 @Component
 @StepScope
 public class OrderItemProcessor implements ItemProcessor<OrderDto, OrderDto> {
 	private static final Logger logger = LoggerFactory.getLogger(OrderItemProcessor.class);
-	private StepExecution stepExecution;
-	// Circuit Breaker: If more than this many records fail, abort the job.
-	// Default to 100 or configure via properties.
-	@Value("${file.generation.processor.max-skip-count:100}")
-	private int maxSkipCount;
-
-	@BeforeStep
-	public void beforeStep(StepExecution stepExecution) {
-		this.stepExecution = stepExecution;
-		// Initialize metrics
-		initializeMetric(BatchMetricsConstants.KEY_PROCESSED);
-		initializeMetric(BatchMetricsConstants.KEY_SKIPPED);
-		initializeMetric(BatchMetricsConstants.KEY_INVALID);
-	}
 
 	@Override
-	public OrderDto process(OrderDto orderDto) {
-		try {
-			if (!isValidOrder(orderDto)) {
-				long skipped = incrementMetric(BatchMetricsConstants.KEY_SKIPPED);
-				logger.debug("Skipping invalid order record");
-				if (skipped > maxSkipCount) {
-					circuitBreak(skipped);
-				}
-				return null;
-			}
-
-			if (!hasValidLineItems(orderDto)) {
-				long skipped = incrementMetric(BatchMetricsConstants.KEY_SKIPPED);
-				logger.debug("Skipping invalid line items");
-				if (skipped > maxSkipCount) {
-					circuitBreak(skipped);
-				}
-				return null;
-			}
-
-			applyTransformations(orderDto);
-
-			incrementMetric(BatchMetricsConstants.KEY_PROCESSED);
-			logger.debug("Record processed successfully Order: {}", orderDto.getOrderId());
-			return orderDto;
-
-		} catch (Exception e) {
-			long invalidCount = incrementMetric(BatchMetricsConstants.KEY_INVALID);
-
-			// Log context to help debugging (e.g. print the record content if possible)
-			logger.error("Critical error processing Order: {}", orderDto.getOrderId(), e);
-
-			// Circuit Breaker
-			if (invalidCount > maxSkipCount) {
-				circuitBreak(invalidCount);
-			}
+	public OrderDto process(OrderDto orderDto) throws Exception {
+		if (orderDto == null) {
 			return null;
 		}
-	}
 
-	// ---------------- Helpers ----------------
-	private void applyTransformations(OrderDto order) {
-		if (order.getOrderNumber() != null) order.setOrderNumber(order.getOrderNumber().trim());
-		if (order.getCustomerName() != null) order.setCustomerName(order.getCustomerName().trim());
+		try {
+			// 1. Structural Validation
+			validateOrderStructure(orderDto);
 
-		if (order.getLineItems() != null) {
-			order.getLineItems().forEach(item -> {
-				if (item.getProductName() != null) item.setProductName(item.getProductName().trim());
-			});
+			// 2. Data Transformation (Sanitization)
+			OrderDto transformed = applyTransformations(orderDto);
+
+			logger.debug("Successfully processed Order ID: {}", transformed.getOrderId());
+			return transformed;
+
+		} catch (ValidationException ve) {
+			// This will trigger the 'skip' logic defined in OrderBatchConfig
+			logger.warn("Skipping record due to validation failure: {} - Reason: {}",
+					orderDto.getOrderId(), ve.getMessage());
+			throw ve;
+		} catch (Exception e) {
+			// General errors that might be transient or data-related
+			logger.error("Unexpected error processing Order ID: {}", orderDto.getOrderId(), e);
+			throw e;
 		}
 	}
 
-	// ================= Metrics =================
-	private void initializeMetric(String key) {
-		if (stepExecution == null) {
-			return;
+	private void validateOrderStructure(OrderDto order) {
+		if (order.getOrderId() == null) {
+			throw new ValidationException("Missing Order ID");
 		}
-		if (!stepExecution.getExecutionContext().containsKey(key)) {
-			stepExecution.getExecutionContext().putLong(key, 0L);
+		if (StringUtils.isBlank(order.getOrderNumber())) {
+			throw new ValidationException("Order Number is blank for ID: " + order.getOrderId());
+		}
+		if (order.getOrderAmount() == null) {
+			throw new ValidationException("Missing Order Amount for ID: " + order.getOrderId());
+		}
+
+		// Complex business rule validation
+		if (!hasValidLineItems(order)) {
+			throw new ValidationException("No valid line items found for ID: " + order.getOrderId());
 		}
 	}
 
-	private long incrementMetric(String key) {
-		if (stepExecution == null) return 0;
-		ExecutionContext ctx = stepExecution.getExecutionContext();
-		long newValue = ctx.getLong(key, 0L) + 1;
-		ctx.putLong(key, newValue);
-		return newValue;
-	}
+	private OrderDto applyTransformations(OrderDto order) {
+		// Trim primary fields safely
+		order.setOrderNumber(StringUtils.trim(order.getOrderNumber()));
+		order.setCustomerName(StringUtils.trim(order.getCustomerName()));
 
-	// ================= Metrics Accessors =================
-	public long getProcessedCount() {
-		if (stepExecution == null) {
-			return 0;
-		}
-		return stepExecution.getExecutionContext().getLong(BatchMetricsConstants.KEY_PROCESSED, 0L);
-	}
+		// Use Optional/Streams for cleaner line item processing
+		Optional.ofNullable(order.getLineItems())
+				.ifPresent(items -> items.forEach(item -> {
+					item.setProductName(StringUtils.trim(item.getProductName()));
+				}));
 
-	public long getSkippedCount() {
-		if (stepExecution == null) {
-			return 0;
-		}
-		return stepExecution.getExecutionContext().getLong(BatchMetricsConstants.KEY_SKIPPED, 0L);
-	}
-
-	public long getInvalidCount() {
-		if (stepExecution == null) {
-			return 0;
-		}
-		return stepExecution.getExecutionContext().getLong(BatchMetricsConstants.KEY_INVALID, 0L);
-	}
-
-	// ================= Validation =================
-	private boolean isValidOrder(OrderDto order) {
-		return order != null &&
-				order.getOrderId() != null &&
-				order.getOrderNumber() != null &&
-				StringUtils.isNotBlank(order.getOrderNumber()) &&
-				order.getOrderAmount() != null;
+		return order;
 	}
 
 	private boolean hasValidLineItems(OrderDto order) {
+		// If line items exist, at least one must be valid.
+		// If the list is empty, we consider it valid (adjust based on bank rules)
 		if (order.getLineItems() == null || order.getLineItems().isEmpty()) {
 			return true;
 		}
@@ -142,11 +85,5 @@ public class OrderItemProcessor implements ItemProcessor<OrderDto, OrderDto> {
 				.anyMatch(item -> item.getLineItemId() != null &&
 						item.getQuantity() != null &&
 						item.getQuantity() > 0);
-	}
-
-	private void circuitBreak(long count) {
-		String errorMsg = String.format("Too many processing errors (%d). Aborting job to prevent silent failure.", count);
-		logger.error(errorMsg);
-		throw new RuntimeException(errorMsg);
 	}
 }

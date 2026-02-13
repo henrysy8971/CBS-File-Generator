@@ -1,6 +1,5 @@
 package com.silverlakesymmetri.cbs.fileGenerator.batch.custom.orders;
 
-import com.silverlakesymmetri.cbs.fileGenerator.constants.BatchMetricsConstants;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -31,7 +30,6 @@ public class OrderStepExecutionListener extends StepExecutionListenerSupport {
 	@Override
 	public ExitStatus afterStep(StepExecution stepExecution) {
 		String jobId = stepExecution.getJobParameters().getString("jobId");
-		ExecutionContext stepContext = stepExecution.getExecutionContext();
 		ExecutionContext jobContext = stepExecution.getJobExecution().getExecutionContext();
 
 		// Determine Step Success
@@ -56,9 +54,9 @@ public class OrderStepExecutionListener extends StepExecutionListenerSupport {
 
 			// Extract and Persist Standardized Metrics
 			// Keys here MUST match OrderItemProcessor/DynamicItemProcessor constants
-			long processed = stepContext.getLong(BatchMetricsConstants.KEY_PROCESSED, 0L);
-			long skipped = stepContext.getLong(BatchMetricsConstants.KEY_SKIPPED, 0L);
-			long invalid = stepContext.getLong(BatchMetricsConstants.KEY_INVALID, 0L);
+			long processed = stepExecution.getWriteCount();
+			long skipped = stepExecution.getProcessSkipCount();
+			long invalid = stepExecution.getWriteSkipCount() + stepExecution.getFilterCount();
 
 			if (jobId != null) {
 				fileGenerationService.updateFileMetrics(jobId, processed, skipped, invalid);
