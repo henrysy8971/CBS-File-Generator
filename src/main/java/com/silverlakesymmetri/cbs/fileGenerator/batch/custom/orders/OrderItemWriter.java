@@ -4,6 +4,9 @@ import com.silverlakesymmetri.cbs.fileGenerator.dto.LineItemDto;
 import com.silverlakesymmetri.cbs.fileGenerator.dto.OrderDto;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.batch.core.ExitStatus;
+import org.springframework.batch.core.StepExecution;
+import org.springframework.batch.core.StepExecutionListener;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.item.ExecutionContext;
 import org.springframework.batch.item.ItemStreamException;
@@ -20,7 +23,7 @@ import java.util.List;
 
 @Component
 @StepScope
-public class OrderItemWriter implements ItemStreamWriter<OrderDto> {
+public class OrderItemWriter implements ItemStreamWriter<OrderDto>, StepExecutionListener {
 	private static final Logger logger = LoggerFactory.getLogger(OrderItemWriter.class);
 	private static final String RESTART_COUNT_KEY = "order.writer.recordCount";
 	private static final String NS_URI = "http://www.example.com/order";
@@ -45,8 +48,11 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto> {
 				file.getParentFile().mkdirs();
 			}
 
-			boolean append = executionContext.containsKey(RESTART_COUNT_KEY);
-			recordCount = append ? executionContext.getLong(RESTART_COUNT_KEY) : 0;
+			if (this.recordCount == 0 && executionContext.containsKey(RESTART_COUNT_KEY)) {
+				this.recordCount = executionContext.getLong(RESTART_COUNT_KEY);
+			}
+
+			boolean append = this.recordCount > 0;
 
 			this.underlyingWriter = new BufferedWriter(new OutputStreamWriter(
 					new FileOutputStream(file, append), StandardCharsets.UTF_8));
@@ -108,6 +114,22 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto> {
 		} catch (Exception e) {
 			throw new ItemStreamException("Failed to write XML records", e);
 		}
+	}
+
+	@Override
+	public void beforeStep(StepExecution stepExecution) {
+		// Sync record count with the framework's official write count
+		long lastWriteCount = stepExecution.getWriteCount();
+		if (lastWriteCount > 0) {
+			this.recordCount = lastWriteCount;
+			logger.info("Restart detected. Resuming Order XML count from: {}", recordCount);
+		}
+	}
+
+	@Override
+	public ExitStatus afterStep(StepExecution stepExecution) {
+		this.stepSuccessful = !stepExecution.getStatus().isUnsuccessful();
+		return null;
 	}
 
 	// Helper to write an element safely

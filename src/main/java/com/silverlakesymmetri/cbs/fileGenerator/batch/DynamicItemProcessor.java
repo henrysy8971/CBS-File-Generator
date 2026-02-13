@@ -16,9 +16,6 @@ public class DynamicItemProcessor implements ItemProcessor<DynamicRecord, Dynami
 
 	@Override
 	public DynamicRecord process(DynamicRecord record) throws Exception {
-		// 1. Structural Check (Filter vs. Skip)
-		// If the record is truly null or empty, we "filter" it by returning null.
-		// This increments 'filterCount' but does NOT count against 'skipLimit'.
 		if (record == null || record.isEmpty()) {
 			logger.debug("Filtering empty or null record");
 			return null;

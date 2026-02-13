@@ -10,9 +10,7 @@ import org.springframework.batch.item.ExecutionContext;
 import org.springframework.beans.factory.annotation.Autowired;
 
 public class DynamicStepExecutionListener extends StepExecutionListenerSupport {
-	private static final Logger logger =
-			LoggerFactory.getLogger(DynamicStepExecutionListener.class);
-
+	private static final Logger logger = LoggerFactory.getLogger(DynamicStepExecutionListener.class);
 	private final DynamicItemWriter dynamicItemWriter;
 	private final FileGenerationService fileGenerationService;
 

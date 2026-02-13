@@ -19,6 +19,7 @@ public class OrderItemProcessor implements ItemProcessor<OrderDto, OrderDto> {
 	@Override
 	public OrderDto process(OrderDto orderDto) throws Exception {
 		if (orderDto == null) {
+			logger.debug("Filtering empty or null record");
 			return null;
 		}
 
@@ -38,8 +39,8 @@ public class OrderItemProcessor implements ItemProcessor<OrderDto, OrderDto> {
 					orderDto.getOrderId(), ve.getMessage());
 			throw ve;
 		} catch (Exception e) {
-			// General errors that might be transient or data-related
-			logger.error("Unexpected error processing Order ID: {}", orderDto.getOrderId(), e);
+			// Catastrophic or unexpected error
+			logger.error("Critical error processing Order ID: {}", orderDto.getOrderId(), e);
 			throw e;
 		}
 	}
