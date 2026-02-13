@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org" lang="">
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
 <head>
 	<title>CBS File Generator</title>
 	<meta charset="UTF-8"/>
@@ -23,13 +23,10 @@
 <nav class="navbar navbar-dark bg-dark">
 	<div class="container">
 		<span class="navbar-brand"><i class="fas fa-cogs"></i> CBS File Generator</span>
-		<div class="form-inline">
+		<div class="d-flex">
 			<div class="input-group">
-				<input type="password" id="apiToken" class="form-control" placeholder="X-DB-Token"
-					   style="width: 250px;">
-				<div class="input-group-append">
-					<button class="btn btn-outline-light" onclick="saveToken()">Login</button>
-				</div>
+				<input type="password" id="apiToken" class="form-control" placeholder="X-DB-Token" style="width: 200px;">
+				<button class="btn btn-outline-light" type="button" onclick="saveToken()">Login</button>
 			</div>
 		</div>
 	</div>
@@ -53,33 +50,29 @@
 				<div class="card-body">
 					<div class="row">
 						<div class="col-md-4">
-							<button class="btn btn-outline-dark btn-block btn-action"
-									onclick="callAdmin('/reload-config')">
+							<button class="btn btn-outline-dark w-100 btn-action" onclick="callAdmin('/reload-config')">
 								<i class="fas fa-sync"></i> Reload Config
 							</button>
 						</div>
 						<div class="col-md-4">
-							<button class="btn btn-outline-danger btn-block btn-action" onclick="callAdmin('/cleanup')">
+							<button class="btn btn-outline-danger w-100 btn-action" onclick="callAdmin('/cleanup')">
 								<i class="fas fa-trash"></i> Force Cleanup
 							</button>
 						</div>
 						<div class="col-md-4">
-							<button class="btn btn-outline-warning btn-block btn-action"
-									onclick="callAdmin('/scheduler/force-run')">
+							<button class="btn btn-outline-warning w-100 btn-action" onclick="callAdmin('/scheduler/force-run')">
 								<i class="fas fa-bolt"></i> Force Poller
 							</button>
 						</div>
 					</div>
 					<div class="row mt-2">
 						<div class="col-md-6">
-							<button class="btn btn-outline-secondary btn-block btn-action"
-									onclick="callAdmin('/scheduler/pause')">
+							<button class="btn btn-outline-secondary w-100 btn-action" onclick="callAdmin('/scheduler/pause')">
 								<i class="fas fa-pause"></i> Pause Scheduler
 							</button>
 						</div>
 						<div class="col-md-6">
-							<button class="btn btn-outline-success btn-block btn-action"
-									onclick="callAdmin('/scheduler/resume')">
+							<button class="btn btn-outline-success w-100 btn-action" onclick="callAdmin('/scheduler/resume')">
 								<i class="fas fa-play"></i> Resume Scheduler
 							</button>
 						</div>
@@ -93,15 +86,15 @@
 		<div class="card-header text-primary"><i class="fas fa-file-export"></i> Generate File</div>
 		<div class="card-body">
 			<form id="generateForm">
-				<div class="form-row align-items-end">
+				<div class="row g-3 align-items-end">
 					<div class="col-md-8">
-						<label class="text-muted small font-weight-bold">INTERFACE TYPE</label>
+						<div class="mb-1 text-muted small font-weight-bold">INTERFACE TYPE</div>
 						<select class="form-control form-control-lg" id="interfaceType">
 							<option th:each="iface : ${interfaces}" th:value="${iface}" th:text="${iface}"></option>
 						</select>
 					</div>
 					<div class="col-md-4">
-						<button type="button" class="btn btn-primary btn-lg btn-block" onclick="triggerJob()">
+						<button type="button" class="btn btn-primary btn-lg w-100" onclick="triggerJob(event)">
 							Generate
 						</button>
 					</div>
@@ -111,14 +104,27 @@
 	</div>
 	<!-- 3. Job Monitor Table -->
 	<div class="card">
-		<div class="card-header d-flex justify-content-between align-items-center">
+		<div class="card-header d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
 			<span><i class="fas fa-list"></i> Job History (Pending & Recent)</span>
-			<button class="btn btn-sm btn-light border" onclick="location.reload()">
-				<i class="fas fa-sync-alt"></i> Refresh
-			</button>
+			<div class="d-flex gap-2 align-items-center">
+				<select id="statusFilter" class="form-select form-select-sm" style="width: 150px;" onchange="filterTable()">
+					<option value="ALL">All Statuses</option>
+					<option value="PENDING">Pending</option>
+					<option value="PROCESSING">Processing</option>
+					<option value="COMPLETED">Completed</option>
+					<option value="FAILED">Failed</option>
+				</select>
+				<div class="input-group input-group-sm" style="max-width: 300px;">
+					<span class="input-group-text bg-white"><i class="fas fa-search text-muted"></i></span>
+					<input type="text" id="tableSearch" class="form-control" placeholder="Search ID or Interface..." onkeyup="filterTable()">
+				</div>
+				<button class="btn btn-sm btn-light border" onclick="location.reload()">
+					<i class="fas fa-sync-alt"></i> Refresh
+				</button>
+			</div>
 		</div>
 		<div class="table-responsive">
-			<table class="table table-hover mb-0" style="min-width: 800px;">
+			<table class="table table-hover mb-0" id="jobsTable" style="min-width: 800px;">
 				<thead class="thead-light">
 				<tr>
 					<th>Job ID</th>
@@ -133,22 +139,22 @@
 					<td><code th:text="${job.jobId}"></code></td>
 					<td th:text="${job.interfaceType}" class="font-weight-bold"></td>
 					<td>
-						   <span th:class="'badge status-badge p-2 ' +
-							  (${job.status.name() == 'COMPLETED'} ? 'badge-success' :
-							  (${job.status.name() == 'FAILED'} ? 'badge-danger' :
-							  (${job.status.name() == 'PROCESSING'} ? 'badge-primary' : 'badge-warning')))"
-								 th:text="${job.status}">
-						   </span>
+						<span th:data-status="${job.status.name()}" th:class="'badge status-badge p-2 ' +
+							(${job.status.name() == 'COMPLETED'} ? 'bg-success' :
+							(${job.status.name() == 'FAILED'} ? 'bg-danger' :
+							(${job.status.name() == 'PROCESSING'} ? 'bg-primary' : 'bg-warning')))" th:text="${job.status}">
+						</span>
 					</td>
 					<td th:text="${job.createdDate}"></td>
 					<td>
 						<!-- Download Button -->
 						<button th:if="${job.status.name() == 'COMPLETED'}"
-								th:onclick="'downloadFile(\'' + ${job.jobId} + '\')'"
-								class="btn btn-sm btn-outline-primary"><i class="fas fa-download"></i></button>
+							th:onclick="'downloadFile(\'' + ${job.jobId} + '\')'"
+							class="btn btn-sm btn-outline-primary"><i class="fas fa-download"></i>
+						</button>
 						<!-- Check Status Button -->
 						<button class="btn btn-sm btn-outline-secondary"
-								th:onclick="'checkJobStatus(\'' + ${job.jobId} + '\')'">
+							th:onclick="'checkJobStatus(\'' + ${job.jobId} + '\')'">
 							<i class="fas fa-info-circle"></i>
 						</button>
 					</td>
@@ -157,6 +163,15 @@
 					<td colspan="5" class="text-center py-4 text-muted">
 						No pending jobs found. <br/>
 						<small>Check the database for historical records.</small>
+					</td>
+				</tr>
+				<tr id="noResultsRow" style="display: none;">
+					<td colspan="5" class="text-center py-4">
+						<div class="text-muted">
+							<i class="fas fa-search fa-2x mb-2"></i>
+							<p>No jobs match your search criteria.</p>
+							<button class="btn btn-sm btn-outline-secondary" onclick="resetFilters()">Clear Filters</button>
+						</div>
 					</td>
 				</tr>
 				</tbody>
@@ -173,17 +188,17 @@
 		const token = document.getElementById('apiToken').value?.trim();
 
 		if(!token) {
-			alert('Token cannot be empty');
+			showToast('Token cannot be empty');
 			return;
 		}
 
 		if(token.length < 10) {
-			alert('Token appears invalid (too short)');
+			showToast('Token appears invalid (too short)');
 			return;
 		}
 
 		if(/[<>"'`]/.test(token)) {
-			 alert('Token contains invalid characters');
+			 showToast('Token contains invalid characters');
 			return;
 		}
 
@@ -194,16 +209,17 @@
 			body: JSON.stringify({ token }),
 			credentials: 'include'
 		})
-		.then(res => {
+		.then(async res => {
+			const data = await res.json();
 			if(res.ok) {
 				document.getElementById('apiToken').value = '';
-				alert('Token saved securely');
+				showToast(data.status || 'Token saved');
 				checkHealth();
 			} else {
-				alert('Failed to save token');
+				showToast(data.message || 'Failed to save token', true);
 			}
 		})
-		.catch(err => alert('Error: ' + err.message));
+		.catch(err => showToast('Error: ' + err.message, true));
 	}
 
 	window.onload = function() {
@@ -240,10 +256,10 @@
 		})
 		.then(async res => {
 			const text = await res.text();
-			if(res.ok) alert("Success: " + text);
-			else alert("Error (" + res.status + "): " + text);
+			if(res.ok) showToast("Success: " + text);
+			else showToast("Error (" + res.status + "): " + text);
 		})
-		.catch(err => alert("Network Error: " + err));
+		.catch(err => showToast("Network Error: " + err, true));
 	}
 
 	// --- 3. Health Check ---
@@ -265,37 +281,40 @@
 	}
 
 	// --- 4. User Actions ---
-	function triggerJob() {
+	function triggerJob(event) {
 		const headers = getHeaders();
 		if(!headers) return;
 
 		const iface = document.getElementById('interfaceType').value;
 		if(!iface) {
-			alert('Please select an interface type');
+			showToast('Please select an interface type');
 			return;
 		}
 
-		const button = event.target;
+		const button = event.currentTarget;
+		const originalHtml = button.innerHTML;
+
 		button.disabled = true;
 		button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
 
 		fetch(API_BASE + '/file-generation/generate', {
 			method: 'POST',
 			headers: headers,
-			body: JSON.stringify({ interfaceType: iface })
+			body: JSON.stringify({ interfaceType: iface }),
+			credentials: 'include'
 		})
 		.then(async res => {
 			const json = await res.json();
 			if(res.ok) {
-				alert("Job Started!\nID: " + json.jobId);
+				showToast("Job Started!\nID: " + json.jobId);
 				location.reload();
 			} else {
-				alert("Failed: " + (json.message || res.statusText));
+				showToast("Failed: " + (json.message || res.statusText), true);
 			}
 		})
 		.catch(err => {
 			console.error('Network error:', err);
-			alert("Network Error: " + err.message);
+			showToast("Network Error: " + err.message, true);
 		})
 		.finally(() => {
 			button.disabled = false;
@@ -313,38 +332,110 @@
 		.then(json => {
 			let info = `Status: ${json.status}\nRecords: ${json.recordCount}\nSkipped: ${json.skippedRecordCount}`;
 			if(json.message) info += `\nMsg: ${json.message}`;
-			alert(info);
+			showToast(info);
 		});
 	}
 
 	function downloadFile(jobId) {
-		const token = localStorage.getItem('cbs_token');
-		if(!token) {
-			alert('Token missing');
-			return;
-		}
-
 		// Using fetch-blob strategy because we need custom headers
 		const encodedJobId = encodeURIComponent(jobId);
+
 		fetch(API_BASE + '/file-generation/downloadFileByJobId/' + encodedJobId, {
-			headers: { 'X-DB-Token': token }
+			method: 'GET',
+			credentials: 'include'
 		})
 		.then(res => {
-			if(!res.ok) throw new Error("Download failed");
+			if(!res.ok) throw new Error("Download failed: " + res.status);
 			return res.blob();
 		})
 		.then(blob => {
 			const url = window.URL.createObjectURL(blob);
 			const a = document.createElement('a');
 			a.href = url;
-			a.download = "file.xml"; // Or extract from Content-Disposition
+			a.download = `report_${jobId}.xml`;
 			document.body.appendChild(a);
 			a.click();
 			a.remove();
 			window.URL.revokeObjectURL(url);
 		})
-		.catch(err => alert("Download failed: " + err.message));
+		.catch(err => showToast("Download failed: " + err.message, true));
 	}
+
+	function showToast(message, isError = false) {
+		const toastEl = document.getElementById('liveToast');
+		const toastTitle = document.getElementById('toastTitle');
+		const toastBody = document.getElementById('toastMessage');
+
+		// Change style based on success/error
+		toastTitle.className = isError ? 'me-auto text-danger' : 'me-auto text-success';
+		toastBody.innerText = message;
+
+		const toast = new bootstrap.Toast(toastEl);
+		toast.show();
+	}
+
+	function filterTable() {
+		const searchText = document.getElementById("tableSearch").value.toLowerCase();
+		const statusFilter = document.getElementById("statusFilter").value;
+		const table = document.getElementById("jobsTable");
+		const tr = table.getElementsByTagName("tr");
+		const noResultsRow = document.getElementById("noResultsRow");
+		let visibleCount = 0;
+
+		for (let i = 1; i < tr.length; i++) {
+			// Skip the "No pending jobs found" row
+			if (tr[i].id === "noResultsRow" || tr[i].cells.length < 2) continue;
+
+			const jobId = tr[i].cells[0].textContent.toLowerCase();
+			const interfaceType = tr[i].cells[1].textContent.toLowerCase();
+			const badge = tr[i].cells[2].querySelector('.status-badge');
+			if (!badge) continue; // Skip rows that don't have a status badge
+			const status = badge.dataset.status;
+
+			// Check if row matches search text
+			const matchesSearch = jobId.includes(searchText) || interfaceType.includes(searchText);
+
+			// Check if row matches status dropdown
+			const matchesStatus = (statusFilter === "ALL") || (status === statusFilter);
+
+			// Display row only if both conditions are met
+			if (matchesSearch && matchesStatus) {
+				tr[i].style.display = "";
+				visibleCount++;
+			} else {
+				tr[i].style.display = "none";
+			}
+		}
+
+		// Show or hide the "No Results" message based on the count
+		noResultsRow.style.display = (visibleCount === 0) ? "" : "none";
+	}
+
+	function resetFilters() {
+		document.getElementById("tableSearch").value = "";
+		document.getElementById("statusFilter").value = "ALL";
+		filterTable();
+	}
+
+	// Auto-refresh the page every 15 seconds ONLY if a "PROCESSING" job exists in the table
+	setInterval(() => {
+		const hasActiveJobs = Array.from(document.querySelectorAll('.status-badge'))
+									.some(badge => badge.innerText.includes('PROCESSING'));
+		if (hasActiveJobs) {
+			console.log("Active jobs detected, refreshing status...");
+			location.reload();
+		}
+	}, 15000);
 </script>
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+	<div id="liveToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+		<div class="toast-header">
+			<strong class="me-auto" id="toastTitle">System Notification</strong>
+			<button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+		</div>
+		<div class="toast-body" id="toastMessage">
+		</div>
+	</div>
+</div>
 </body>
 </html>
