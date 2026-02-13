@@ -14,7 +14,12 @@ public class WebSecurityConfig extends WebSecurityConfigurerAdapter {
 	@Override
 	public void configure(WebSecurity web) throws Exception {
 		// Ignore static resources to improve performance
-		web.ignoring().antMatchers("/css/**", "/js/**", "/images/**", "/webjars/**");
+		web.ignoring().antMatchers(
+				"/webjars/**",
+				"/css/**",
+				"/js/**",
+				"/images/**"
+		);
 	}
 
 	@Override
