@@ -20,14 +20,23 @@
 </head>
 <body>
 <!-- Navbar -->
-<nav class="navbar navbar-dark bg-dark">
+<nav class="navbar navbar-dark bg-dark shadow-sm">
 	<div class="container">
-		<span class="navbar-brand"><i class="fas fa-cogs"></i> CBS File Generator</span>
-		<div class="d-flex">
-			<div class="input-group">
-				<input type="password" id="apiToken" class="form-control" placeholder="X-DB-Token" style="width: 200px;">
-				<button class="btn btn-outline-light" type="button" onclick="saveToken()">Login</button>
-			</div>
+		<span class="navbar-brand mb-0 h1">
+			<i class="fas fa-cogs me-2"></i> CBS File Generator
+		</span>
+
+		<div class="input-group" style="max-width: 280px;">
+			<input type="password"
+				   id="apiToken"
+				   class="form-control"
+				   placeholder="X-DB-Token">
+
+			<button id="loginBtn"
+					class="btn btn-outline-light"
+					type="button">
+				Login
+			</button>
 		</div>
 	</div>
 </nav>
@@ -83,21 +92,42 @@
 	</div>
 	<!-- 2. File Generation Request -->
 	<div class="card">
-		<div class="card-header text-primary"><i class="fas fa-file-export"></i> Generate File</div>
+		<div class="card-header text-primary">
+			<i class="fas fa-file-export me-2"></i> Generate File
+		</div>
+
 		<div class="card-body">
 			<form id="generateForm">
 				<div class="row g-3 align-items-end">
+
 					<div class="col-md-8">
-						<div class="mb-1 text-muted small font-weight-bold">INTERFACE TYPE</div>
-						<select class="form-control form-control-lg" id="interfaceType">
-							<option th:each="iface : ${interfaces}" th:value="${iface}" th:text="${iface}"></option>
+						<label for="interfaceType"
+							class="form-label small text-muted fw-bold">
+							Interface Type
+						</label>
+
+						<select id="interfaceType"
+								class="form-select form-select-lg">
+							<option value="" disabled selected>
+								Select Interface
+							</option>
+
+							<option th:each="iface : ${interfaces}"
+									th:value="${iface}"
+									th:text="${iface}">
+							</option>
 						</select>
 					</div>
+
 					<div class="col-md-4">
-						<button type="button" class="btn btn-primary btn-lg w-100" onclick="triggerJob(event)">
+						<button id="generateBtn"
+								type="button"
+								class="btn btn-primary btn-lg w-100">
+							<i class="fas fa-file-export me-2"></i>
 							Generate
 						</button>
 					</div>
+
 				</div>
 			</form>
 		</div>
@@ -125,7 +155,7 @@
 		</div>
 		<div class="table-responsive">
 			<table class="table table-hover mb-0" id="jobsTable" style="min-width: 800px;">
-				<thead class="thead-light">
+				<thead class="table-light">
 				<tr>
 					<th>Job ID</th>
 					<th>Interface</th>
@@ -137,24 +167,30 @@
 				<tbody>
 				<tr th:each="job : ${jobs}">
 					<td><code th:text="${job.jobId}"></code></td>
-					<td th:text="${job.interfaceType}" class="font-weight-bold"></td>
+					<td th:text="${job.interfaceType}" class="fw-bold"></td>
 					<td>
-						<span th:data-status="${job.status.name()}" th:class="'badge status-badge p-2 ' +
-							(${job.status.name() == 'COMPLETED'} ? 'bg-success' :
-							(${job.status.name() == 'FAILED'} ? 'bg-danger' :
-							(${job.status.name() == 'PROCESSING'} ? 'bg-primary' : 'bg-warning')))" th:text="${job.status}">
+						<span th:data-status="${job.status.name()}"
+							th:classappend="
+								${job.status.name() == 'COMPLETED'} ? ' bg-success' :
+								${job.status.name() == 'FAILED'} ? ' bg-danger' :
+								${job.status.name() == 'PROCESSING'} ? ' bg-primary' :
+								' bg-warning'
+							"
+							class="badge status-badge p-2"
+							th:text="${job.status}">
 						</span>
 					</td>
 					<td th:text="${job.createdDate}"></td>
 					<td>
 						<!-- Download Button -->
 						<button th:if="${job.status.name() == 'COMPLETED'}"
-							th:onclick="'downloadFile(\'' + ${job.jobId} + '\')'"
-							class="btn btn-sm btn-outline-primary"><i class="fas fa-download"></i>
+								th:attr="data-job-id=${job.jobId}"
+								class="btn btn-sm btn-outline-primary download-btn">
+							<i class="fas fa-download"></i>
 						</button>
 						<!-- Check Status Button -->
-						<button class="btn btn-sm btn-outline-secondary"
-							th:onclick="'checkJobStatus(\'' + ${job.jobId} + '\')'">
+						<button th:attr="data-job-id=${job.jobId}"
+								class="btn btn-sm btn-outline-secondary status-btn">
 							<i class="fas fa-info-circle"></i>
 						</button>
 					</td>
@@ -210,7 +246,10 @@
 			credentials: 'include'
 		})
 		.then(async res => {
-			const data = await res.json();
+			let data = {};
+			try {
+				data = await res.json();
+			} catch {}
 			if(res.ok) {
 				document.getElementById('apiToken').value = '';
 				showToast(data.status || 'Token saved');
@@ -246,13 +285,13 @@
 	// --- 2. Admin Actions ---
 	function callAdmin(endpoint) {
 		const headers = getHeaders();
-		if(!headers) return;
 
 		if(!confirm("Are you sure you want to perform this Admin action?")) return;
 
 		fetch(API_BASE + '/admin' + endpoint, {
 			method: 'POST',
-			headers: headers
+			headers: headers,
+			credentials: 'include'
 		})
 		.then(async res => {
 			const text = await res.text();
@@ -265,7 +304,6 @@
 	// --- 3. Health Check ---
 	function checkHealth() {
 		const headers = getHeaders();
-		if(!headers) return;
 
 		fetch(API_BASE + '/file-generation/health', { headers: headers })
 		.then(res => {
@@ -283,7 +321,6 @@
 	// --- 4. User Actions ---
 	function triggerJob(event) {
 		const headers = getHeaders();
-		if(!headers) return;
 
 		const iface = document.getElementById('interfaceType').value;
 		if(!iface) {
@@ -292,7 +329,6 @@
 		}
 
 		const button = event.currentTarget;
-		const originalHtml = button.innerHTML;
 
 		button.disabled = true;
 		button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
@@ -304,7 +340,10 @@
 			credentials: 'include'
 		})
 		.then(async res => {
-			const json = await res.json();
+			let json = {}
+			try {
+				json = await res.json();
+			} catch {}
 			if(res.ok) {
 				showToast("Job Started!\nID: " + json.jobId);
 				location.reload();
@@ -324,7 +363,6 @@
 
 	function checkJobStatus(jobId) {
 		const headers = getHeaders();
-		if(!headers) return;
 
 		const encodedJobId = encodeURIComponent(jobId);
 		fetch(API_BASE + '/file-generation/getFileGenerationStatus/' + encodedJobId, { headers: headers })
@@ -420,12 +458,36 @@
 	// Auto-refresh the page every 15 seconds ONLY if a "PROCESSING" job exists in the table
 	setInterval(() => {
 		const hasActiveJobs = Array.from(document.querySelectorAll('.status-badge'))
-									.some(badge => badge.innerText.includes('PROCESSING'));
+									.some(badge => badge.dataset.status === 'PROCESSING');
 		if (hasActiveJobs) {
 			console.log("Active jobs detected, refreshing status...");
 			location.reload();
 		}
 	}, 15000);
+
+	document.addEventListener("DOMContentLoaded", () => {
+
+		document.getElementById("loginBtn")
+			.addEventListener("click", saveToken);
+
+		document.getElementById("generateBtn")
+			.addEventListener("click", triggerJob);
+
+		document.querySelectorAll(".download-btn")
+			.forEach(btn => {
+				btn.addEventListener("click", function () {
+					downloadFile(this.dataset.jobId);
+				});
+			});
+
+		document.querySelectorAll(".status-btn")
+			.forEach(btn => {
+				btn.addEventListener("click", function () {
+					checkJobStatus(this.dataset.jobId);
+				});
+			});
+
+	});
 </script>
 <div class="toast-container position-fixed bottom-0 end-0 p-3">
 	<div id="liveToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
