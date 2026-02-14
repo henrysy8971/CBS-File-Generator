@@ -22,7 +22,7 @@ public class TokenAuthenticationFilter extends OncePerRequestFilter {
 	private final TokenValidator tokenValidator;
 	private final ObjectMapper objectMapper;
 
-	@Value("${auth.token.header-name:X-DB-Token}")
+	@Value("${auth.token.header-name}")
 	private String tokenHeaderName;
 
 	@Value("${auth.token.enable-validation:true}")
@@ -37,12 +37,14 @@ public class TokenAuthenticationFilter extends OncePerRequestFilter {
 	}
 
 	@Override
-	protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
-									FilterChain filterChain) throws ServletException, IOException {
+	protected void doFilterInternal(HttpServletRequest request,
+									HttpServletResponse response,
+									FilterChain filterChain
+	) throws ServletException, IOException {
 
 		String requestPath = request.getServletPath();
 
-		if (!enableValidation || shouldSkipTokenValidation(requestPath)) {
+		if (!enableValidation) {
 			filterChain.doFilter(request, response);
 			return;
 		}
@@ -50,6 +52,17 @@ public class TokenAuthenticationFilter extends OncePerRequestFilter {
 		String token = request.getHeader(tokenHeaderName);
 
 		// 1. Check Presence
+		if (token == null || token.isEmpty()) {
+			if (request.getCookies() != null) {
+				for (javax.servlet.http.Cookie cookie : request.getCookies()) {
+					if (tokenHeaderName.equals(cookie.getName())) {
+						token = cookie.getValue();
+						break;
+					}
+				}
+			}
+		}
+
 		if (token == null || token.isEmpty()) {
 			logger.warn("Security Alert: Missing token for protected path: {}", requestPath);
 			writeErrorResponse(response, "Missing authentication token");
@@ -80,15 +93,5 @@ public class TokenAuthenticationFilter extends OncePerRequestFilter {
 		// Convert the DTO to a JSON string and write it to the response body
 		String json = objectMapper.writeValueAsString(errorResponse);
 		response.getWriter().write(json);
-	}
-
-	private boolean shouldSkipTokenValidation(String requestPath) {
-		// Matches your securityFilter config in SecurityConfig
-		return pathMatcher.match("/actuator/**", requestPath) ||
-				pathMatcher.match("/health/**", requestPath) ||
-				pathMatcher.match("/info", requestPath) ||
-				pathMatcher.match("/", requestPath) ||
-				pathMatcher.match("/dashboard", requestPath) ||
-				pathMatcher.match("/favicon.ico", requestPath);
 	}
 }

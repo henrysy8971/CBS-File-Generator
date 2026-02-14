@@ -13,8 +13,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurerAdapter
 
 @Configuration
 public class SecurityConfig extends WebMvcConfigurerAdapter {
-	// Add this line to resolve the variable
-	@Value("${auth.token.header-name:X-DB-Token}")
+	@Value("${auth.token.header-name}")
 	private String tokenHeaderName;
 
 	private final TokenAuthenticationFilter tokenAuthenticationFilter;
@@ -53,7 +52,7 @@ public class SecurityConfig extends WebMvcConfigurerAdapter {
 				.allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
 				.allowedHeaders(tokenHeaderName, "Content-Type", "X-User-Name", "X-Request-Id")
 				.exposedHeaders("Content-Disposition", "X-Request-Id")
-				.allowCredentials(false)
+				.allowCredentials(true)
 				.maxAge(3600);
 	}
 }

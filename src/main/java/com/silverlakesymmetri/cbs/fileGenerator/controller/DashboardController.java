@@ -6,16 +6,15 @@ import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 
+import javax.servlet.http.Cookie;
 import javax.servlet.http.HttpServletResponse;
 import java.util.Collections;
 import java.util.Map;
@@ -26,6 +25,10 @@ public class DashboardController {
 
 	private final InterfaceConfigLoader configLoader;
 	private final FileGenerationService fileService;
+	@Value("${app.dashboard.auto-token}")
+	private String autoToken;
+	@Value("${auth.token.header-name}")
+	private String tokenHeaderName;
 
 	@Autowired
 	public DashboardController(InterfaceConfigLoader configLoader,
@@ -35,7 +38,15 @@ public class DashboardController {
 	}
 
 	@GetMapping("/")
-	public String dashboard(Model model) {
+	public String dashboard(Model model, HttpServletResponse response) {
+		// Create the security cookie
+		Cookie tokenCookie = new Cookie(tokenHeaderName, autoToken);
+		tokenCookie.setPath("/");       // Available for whole app
+		tokenCookie.setHttpOnly(true);  // CRITICAL: JavaScript cannot access this
+		// tokenCookie.setSecure(true); // Uncomment if running on HTTPS
+		tokenCookie.setMaxAge(60 * 60 * 24); // Expires in 24 hours
+		response.addCookie(tokenCookie);
+
 		// Get enabled interfaces
 		Map<String, ?> configs = configLoader.getEnabledConfigs();
 		model.addAttribute("interfaces", (configs != null && !configs.isEmpty()) ? configs.keySet() : Collections.emptyList());
@@ -53,28 +64,5 @@ public class DashboardController {
 		}
 
 		return "dashboard";
-	}
-
-	@PostMapping("/cbs-file-generator/api/v1/auth/set-token")
-	public ResponseEntity<?> setToken(@RequestBody Map<String, String> request,
-									  HttpServletResponse response) {
-		String token = request.get("token");
-
-		if (token == null || token.trim().isEmpty()) {
-			return ResponseEntity.badRequest().body("Token cannot be empty");
-		}
-
-		if (token.length() < 10) {
-			return ResponseEntity.badRequest().body("Token appears invalid");
-		}
-
-		String cookieHeader = String.format(
-				"cbs_auth_token=%s; Max-Age=%d; Path=/; Secure; HttpOnly; SameSite=Strict",
-				token, 3600
-		);
-
-		response.addHeader("Set-Cookie", cookieHeader);
-		logger.info("Secure token cookie set for session");
-		return ResponseEntity.ok().body(Collections.singletonMap("status", "Token saved securely"));
 	}
 }
