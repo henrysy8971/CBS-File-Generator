@@ -115,7 +115,7 @@
       },
       {
         "key": "key",
-        "value": "X-DB-Token",
+        "value": "X-AUTH-TOKEN",
         "type": "string"
       },
       {
