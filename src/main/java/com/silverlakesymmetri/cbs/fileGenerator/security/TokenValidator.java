@@ -23,7 +23,7 @@ public class TokenValidator {
 
 	@Transactional // Ensure the update is committed cleanly
 	public boolean validateToken(String token) {
-		if (token == null || token.isEmpty()) {
+		if (token == null || token.trim().isEmpty()) {
 			logger.warn("Token validation failed: Token is null or empty");
 			return false;
 		}

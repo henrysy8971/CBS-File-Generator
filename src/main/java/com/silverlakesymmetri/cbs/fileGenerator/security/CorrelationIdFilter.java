@@ -22,7 +22,7 @@ public class CorrelationIdFilter extends OncePerRequestFilter implements Ordered
 									FilterChain filterChain) throws ServletException, IOException {
 		// 1. Extract or Generate ID
 		String requestId = request.getHeader(HEADER_NAME);
-		if (requestId == null || requestId.isEmpty()) {
+		if (requestId == null || requestId.trim().isEmpty()) {
 			requestId = UUID.randomUUID().toString();
 		}
 

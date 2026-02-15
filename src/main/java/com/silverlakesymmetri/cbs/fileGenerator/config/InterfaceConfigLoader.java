@@ -139,7 +139,7 @@ public class InterfaceConfigLoader {
 		}
 
 		configs.forEach((key, cfg) -> {
-			if (key.isEmpty()) {
+			if (key.trim().isEmpty()) {
 				throw new IllegalStateException("Interface key cannot be null or empty");
 			}
 

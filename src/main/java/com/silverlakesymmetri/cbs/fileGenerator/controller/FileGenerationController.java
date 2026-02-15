@@ -114,7 +114,7 @@ public class FileGenerationController {
 
 		// If client didn't send one, generate a random one (Fallback),
 		// effectively making this specific request non-idempotent regarding retries.
-		if (idempotencyKey.isEmpty()) {
+		if (idempotencyKey.trim().isEmpty()) {
 			idempotencyKey = UUID.randomUUID().toString();
 		}
 

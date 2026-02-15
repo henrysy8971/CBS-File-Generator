@@ -47,7 +47,7 @@ public class FileGenerationService {
 			String idempotencyKey) {
 
 		// 1. Idempotency Check
-		if (idempotencyKey != null && !idempotencyKey.isEmpty()) {
+		if (idempotencyKey != null && !idempotencyKey.trim().isEmpty()) {
 			Optional<FileGeneration> existing = fileGenerationRepository.findByIdempotencyKey(idempotencyKey);
 			if (existing.isPresent()) {
 				logger.info("Idempotent request: returning existing job {} for key {}",

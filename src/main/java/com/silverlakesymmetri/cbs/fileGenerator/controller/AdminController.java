@@ -135,7 +135,7 @@ public class AdminController {
 				jobInfo.put("jobName", jobKey.getName());
 				jobInfo.put("group", jobKey.getGroup());
 
-				if (!triggers.isEmpty()) {
+				if (triggers != null && !triggers.isEmpty()) {
 					Trigger trigger = triggers.get(0);
 					jobInfo.put("nextFireTime", trigger.getNextFireTime());
 					jobInfo.put("status", scheduler.getTriggerState(trigger.getKey()).name());
