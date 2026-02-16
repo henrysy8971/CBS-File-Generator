@@ -1,8 +1,18 @@
 package com.silverlakesymmetri.cbs.fileGenerator.dto;
 
+import javax.xml.bind.annotation.XmlAccessType;
+import javax.xml.bind.annotation.XmlAccessorType;
+import javax.xml.bind.annotation.XmlRootElement;
+import javax.xml.bind.annotation.XmlType;
 import java.io.Serializable;
 import java.math.BigDecimal;
 
+@XmlRootElement(name = "lineItem", namespace = "order")
+@XmlAccessorType(XmlAccessType.FIELD)
+@XmlType(namespace = "order", propOrder = {
+		"lineItemId", "orderId", "productId", "productName",
+		"quantity", "unitPrice", "lineAmount", "status"
+})
 public class LineItemDto implements Serializable {
 	private String lineItemId;
 	private Long orderId;

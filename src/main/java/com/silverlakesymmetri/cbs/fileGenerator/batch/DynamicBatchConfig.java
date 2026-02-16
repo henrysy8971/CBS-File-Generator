@@ -12,10 +12,12 @@ import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
 import org.springframework.batch.core.configuration.annotation.StepBuilderFactory;
 import org.springframework.batch.core.launch.support.RunIdIncrementer;
+import org.springframework.batch.item.validator.ValidationException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.TransientDataAccessException;
 
 import java.io.FileNotFoundException;
@@ -60,6 +62,11 @@ public class DynamicBatchConfig {
 	}
 
 	@Bean
+	public DynamicStepExecutionListener dynamicStepExecutionListener() {
+		return new DynamicStepExecutionListener(dynamicItemWriter, fileGenerationService);
+	}
+
+	@Bean
 	public Step dynamicValidationStep() {
 		return stepBuilderFactory.get("dynamicValidationStep")
 				.tasklet(fileValidationTasklet)
@@ -79,8 +86,12 @@ public class DynamicBatchConfig {
 				.listener(sharedJobListener)
 				.start(dynamicFileGenerationStep())
 				.on(BatchStatus.COMPLETED.name()).to(dynamicValidationStep())
+				// If Generation fails, go to cleanup, then FAIL the job
 				.from(dynamicFileGenerationStep()).on("*").to(cleanupStep())
-				.from(cleanupStep()).on("*").fail()
+				.on("*").fail()
+				// If Validation fails, go to cleanup, then FAIL the job
+				.from(dynamicValidationStep()).on("FAILED").to(cleanupStep())
+				.on("*").fail()
 				.end()
 				.build();
 	}
@@ -107,14 +118,17 @@ public class DynamicBatchConfig {
 				.retryLimit(3)
 
 				// Skip Logic (Skip processing errors, but stop on IO errors)
-				.skip(Exception.class)
+				.skip(ValidationException.class)
+				.skip(DataIntegrityViolationException.class)
+				.noSkip(NullPointerException.class)
+				.noSkip(Exception.class)
 				.noSkip(IOException.class)
 				.noSkip(FileNotFoundException.class)
 				// Skip up to 100 bad records
 				.skipLimit(100)
 
 				// --- Listeners ---
-				.listener(new DynamicStepExecutionListener(dynamicItemWriter, fileGenerationService))
+				.listener(dynamicStepExecutionListener())
 				.allowStartIfComplete(true)
 				.build();
 	}

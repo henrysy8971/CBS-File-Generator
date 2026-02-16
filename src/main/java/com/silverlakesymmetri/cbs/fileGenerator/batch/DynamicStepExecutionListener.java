@@ -3,6 +3,7 @@ package com.silverlakesymmetri.cbs.fileGenerator.batch;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.ExitStatus;
 import org.springframework.batch.core.StepExecution;
 import org.springframework.batch.core.listener.StepExecutionListenerSupport;
@@ -14,7 +15,6 @@ public class DynamicStepExecutionListener extends StepExecutionListenerSupport {
 	private final DynamicItemWriter dynamicItemWriter;
 	private final FileGenerationService fileGenerationService;
 
-	@Autowired
 	public DynamicStepExecutionListener(
 			DynamicItemWriter dynamicItemWriter,
 			FileGenerationService fileGenerationService) {
@@ -34,13 +34,11 @@ public class DynamicStepExecutionListener extends StepExecutionListenerSupport {
 
 		// Determine Step Success
 		// A step is successful if its status is COMPLETED and no exceptions occurred.
-		boolean isSuccess = !stepExecution.getStatus().isUnsuccessful()
-				&& stepExecution.getFailureExceptions().isEmpty();
+		boolean isSuccess = stepExecution.getStatus() == BatchStatus.COMPLETED;
 
 		try {
-			// Notify Writer of success status
-			// This allows the writer to decide whether to write XML footers and finalize the file.
 			if (dynamicItemWriter != null) {
+				// Inform writer of success, so it can write XML footers during close()
 				dynamicItemWriter.setStepSuccessful(isSuccess);
 
 				// Hand off the .part file path to the Job Execution Context

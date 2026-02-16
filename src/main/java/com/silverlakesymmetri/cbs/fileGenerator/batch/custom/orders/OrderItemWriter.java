@@ -1,7 +1,7 @@
 package com.silverlakesymmetri.cbs.fileGenerator.batch.custom.orders;
 
-import com.silverlakesymmetri.cbs.fileGenerator.dto.LineItemDto;
 import com.silverlakesymmetri.cbs.fileGenerator.dto.OrderDto;
+import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.batch.core.ExitStatus;
@@ -9,189 +9,147 @@ import org.springframework.batch.core.StepExecution;
 import org.springframework.batch.core.StepExecutionListener;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.item.ExecutionContext;
-import org.springframework.batch.item.ItemStreamException;
-import org.springframework.batch.item.ItemStreamWriter;
+import org.springframework.batch.item.xml.StaxEventItemWriter;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.oxm.jaxb.Jaxb2Marshaller;
 import org.springframework.stereotype.Component;
 
-import javax.xml.stream.XMLOutputFactory;
-import javax.xml.stream.XMLStreamWriter;
-import java.io.*;
-import java.math.BigDecimal;
-import java.nio.charset.StandardCharsets;
+import javax.annotation.PostConstruct;
+import javax.xml.stream.XMLEventFactory;
+import java.io.File;
+import java.io.IOException;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Component
 @StepScope
-public class OrderItemWriter implements ItemStreamWriter<OrderDto>, StepExecutionListener {
+public class OrderItemWriter extends StaxEventItemWriter<OrderDto> implements StepExecutionListener {
 	private static final Logger logger = LoggerFactory.getLogger(OrderItemWriter.class);
-	private static final String RESTART_COUNT_KEY = "order.writer.recordCount";
 	private static final String NS_URI = "http://www.example.com/order";
 	private static final String NS_PREFIX = "tns";
 
-	private XMLStreamWriter xmlStreamWriter;
-	private Writer underlyingWriter;
-	private boolean stepSuccessful = false;
-	private long recordCount = 0;
+	private final FileGenerationService fileGenerationService;
 	private String partFilePath;
+	private long totalRecordCount = 0;
+
+	public OrderItemWriter(FileGenerationService fileGenerationService) {
+		this.fileGenerationService = fileGenerationService;
+	}
 
 	@Value("#{jobParameters['outputFilePath']}")
 	public void setPartFilePath(String partFilePath) {
 		this.partFilePath = partFilePath;
+
+		File file = new File(partFilePath);
+		if (file.getParentFile() != null && !file.getParentFile().exists()) {
+			file.getParentFile().mkdirs();
+		}
+
+		this.setResource(new FileSystemResource(file));
 	}
 
+	@PostConstruct
+	public void init() {
+		// 1. Configure JAXB Marshaller
+		Jaxb2Marshaller marshaller = new Jaxb2Marshaller();
+		marshaller.setClassesToBeBound(OrderDto.class);
+
+		Map<String, Object> props = new HashMap<>();
+		props.put(javax.xml.bind.Marshaller.JAXB_FORMATTED_OUTPUT, true);
+		marshaller.setMarshallerProperties(props);
+		this.setMarshaller(marshaller);
+
+		// 2. Configure Root Tag (<tns:orders>)
+		this.setRootTagName(NS_PREFIX + ":orders");
+		this.setRootElementAttributes(Collections.singletonMap("xmlns:" + NS_PREFIX, NS_URI));
+
+		// 3. Configure Header (Writes <orderInterface>)
+		this.setHeaderCallback(writer -> {
+			XMLEventFactory factory = XMLEventFactory.newInstance();
+			try {
+				writer.add(factory.createStartElement(NS_PREFIX, NS_URI, "orderInterface"));
+				writer.add(factory.createNamespace(NS_PREFIX, NS_URI));
+			} catch (Exception e) {
+				throw new IOException("Failed to write XML header", e);
+			}
+		});
+
+		// 4. Configure Footer (Writes count + </orderInterface>)
+		this.setFooterCallback(writer -> {
+			XMLEventFactory factory = XMLEventFactory.newInstance();
+			try {
+				// Write <tns:totalRecords>COUNT</tns:totalRecords>
+				writer.add(factory.createStartElement(NS_PREFIX, NS_URI, "totalRecords"));
+				writer.add(factory.createCharacters(String.valueOf(totalRecordCount)));
+				writer.add(factory.createEndElement(NS_PREFIX, NS_URI, "totalRecords"));
+
+				// </tns:orderInterface>
+				writer.add(factory.createEndElement(NS_PREFIX, NS_URI, "orderInterface"));
+			} catch (Exception e) {
+				throw new IOException("Failed to write XML footer", e);
+			}
+		});
+
+		// 5. Enable Overwrite (Required for .part file logic usually, though restart handles append)
+		this.setOverwriteOutput(false); // standard batch behavior is usually false for restarts
+	}
+
+	/**
+	 * Override write to track record count locally for the FooterCallback.
+	 */
 	@Override
-	public void open(ExecutionContext executionContext) throws ItemStreamException {
-		try {
-			File file = new File(partFilePath);
-			if (file.getParentFile() != null && !file.getParentFile().exists()) {
-				file.getParentFile().mkdirs();
-			}
-
-			if (this.recordCount == 0 && executionContext.containsKey(RESTART_COUNT_KEY)) {
-				this.recordCount = executionContext.getLong(RESTART_COUNT_KEY);
-			}
-
-			boolean append = this.recordCount > 0;
-
-			this.underlyingWriter = new BufferedWriter(new OutputStreamWriter(
-					new FileOutputStream(file, append), StandardCharsets.UTF_8));
-			xmlStreamWriter = XMLOutputFactory.newInstance().createXMLStreamWriter(underlyingWriter);
-			xmlStreamWriter.setPrefix(NS_PREFIX, NS_URI);
-
-			if (!append) {
-				xmlStreamWriter.writeStartDocument("UTF-8", "1.0");
-				xmlStreamWriter.writeStartElement(NS_PREFIX, "orderInterface", NS_URI);
-				xmlStreamWriter.writeNamespace(NS_PREFIX, NS_URI);
-				xmlStreamWriter.writeStartElement(NS_PREFIX, "orders", NS_URI);
-			}
-
-			logger.info("XML writer initialized for file {}. Restart: {}", partFilePath, append);
-		} catch (Exception e) {
-			closeResources();
-			throw new ItemStreamException("Failed to initialize XML writer", e);
-		}
+	public void write(List<? extends OrderDto> items) throws Exception {
+		totalRecordCount += items.size();
+		super.write(items);
 	}
 
-	@Override
-	public void write(List<? extends OrderDto> items) throws ItemStreamException {
-		if (xmlStreamWriter == null) {
-			throw new ItemStreamException("XML writer is not initialized");
-		}
-
-		try {
-			for (OrderDto order : items) {
-				xmlStreamWriter.writeStartElement(NS_PREFIX, "order", NS_URI);
-
-				writeSimpleElement("orderId", order.getOrderId());
-				writeSimpleElement("orderNumber", order.getOrderNumber());
-				writeSimpleElement("orderAmount", order.getOrderAmount());
-				writeSimpleElement("orderDate", order.getOrderDate());
-				writeSimpleElement("customerId", order.getCustomerId());
-				writeSimpleElement("customerName", order.getCustomerName());
-				writeSimpleElement("status", order.getStatus());
-
-				if (order.getLineItems() != null && !order.getLineItems().isEmpty()) {
-					xmlStreamWriter.writeStartElement(NS_PREFIX, "lineItems", NS_URI);
-					for (LineItemDto item : order.getLineItems()) {
-						xmlStreamWriter.writeStartElement(NS_PREFIX, "lineItem", NS_URI);
-						writeSimpleElement("lineItemId", item.getLineItemId());
-						writeSimpleElement("productId", item.getProductId());
-						writeSimpleElement("productName", item.getProductName());
-						writeSimpleElement("quantity", item.getQuantity());
-						writeSimpleElement("unitPrice", item.getUnitPrice());
-						writeSimpleElement("lineAmount", item.getLineAmount());
-						writeSimpleElement("status", item.getStatus());
-						xmlStreamWriter.writeEndElement(); // lineItem
-					}
-					xmlStreamWriter.writeEndElement(); // lineItems
-				}
-
-				xmlStreamWriter.writeEndElement(); // order
-				recordCount++;
-			}
-			xmlStreamWriter.flush(); // flush per chunk
-		} catch (Exception e) {
-			throw new ItemStreamException("Failed to write XML records", e);
-		}
-	}
-
+	// --- StepExecutionListener Logic ---
 	@Override
 	public void beforeStep(StepExecution stepExecution) {
-		// Sync record count with the framework's official write count
-		long lastWriteCount = stepExecution.getWriteCount();
-		if (lastWriteCount > 0) {
-			this.recordCount = lastWriteCount;
-			logger.info("Restart detected. Resuming Order XML count from: {}", recordCount);
+		// On restart, sync the local count with what's already in the DB
+		long existingCount = stepExecution.getWriteCount();
+		if (existingCount > 0) {
+			this.totalRecordCount = existingCount;
+			logger.info("Restoring writer state. Current count: {}", totalRecordCount);
 		}
 	}
 
 	@Override
 	public ExitStatus afterStep(StepExecution stepExecution) {
-		this.stepSuccessful = !stepExecution.getStatus().isUnsuccessful();
-		return null;
-	}
+		String jobId = stepExecution.getJobParameters().getString("jobId");
+		ExecutionContext jobContext = stepExecution.getJobExecution().getExecutionContext();
 
-	// Helper to write an element safely
-	private void writeSimpleElement(String name, Object value) throws Exception {
-		xmlStreamWriter.writeStartElement(NS_PREFIX, name, NS_URI);
-		if (value != null) {
-			if (value instanceof BigDecimal) {
-				xmlStreamWriter.writeCharacters(((BigDecimal) value).toPlainString());
-			} else {
-				xmlStreamWriter.writeCharacters(value.toString());
-			}
+		// Pass the file path to the JobContext for the DynamicJobExecutionListener
+		if (this.partFilePath != null) {
+			jobContext.putString("partFilePath", this.partFilePath);
+			logger.debug("Handed off partFilePath to JobContext: {}", this.partFilePath);
 		}
-		xmlStreamWriter.writeEndElement();
-	}
 
-	@Override
-	public void update(ExecutionContext executionContext) throws ItemStreamException {
-		executionContext.putLong(RESTART_COUNT_KEY, recordCount);
-	}
+		// Store total count
+		jobContext.putLong("totalRecordCount", totalRecordCount);
 
-	@Override
-	public void close() throws ItemStreamException {
-		if (xmlStreamWriter != null) {
-			try {
-				if (stepSuccessful) {
-					// Close XML properly only if step finished successfully
-					xmlStreamWriter.writeEndElement(); // orders
-					writeSimpleElement("totalRecords", recordCount);
-					xmlStreamWriter.writeEndElement(); // orderInterface
-					xmlStreamWriter.writeEndDocument();
-					xmlStreamWriter.flush();
-				}
-			} catch (Exception e) {
-				throw new ItemStreamException("Failed to close XML writer properly", e);
-			} finally {
-				closeResources();
-			}
+		// Sync Metrics
+		long processed = stepExecution.getWriteCount();
+		long skipped = stepExecution.getProcessSkipCount();
+		long invalid = stepExecution.getWriteSkipCount() + stepExecution.getFilterCount();
+
+		if (jobId != null) {
+			fileGenerationService.updateFileMetrics(jobId, processed, skipped, invalid);
+			logger.info("Order metrics synced: jobId={}, processed={}, skipped={}, invalid={}",
+					jobId, processed, skipped, invalid);
 		}
+
+		return stepExecution.getExitStatus();
 	}
 
-	private void closeResources() {
-		try {
-			if (xmlStreamWriter != null) xmlStreamWriter.close();
-		} catch (Exception e) {
-			logger.warn("Error closing XMLStreamWriter: {}", e.getMessage());
-		}
-		try {
-			if (underlyingWriter != null) underlyingWriter.close();
-		} catch (Exception e) {
-			logger.warn("Error closing underlying file writer: {}", e.getMessage());
-		}
-		xmlStreamWriter = null;
-		underlyingWriter = null;
-	}
-
-	// Setter used by the Listener to mark step success
+	// Setter used by Listener (Kept for backward compatibility if Listener calls it,
+	// though StaxEventItemWriter handles transaction safety automatically now)
 	public void setStepSuccessful(boolean stepSuccessful) {
-		this.stepSuccessful = stepSuccessful;
-	}
-
-	public long getRecordCount() {
-		return recordCount;
+		// No-op: StaxEventItemWriter automatically handles closing tags
+		// only if the transaction commits successfully.
 	}
 
 	public String getPartFilePath() {
