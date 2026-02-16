@@ -6,7 +6,6 @@ import com.silverlakesymmetri.cbs.fileGenerator.tasklets.BatchCleanupTasklet;
 import com.silverlakesymmetri.cbs.fileGenerator.tasklets.FileValidationTasklet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
@@ -18,10 +17,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.DeadlockLoserDataAccessException;
 import org.springframework.dao.TransientDataAccessException;
 
-import java.io.FileNotFoundException;
-import java.io.IOException;
 import java.sql.SQLSyntaxErrorException;
 import java.sql.SQLTransientConnectionException;
 
@@ -59,11 +57,12 @@ public class DynamicBatchConfig {
 		this.dynamicItemWriter = dynamicItemWriter;
 		this.fileValidationTasklet = fileValidationTasklet;
 		this.batchCleanupTasklet = batchCleanupTasklet;
+		logger.info("Configuring FileGeneration with chunk size {}", chunkSize);
 	}
 
 	@Bean
 	public DynamicStepExecutionListener dynamicStepExecutionListener() {
-		return new DynamicStepExecutionListener(dynamicItemWriter, fileGenerationService);
+		return new DynamicStepExecutionListener(fileGenerationService);
 	}
 
 	@Bean
@@ -80,18 +79,18 @@ public class DynamicBatchConfig {
 	 */
 	@Bean
 	public Job dynamicFileGenerationJob(DynamicJobExecutionListener sharedJobListener) {
-		logger.info("Configuring dynamicFileGenerationJob Job");
 		return jobBuilderFactory.get("dynamicFileGenerationJob")
 				.incrementer(new RunIdIncrementer())
 				.listener(sharedJobListener)
 				.start(dynamicFileGenerationStep())
-				.on(BatchStatus.COMPLETED.name()).to(dynamicValidationStep())
+				.on("COMPLETED").to(dynamicValidationStep())
 				// If Generation fails, go to cleanup, then FAIL the job
 				.from(dynamicFileGenerationStep()).on("*").to(cleanupStep())
 				.on("*").fail()
 				// If Validation fails, go to cleanup, then FAIL the job
 				.from(dynamicValidationStep()).on("FAILED").to(cleanupStep())
 				.on("*").fail()
+				.from(dynamicValidationStep()).on("COMPLETED").end()
 				.end()
 				.build();
 	}
@@ -102,8 +101,6 @@ public class DynamicBatchConfig {
 	 */
 	@Bean
 	public Step dynamicFileGenerationStep() {
-		logger.info("Configuring dynamicFileGenerationStep with chunk size {}", chunkSize);
-
 		return stepBuilderFactory.get("dynamicFileGenerationStep")
 				.<DynamicRecord, DynamicRecord>chunk(chunkSize)
 				.reader(dynamicItemReader)
@@ -114,16 +111,13 @@ public class DynamicBatchConfig {
 				.faultTolerant()
 				.retry(TransientDataAccessException.class)
 				.retry(SQLTransientConnectionException.class)
+				.retry(DeadlockLoserDataAccessException.class)
 				.noRetry(SQLSyntaxErrorException.class)
 				.retryLimit(3)
 
 				// Skip Logic (skip bad data rows, but crash on system errors)
 				.skip(ValidationException.class)
 				.skip(DataIntegrityViolationException.class)
-				.noSkip(NullPointerException.class)
-				.noSkip(Exception.class)
-				.noSkip(IOException.class)
-				.noSkip(FileNotFoundException.class)
 				.skipLimit(100)
 
 				// --- Listeners ---

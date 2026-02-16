@@ -7,7 +7,6 @@ import com.silverlakesymmetri.cbs.fileGenerator.tasklets.BatchCleanupTasklet;
 import com.silverlakesymmetri.cbs.fileGenerator.tasklets.FileValidationTasklet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
@@ -22,8 +21,6 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.DeadlockLoserDataAccessException;
 import org.springframework.dao.TransientDataAccessException;
 
-import java.io.FileNotFoundException;
-import java.io.IOException;
 import java.sql.SQLSyntaxErrorException;
 import java.sql.SQLTransientConnectionException;
 
@@ -63,7 +60,7 @@ public class OrderBatchConfig {
 		this.orderItemWriter = orderItemWriter;
 		this.fileValidationTasklet = fileValidationTasklet;
 		this.batchCleanupTasklet = batchCleanupTasklet;
-		logger.info("Configuring orderFileGeneration with chunk size {}", chunkSize);
+		logger.info("Configuring order FileGeneration with chunk size {}", chunkSize);
 	}
 
 	@Bean
