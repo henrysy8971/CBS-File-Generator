@@ -117,14 +117,13 @@ public class DynamicBatchConfig {
 				.noRetry(SQLSyntaxErrorException.class)
 				.retryLimit(3)
 
-				// Skip Logic (Skip processing errors, but stop on IO errors)
+				// Skip Logic (skip bad data rows, but crash on system errors)
 				.skip(ValidationException.class)
 				.skip(DataIntegrityViolationException.class)
 				.noSkip(NullPointerException.class)
 				.noSkip(Exception.class)
 				.noSkip(IOException.class)
 				.noSkip(FileNotFoundException.class)
-				// Skip up to 100 bad records
 				.skipLimit(100)
 
 				// --- Listeners ---

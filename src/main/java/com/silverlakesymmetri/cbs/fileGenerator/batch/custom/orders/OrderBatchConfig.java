@@ -51,7 +51,8 @@ public class OrderBatchConfig {
 			OrderItemReader orderItemReader,
 			OrderItemProcessor orderItemProcessor,
 			OrderItemWriter orderItemWriter,
-			FileValidationTasklet fileValidationTasklet, BatchCleanupTasklet batchCleanupTasklet
+			FileValidationTasklet fileValidationTasklet,
+			BatchCleanupTasklet batchCleanupTasklet
 	) {
 		this.jobBuilderFactory = jobBuilderFactory;
 		this.stepBuilderFactory = stepBuilderFactory;
