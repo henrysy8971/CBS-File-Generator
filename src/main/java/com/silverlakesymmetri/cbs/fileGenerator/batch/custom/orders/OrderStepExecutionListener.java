@@ -23,7 +23,7 @@ public class OrderStepExecutionListener implements StepExecutionListener {
 
 	@Override
 	public void beforeStep(StepExecution stepExecution) {
-		logger.info("Starting specialized Order Step: {}", stepExecution.getStepName());
+		logger.debug("Starting step: {}", stepExecution.getStepName());
 	}
 
 	@Override
@@ -32,7 +32,7 @@ public class OrderStepExecutionListener implements StepExecutionListener {
 		ExecutionContext jobContext = stepExecution.getJobExecution().getExecutionContext();
 
 		// Determine Step Success
-		// A step is successful if its status is COMPLETED and no exceptions occurred.\
+		// A step is successful if its status is COMPLETED and no exceptions occurred.
 		boolean isSuccess = stepExecution.getStatus() == BatchStatus.COMPLETED;
 
 		try {
@@ -63,14 +63,11 @@ public class OrderStepExecutionListener implements StepExecutionListener {
 
 				// Store total record count at job level for logging/summary
 				jobContext.putLong("totalRecordCount", processed);
-
-				logger.info("Order metrics synced: jobId={}, processed={}, skipped={}, invalid={}",
-						jobId, processed, skipped, invalid);
 			}
 
 		} catch (Exception e) {
 			// We catch but don't fail the job, as the file is likely already written
-			logger.error("Non-critical error in OrderStepListener for jobId: {}", jobId, e);
+			logger.error("Non-critical error in OrderStepExecutionListener for jobId: {}", jobId, e);
 		}
 
 		return stepExecution.getExitStatus();

@@ -6,11 +6,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.ExitStatus;
 import org.springframework.batch.core.StepExecution;
-import org.springframework.batch.core.listener.StepExecutionListenerSupport;
+import org.springframework.batch.core.StepExecutionListener;
 import org.springframework.batch.item.ExecutionContext;
-import org.springframework.beans.factory.annotation.Autowired;
 
-public class DynamicStepExecutionListener extends StepExecutionListenerSupport {
+public class DynamicStepExecutionListener implements StepExecutionListener {
 	private static final Logger logger = LoggerFactory.getLogger(DynamicStepExecutionListener.class);
 	private final DynamicItemWriter dynamicItemWriter;
 	private final FileGenerationService fileGenerationService;
@@ -41,7 +40,7 @@ public class DynamicStepExecutionListener extends StepExecutionListenerSupport {
 				// Inform writer of success, so it can write XML footers during close()
 				dynamicItemWriter.setStepSuccessful(isSuccess);
 
-				// Hand off the .part file path to the Job Execution Context
+				// Hand off .part file path to Job Execution Context
 				// for SHA-256 calculation
 				// This is critical for DynamicJobExecutionListener to find the file
 				String partPath = dynamicItemWriter.getPartFilePath();
@@ -67,8 +66,8 @@ public class DynamicStepExecutionListener extends StepExecutionListenerSupport {
 			}
 
 		} catch (Exception e) {
-			// We catch so the job doesn't fail purely because of a logging/metrics blip
-			logger.error("Non-critical error syncing metrics for step {}", stepExecution.getStepName(), e);
+			// We catch but don't fail the job, as the file is likely already written
+			logger.error("Non-critical error in DynamicStepExecutionListener for jobId: {}", jobId, e);
 		}
 
 		return stepExecution.getExitStatus();
