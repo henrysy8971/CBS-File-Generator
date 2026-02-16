@@ -1,4 +1,4 @@
-package com.silverlakesymmetri.cbs.fileGenerator.service;
+package com.silverlakesymmetri.cbs.fileGenerator.constants;
 
 import java.util.EnumMap;
 import java.util.EnumSet;

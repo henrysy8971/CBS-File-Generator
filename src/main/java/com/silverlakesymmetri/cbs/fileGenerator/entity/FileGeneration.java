@@ -1,6 +1,6 @@
 package com.silverlakesymmetri.cbs.fileGenerator.entity;
 
-import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationStatus;
+import com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationStatus;
 
 import javax.persistence.*;
 import java.sql.Timestamp;

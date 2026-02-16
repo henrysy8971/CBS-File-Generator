@@ -9,7 +9,7 @@ import com.silverlakesymmetri.cbs.fileGenerator.entity.FileGeneration;
 import com.silverlakesymmetri.cbs.fileGenerator.exception.*;
 import com.silverlakesymmetri.cbs.fileGenerator.service.BatchJobLauncher;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
-import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationStatus;
+import com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationStatus;
 import com.silverlakesymmetri.cbs.fileGenerator.service.RateLimiterService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

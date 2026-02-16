@@ -1,7 +1,7 @@
 package com.silverlakesymmetri.cbs.fileGenerator.repository;
 
 import com.silverlakesymmetri.cbs.fileGenerator.entity.FileGeneration;
-import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationStatus;
+import com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;

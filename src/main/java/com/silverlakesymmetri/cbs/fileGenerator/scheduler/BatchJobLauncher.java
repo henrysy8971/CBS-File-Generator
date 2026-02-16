@@ -3,7 +3,6 @@ package com.silverlakesymmetri.cbs.fileGenerator.scheduler;
 import com.silverlakesymmetri.cbs.fileGenerator.config.InterfaceConfigLoader;
 import com.silverlakesymmetri.cbs.fileGenerator.config.model.InterfaceConfig;
 import com.silverlakesymmetri.cbs.fileGenerator.entity.FileGeneration;
-import com.silverlakesymmetri.cbs.fileGenerator.service.BatchJobLauncher;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
 import org.quartz.DisallowConcurrentExecution;
 import org.quartz.JobDataMap;
@@ -21,16 +20,16 @@ import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationC
 
 @Component
 @DisallowConcurrentExecution
-public class BatchJobLauncherJob extends QuartzJobBean {
-	private static final Logger logger = LoggerFactory.getLogger(BatchJobLauncherJob.class);
+public class BatchJobLauncher extends QuartzJobBean {
+	private static final Logger logger = LoggerFactory.getLogger(BatchJobLauncher.class);
 
-	private final BatchJobLauncher batchJobLauncher;
+	private final com.silverlakesymmetri.cbs.fileGenerator.service.BatchJobLauncher batchJobLauncher;
 	private final FileGenerationService fileGenerationService;
 	private final InterfaceConfigLoader interfaceConfigLoader;
 	private final String outputDir;
 
-	public BatchJobLauncherJob(
-			BatchJobLauncher batchJobLauncher,
+	public BatchJobLauncher(
+			com.silverlakesymmetri.cbs.fileGenerator.service.BatchJobLauncher batchJobLauncher,
 			FileGenerationService fileGenerationService,
 			InterfaceConfigLoader interfaceConfigLoader,
 			@Value("${file.generation.output-directory}") String outputDir

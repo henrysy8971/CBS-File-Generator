@@ -21,13 +21,13 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @DisallowConcurrentExecution
-public class MaintenanceQuartzJob extends QuartzJobBean {
-	private static final Logger logger = LoggerFactory.getLogger(MaintenanceQuartzJob.class);
+public class MaintenanceScheduler extends QuartzJobBean {
+	private static final Logger logger = LoggerFactory.getLogger(MaintenanceScheduler.class);
 
 	private final JobLauncher jobLauncher;
 	private final Job cleanupJob;
 
-	public MaintenanceQuartzJob(JobLauncher jobLauncher, @Qualifier("cleanupJob") Job cleanupJob) {
+	public MaintenanceScheduler(JobLauncher jobLauncher, @Qualifier("cleanupJob") Job cleanupJob) {
 		this.jobLauncher = jobLauncher;
 		this.cleanupJob = cleanupJob;
 	}

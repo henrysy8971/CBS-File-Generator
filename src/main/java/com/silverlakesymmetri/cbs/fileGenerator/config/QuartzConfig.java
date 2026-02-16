@@ -1,8 +1,8 @@
 package com.silverlakesymmetri.cbs.fileGenerator.config;
 
-import com.silverlakesymmetri.cbs.fileGenerator.scheduler.BatchJobLauncherJob;
+import com.silverlakesymmetri.cbs.fileGenerator.scheduler.BatchJobLauncher;
 import com.silverlakesymmetri.cbs.fileGenerator.scheduler.FileGenerationScheduler;
-import com.silverlakesymmetri.cbs.fileGenerator.scheduler.MaintenanceQuartzJob;
+import com.silverlakesymmetri.cbs.fileGenerator.scheduler.MaintenanceScheduler;
 import org.quartz.*;
 import org.quartz.spi.JobFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -88,7 +88,7 @@ public class QuartzConfig {
 	 */
 	@Bean(name = FILE_GEN_ADHOC_JOB)
 	public JobDetail adHocBatchJobDetail() {
-		return JobBuilder.newJob(BatchJobLauncherJob.class)
+		return JobBuilder.newJob(BatchJobLauncher.class)
 				.withIdentity(FILE_GEN_ADHOC_JOB, FILE_GEN_GROUP)
 				.storeDurably() // Allows the job to exist without a trigger
 				.build();
@@ -102,7 +102,7 @@ public class QuartzConfig {
 
 	@Bean
 	public JobDetail maintenanceJobDetail() {
-		return JobBuilder.newJob(MaintenanceQuartzJob.class)
+		return JobBuilder.newJob(MaintenanceScheduler.class)
 				.withIdentity("maintenanceCleanupJob", "system-maintenance")
 				.storeDurably()
 				.build();
@@ -156,7 +156,7 @@ public class QuartzConfig {
 		JobDataMap jobDataMap = new JobDataMap();
 		jobDataMap.put("interfaceType", ORDER_INTERFACE);
 
-		return JobBuilder.newJob(BatchJobLauncherJob.class)
+		return JobBuilder.newJob(BatchJobLauncher.class)
 				.withIdentity(FILE_GEN_ORDERS_JOB, FILE_GEN_GROUP)
 				.setJobData(jobDataMap)
 				.storeDurably()

@@ -1,6 +1,7 @@
 package com.silverlakesymmetri.cbs.fileGenerator.service;
 
 import com.silverlakesymmetri.cbs.fileGenerator.config.InterfaceConfigLoader;
+import com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationStatus;
 import com.silverlakesymmetri.cbs.fileGenerator.entity.FileGeneration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
