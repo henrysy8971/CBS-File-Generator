@@ -13,10 +13,12 @@ import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;
 import org.springframework.batch.core.configuration.annotation.StepBuilderFactory;
 import org.springframework.batch.core.launch.support.RunIdIncrementer;
+import org.springframework.batch.item.validator.ValidationException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.TransientDataAccessException;
 
 import java.io.FileNotFoundException;
@@ -61,6 +63,11 @@ public class OrderBatchConfig {
 		this.batchCleanupTasklet = batchCleanupTasklet;
 	}
 
+	@Bean
+	public OrderStepExecutionListener orderStepListener() {
+		return new OrderStepExecutionListener(orderItemWriter, fileGenerationService);
+	}
+
 	// Define the Job Listener as a Bean
 	@Bean
 	public Step orderFileValidationStep() {
@@ -76,9 +83,12 @@ public class OrderBatchConfig {
 				.listener(sharedJobListener)
 				.start(orderFileGenerationStep())
 				.on(BatchStatus.COMPLETED.name()).to(orderFileValidationStep())
+				// If Generation fails, go to cleanup, then FAIL the job
 				.from(orderFileGenerationStep()).on("*").to(orderCleanupStep())
+				.on("*").fail()
+				// If Validation fails, go to cleanup, then FAIL the job
 				.from(orderFileValidationStep()).on("FAILED").to(orderCleanupStep())
-				.from(orderCleanupStep()).on("*").fail()
+				.on("*").fail()
 				.end()
 				.build();
 	}
@@ -106,13 +116,16 @@ public class OrderBatchConfig {
 				.retryLimit(3)
 
 				// Skip Logic (skip bad data rows, but crash on system errors)
-				.skip(Exception.class)
+				.skip(ValidationException.class)
+				.skip(DataIntegrityViolationException.class)
+				.noSkip(NullPointerException.class)
+				.noSkip(Exception.class)
 				.noSkip(IOException.class)
 				.noSkip(FileNotFoundException.class)
 				.skipLimit(100)
 
 				// --- Listeners ---
-				.listener(new OrderStepExecutionListener(orderItemWriter, fileGenerationService))
+				.listener(orderStepListener())
 				.allowStartIfComplete(true)
 				.build();
 	}

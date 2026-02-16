@@ -3,18 +3,17 @@ package com.silverlakesymmetri.cbs.fileGenerator.batch.custom.orders;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.ExitStatus;
 import org.springframework.batch.core.StepExecution;
-import org.springframework.batch.core.listener.StepExecutionListenerSupport;
+import org.springframework.batch.core.StepExecutionListener;
 import org.springframework.batch.item.ExecutionContext;
-import org.springframework.beans.factory.annotation.Autowired;
 
-public class OrderStepExecutionListener extends StepExecutionListenerSupport {
+public class OrderStepExecutionListener implements StepExecutionListener {
 	private static final Logger logger = LoggerFactory.getLogger(OrderStepExecutionListener.class);
 	private final OrderItemWriter orderItemWriter;
 	private final FileGenerationService fileGenerationService;
 
-	@Autowired
 	public OrderStepExecutionListener(
 			OrderItemWriter orderItemWriter,
 			FileGenerationService fileGenerationService) {
@@ -33,9 +32,8 @@ public class OrderStepExecutionListener extends StepExecutionListenerSupport {
 		ExecutionContext jobContext = stepExecution.getJobExecution().getExecutionContext();
 
 		// Determine Step Success
-		// A step is successful if its status is COMPLETED and no exceptions occurred.
-		boolean isSuccess = !stepExecution.getStatus().isUnsuccessful()
-				&& stepExecution.getFailureExceptions().isEmpty();
+		// A step is successful if its status is COMPLETED and no exceptions occurred.\
+		boolean isSuccess = stepExecution.getStatus() == BatchStatus.COMPLETED;
 
 		try {
 			if (orderItemWriter != null) {

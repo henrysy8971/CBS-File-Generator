@@ -38,6 +38,7 @@ public class DynamicJobExecutionListener implements JobExecutionListener {
 	public void afterJob(JobExecution jobExecution) {
 		String jobId = jobExecution.getJobParameters().getString("jobId");
 		String partFilePath = jobExecution.getExecutionContext().getString("partFilePath", null);
+		String currentPath = partFilePath;
 
 		if (partFilePath == null) {
 			logger.warn("No part file found in job context; skipping finalization");
@@ -63,6 +64,7 @@ public class DynamicJobExecutionListener implements JobExecutionListener {
 				throw new RuntimeException(msg);
 			}
 
+			currentPath = finalFilePath;
 			// SHA256 verification
 			boolean verified = fileFinalizationService.verifyShaFile(finalFilePath);
 
@@ -80,7 +82,7 @@ public class DynamicJobExecutionListener implements JobExecutionListener {
 			// Update DB to FAILED if post-processing fails
 			fileGenerationService.markFailed(jobId, "Post-processing error: " + e.getMessage());
 			// Cleanup the .part file if it still exists after a failed rename/verify
-			fileFinalizationService.cleanupPartFile(partFilePath);
+			fileFinalizationService.cleanupPartFile(currentPath);
 		}
 	}
 
