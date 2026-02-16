@@ -1,5 +1,6 @@
 package com.silverlakesymmetri.cbs.fileGenerator.batch.custom.orders;
 
+import com.silverlakesymmetri.cbs.fileGenerator.dto.LineItemDto;
 import com.silverlakesymmetri.cbs.fileGenerator.dto.OrderDto;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -8,8 +9,10 @@ import org.springframework.batch.item.ItemProcessor;
 import org.springframework.batch.item.validator.ValidationException;
 import org.springframework.stereotype.Component;
 import org.springframework.batch.core.configuration.annotation.StepScope;
+import org.springframework.util.CollectionUtils;
 
-import java.util.Optional;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Component
 @StepScope
@@ -17,10 +20,9 @@ public class OrderItemProcessor implements ItemProcessor<OrderDto, OrderDto> {
 	private static final Logger logger = LoggerFactory.getLogger(OrderItemProcessor.class);
 
 	@Override
-	public OrderDto process(OrderDto orderDto) throws Exception {
+	public OrderDto process(OrderDto orderDto) {
 		if (orderDto == null) {
-			logger.debug("Filtering empty or null record");
-			return null;
+			throw new IllegalStateException("Reader returned null OrderDto unexpectedly");
 		}
 
 		try {
@@ -37,6 +39,7 @@ public class OrderItemProcessor implements ItemProcessor<OrderDto, OrderDto> {
 			// This will trigger the 'skip' logic defined in OrderBatchConfig
 			logger.warn("Skipping record due to validation failure: {} - Reason: {}",
 					orderDto.getOrderId(), ve.getMessage());
+
 			throw ve;
 		} catch (Exception e) {
 			// Catastrophic or unexpected error
@@ -62,25 +65,32 @@ public class OrderItemProcessor implements ItemProcessor<OrderDto, OrderDto> {
 		}
 	}
 
-	private OrderDto applyTransformations(OrderDto order) {
+	private OrderDto applyTransformations(OrderDto source) {
+		OrderDto target = new OrderDto();
 		// Trim primary fields safely
-		order.setOrderNumber(StringUtils.trim(order.getOrderNumber()));
-		order.setCustomerName(StringUtils.trim(order.getCustomerName()));
+		target.setOrderId(source.getOrderId());
+		target.setOrderNumber(StringUtils.trim(source.getOrderNumber()));
+		target.setCustomerName(StringUtils.trim(source.getCustomerName()));
+		target.setOrderAmount(source.getOrderAmount());
+		if (!CollectionUtils.isEmpty(source.getLineItems())) {
+			List<LineItemDto> copied = source.getLineItems().stream()
+					.map(item -> {
+						LineItemDto li = new LineItemDto();
+						li.setLineItemId(item.getLineItemId());
+						li.setProductName(StringUtils.trim(item.getProductName()));
+						li.setQuantity(item.getQuantity());
+						return li;
+					})
+					.collect(Collectors.toList());
+			target.setLineItems(copied);
+		}
 
-		// Use Optional/Streams for cleaner line item processing
-		Optional.ofNullable(order.getLineItems())
-				.ifPresent(items -> items.forEach(item -> {
-					item.setProductName(StringUtils.trim(item.getProductName()));
-				}));
-
-		return order;
+		return target;
 	}
 
 	private boolean hasValidLineItems(OrderDto order) {
-		// If line items exist, at least one must be valid.
-		// If the list is empty, we consider it valid (adjust based on bank rules)
-		if (order.getLineItems() == null || order.getLineItems().isEmpty()) {
-			return true;
+		if (CollectionUtils.isEmpty(order.getLineItems())) {
+			return false;
 		}
 		return order.getLineItems().stream()
 				.anyMatch(item -> item.getLineItemId() != null &&

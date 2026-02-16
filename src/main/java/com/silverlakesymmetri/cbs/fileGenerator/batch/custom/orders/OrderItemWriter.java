@@ -1,9 +1,9 @@
 package com.silverlakesymmetri.cbs.fileGenerator.batch.custom.orders;
 
 import com.silverlakesymmetri.cbs.fileGenerator.dto.OrderDto;
-import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.ExitStatus;
 import org.springframework.batch.core.StepExecution;
 import org.springframework.batch.core.StepExecutionListener;
@@ -19,10 +19,8 @@ import javax.annotation.PostConstruct;
 import javax.xml.stream.XMLEventFactory;
 import java.io.File;
 import java.io.IOException;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicLong;
 
 @Component
 @StepScope
@@ -30,24 +28,15 @@ public class OrderItemWriter extends StaxEventItemWriter<OrderDto> implements St
 	private static final Logger logger = LoggerFactory.getLogger(OrderItemWriter.class);
 	private static final String NS_URI = "http://www.example.com/order";
 	private static final String NS_PREFIX = "tns";
+	private final AtomicLong totalRecordCount = new AtomicLong(0);
+	private final String partFilePath;
 
-	private final FileGenerationService fileGenerationService;
-	private String partFilePath;
-	private long totalRecordCount = 0;
-
-	public OrderItemWriter(FileGenerationService fileGenerationService) {
-		this.fileGenerationService = fileGenerationService;
-	}
-
-	@Value("#{jobParameters['outputFilePath']}")
-	public void setPartFilePath(String partFilePath) {
-		this.partFilePath = partFilePath;
-
+	public OrderItemWriter(@Value("#{jobParameters['outputFilePath']}") String partFilePath) {
+		this.partFilePath = Objects.requireNonNull(partFilePath, "outputFilePath is required");
 		File file = new File(partFilePath);
 		if (file.getParentFile() != null && !file.getParentFile().exists()) {
 			file.getParentFile().mkdirs();
 		}
-
 		this.setResource(new FileSystemResource(file));
 	}
 
@@ -73,6 +62,7 @@ public class OrderItemWriter extends StaxEventItemWriter<OrderDto> implements St
 				writer.add(factory.createStartElement(NS_PREFIX, NS_URI, "orderInterface"));
 				writer.add(factory.createNamespace(NS_PREFIX, NS_URI));
 			} catch (Exception e) {
+				logger.error("Failed to write XML header for file: {}", this.partFilePath, e);
 				throw new IOException("Failed to write XML header", e);
 			}
 		});
@@ -83,12 +73,13 @@ public class OrderItemWriter extends StaxEventItemWriter<OrderDto> implements St
 			try {
 				// Write <tns:totalRecords>COUNT</tns:totalRecords>
 				writer.add(factory.createStartElement(NS_PREFIX, NS_URI, "totalRecords"));
-				writer.add(factory.createCharacters(String.valueOf(totalRecordCount)));
+				writer.add(factory.createCharacters(String.valueOf(totalRecordCount.get())));
 				writer.add(factory.createEndElement(NS_PREFIX, NS_URI, "totalRecords"));
 
 				// </tns:orderInterface>
 				writer.add(factory.createEndElement(NS_PREFIX, NS_URI, "orderInterface"));
 			} catch (Exception e) {
+				logger.error("Failed to write XML footer for file: {}", this.partFilePath, e);
 				throw new IOException("Failed to write XML footer", e);
 			}
 		});
@@ -102,7 +93,8 @@ public class OrderItemWriter extends StaxEventItemWriter<OrderDto> implements St
 	 */
 	@Override
 	public void write(List<? extends OrderDto> items) throws Exception {
-		totalRecordCount += items.size();
+		logger.debug("Writing {} orders to file: {}", items.size(), this.partFilePath);
+		totalRecordCount.getAndAdd(items.size());
 		super.write(items);
 	}
 
@@ -110,49 +102,29 @@ public class OrderItemWriter extends StaxEventItemWriter<OrderDto> implements St
 	@Override
 	public void beforeStep(StepExecution stepExecution) {
 		// On restart, sync the local count with what's already in the DB
-		long existingCount = stepExecution.getWriteCount();
-		if (existingCount > 0) {
-			this.totalRecordCount = existingCount;
-			logger.info("Restoring writer state. Current count: {}", totalRecordCount);
-		}
+		long restoredCount = stepExecution.getJobExecution().getExecutionContext().getLong("totalRecordCount", 0L);
+		totalRecordCount.set(restoredCount);
+		logger.info("Restoring writer state. Current count: {}", totalRecordCount.get());
 	}
 
 	@Override
 	public ExitStatus afterStep(StepExecution stepExecution) {
-		String jobId = stepExecution.getJobParameters().getString("jobId");
 		ExecutionContext jobContext = stepExecution.getJobExecution().getExecutionContext();
 
 		// Pass the file path to the JobContext for the DynamicJobExecutionListener
 		if (this.partFilePath != null) {
 			jobContext.putString("partFilePath", this.partFilePath);
-			logger.debug("Handed off partFilePath to JobContext: {}", this.partFilePath);
+			logger.debug("Step {} handed off partFilePath to JobContext: {}",
+					stepExecution.getStepName(), this.partFilePath);
 		}
 
 		// Store total count
-		jobContext.putLong("totalRecordCount", totalRecordCount);
+		jobContext.putLong("totalRecordCount", totalRecordCount.get());
 
-		// Sync Metrics
-		long processed = stepExecution.getWriteCount();
-		long skipped = stepExecution.getProcessSkipCount();
-		long invalid = stepExecution.getWriteSkipCount() + stepExecution.getFilterCount();
-
-		if (jobId != null) {
-			fileGenerationService.updateFileMetrics(jobId, processed, skipped, invalid);
-			logger.info("Order metrics synced: jobId={}, processed={}, skipped={}, invalid={}",
-					jobId, processed, skipped, invalid);
+		if (stepExecution.getStatus() != BatchStatus.COMPLETED) {
+			logger.warn("Step {} completed with status: {}", stepExecution.getStepName(), stepExecution.getStatus());
 		}
 
-		return stepExecution.getExitStatus();
-	}
-
-	// Setter used by Listener (Kept for backward compatibility if Listener calls it,
-	// though StaxEventItemWriter handles transaction safety automatically now)
-	public void setStepSuccessful(boolean stepSuccessful) {
-		// No-op: StaxEventItemWriter automatically handles closing tags
-		// only if the transaction commits successfully.
-	}
-
-	public String getPartFilePath() {
-		return partFilePath;
+		return stepExecution.getStatus() == BatchStatus.COMPLETED ? ExitStatus.COMPLETED : ExitStatus.FAILED;
 	}
 }

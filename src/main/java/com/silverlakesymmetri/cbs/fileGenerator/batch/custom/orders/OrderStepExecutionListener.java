@@ -9,16 +9,14 @@ import org.springframework.batch.core.StepExecution;
 import org.springframework.batch.core.StepExecutionListener;
 import org.springframework.batch.item.ExecutionContext;
 
+import java.util.Objects;
+
 public class OrderStepExecutionListener implements StepExecutionListener {
 	private static final Logger logger = LoggerFactory.getLogger(OrderStepExecutionListener.class);
-	private final OrderItemWriter orderItemWriter;
 	private final FileGenerationService fileGenerationService;
 
-	public OrderStepExecutionListener(
-			OrderItemWriter orderItemWriter,
-			FileGenerationService fileGenerationService) {
-		this.orderItemWriter = orderItemWriter;
-		this.fileGenerationService = fileGenerationService;
+	public OrderStepExecutionListener(FileGenerationService fileGenerationService) {
+		this.fileGenerationService = Objects.requireNonNull(fileGenerationService, "fileGenerationService must not be null");
 	}
 
 	@Override
@@ -29,47 +27,43 @@ public class OrderStepExecutionListener implements StepExecutionListener {
 	@Override
 	public ExitStatus afterStep(StepExecution stepExecution) {
 		String jobId = stepExecution.getJobParameters().getString("jobId");
-		ExecutionContext jobContext = stepExecution.getJobExecution().getExecutionContext();
+		ExecutionContext jobContext = Objects.requireNonNull(stepExecution.getJobExecution().getExecutionContext());
 
-		// Determine Step Success
-		// A step is successful if its status is COMPLETED and no exceptions occurred.
-		boolean isSuccess = stepExecution.getStatus() == BatchStatus.COMPLETED;
-
-		try {
-			if (orderItemWriter != null) {
-				// Inform writer of success, so it can write XML footers during close()
-				orderItemWriter.setStepSuccessful(isSuccess);
-
-				// Hand off .part file path to Job Execution Context
-				// for SHA-256 calculation
-				// This is critical for DynamicJobExecutionListener to find the file
-				String partPath = orderItemWriter.getPartFilePath();
-				if (partPath != null) {
-					jobContext.putString("partFilePath", partPath);
-					logger.debug("Handed off partFilePath to JobContext: {}", partPath);
-				}
-			}
-
-			// Extract and Persist Standardized Metrics
-			// Keys here MUST match OrderItemProcessor/DynamicItemProcessor constants
-			long processed = stepExecution.getWriteCount();
-			long skipped = stepExecution.getProcessSkipCount();
-			long invalid = stepExecution.getWriteSkipCount() + stepExecution.getFilterCount();
-
-			if (jobId != null) {
-				fileGenerationService.updateFileMetrics(jobId, processed, skipped, invalid);
-				logger.info("Step metrics persisted: jobId={}, processed={}, skipped={}, invalid={}",
-						jobId, processed, skipped, invalid);
-
-				// Store total record count at job level for logging/summary
-				jobContext.putLong("totalRecordCount", processed);
-			}
-
-		} catch (Exception e) {
-			// We catch but don't fail the job, as the file is likely already written
-			logger.error("Non-critical error in OrderStepExecutionListener for jobId: {}", jobId, e);
+		long duration = 0;
+		if (stepExecution.getStartTime() != null && stepExecution.getEndTime() != null) {
+			duration = stepExecution.getEndTime().getTime() - stepExecution.getStartTime().getTime();
+		} else {
+			logger.warn("Step {} missing start or end time; duration set to 0", stepExecution.getStepName());
 		}
 
-		return stepExecution.getExitStatus();
+		logger.info("Step {} completed in {} ms [jobId={}]", stepExecution.getStepName(), duration, jobId);
+
+		long readCount = stepExecution.getReadCount();
+		long processed = stepExecution.getWriteCount();
+		long skipped = stepExecution.getProcessSkipCount();
+		long invalid = stepExecution.getWriteSkipCount() + stepExecution.getFilterCount();
+
+		logger.info("Step {} metrics: read={}, processed={}, skipped={}, invalid={}, duration={}ms, jobId={}",
+				stepExecution.getStepName(), readCount, processed, skipped, invalid, duration, jobId);
+
+		try {
+			if (jobId != null) {
+				fileGenerationService.updateFileMetrics(jobId, processed, skipped, invalid);
+			} else {
+				logger.warn("Step {}: jobId is null; skipping metrics persistence", stepExecution.getStepName());
+			}
+		} catch (Exception e) {
+			logger.error("Failed to update metrics for step {} [jobId={}]: read={}, processed={}, skipped={}, invalid={}",
+					stepExecution.getStepName(), jobId, readCount, processed, skipped, invalid, e);
+		}
+
+		jobContext.putLong("totalRecordCount", processed);
+		jobContext.putLong("totalReadCount", readCount);
+
+		if (stepExecution.getStatus() != BatchStatus.COMPLETED) {
+			logger.warn("Step {} completed with status: {}", stepExecution.getStepName(), stepExecution.getStatus());
+		}
+
+		return stepExecution.getStatus() == BatchStatus.COMPLETED ? ExitStatus.COMPLETED : ExitStatus.FAILED;
 	}
 }

@@ -20,7 +20,7 @@
     <!-- ORDER Record Type (Parent) with nested LineItems -->
     <xs:complexType name="OrderType">
         <xs:sequence>
-            <xs:element name="orderId" type="xs:string"/>
+            <xs:element name="orderId" type="xs:long"/>
             <xs:element name="orderNumber" type="xs:string"/>
             <xs:element name="orderAmount" type="xs:decimal" minOccurs="0"/>
             <xs:element name="orderDate" type="xs:string" minOccurs="0"/>

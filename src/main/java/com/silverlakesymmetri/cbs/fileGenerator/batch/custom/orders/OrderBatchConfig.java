@@ -19,6 +19,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.DeadlockLoserDataAccessException;
 import org.springframework.dao.TransientDataAccessException;
 
 import java.io.FileNotFoundException;
@@ -62,11 +63,12 @@ public class OrderBatchConfig {
 		this.orderItemWriter = orderItemWriter;
 		this.fileValidationTasklet = fileValidationTasklet;
 		this.batchCleanupTasklet = batchCleanupTasklet;
+		logger.info("Configuring orderFileGeneration with chunk size {}", chunkSize);
 	}
 
 	@Bean
 	public OrderStepExecutionListener orderStepListener() {
-		return new OrderStepExecutionListener(orderItemWriter, fileGenerationService);
+		return new OrderStepExecutionListener(fileGenerationService);
 	}
 
 	// Define the Job Listener as a Bean
@@ -83,13 +85,14 @@ public class OrderBatchConfig {
 				.incrementer(new RunIdIncrementer())
 				.listener(sharedJobListener)
 				.start(orderFileGenerationStep())
-				.on(BatchStatus.COMPLETED.name()).to(orderFileValidationStep())
+				.on("COMPLETED").to(orderFileValidationStep())
 				// If Generation fails, go to cleanup, then FAIL the job
 				.from(orderFileGenerationStep()).on("*").to(orderCleanupStep())
 				.on("*").fail()
 				// If Validation fails, go to cleanup, then FAIL the job
 				.from(orderFileValidationStep()).on("FAILED").to(orderCleanupStep())
 				.on("*").fail()
+				.from(orderFileValidationStep()).on("COMPLETED").end()
 				.end()
 				.build();
 	}
@@ -101,8 +104,6 @@ public class OrderBatchConfig {
 	 */
 	@Bean
 	public Step orderFileGenerationStep() {
-		logger.info("Configuring orderFileGenerationStep with chunk size {}", chunkSize);
-
 		return stepBuilderFactory.get("orderFileGenerationStep")
 				.<OrderDto, OrderDto>chunk(chunkSize)
 				.reader(orderItemReader)
@@ -113,16 +114,13 @@ public class OrderBatchConfig {
 				.faultTolerant()
 				.retry(TransientDataAccessException.class)
 				.retry(SQLTransientConnectionException.class)
+				.retry(DeadlockLoserDataAccessException.class)
 				.noRetry(SQLSyntaxErrorException.class)
 				.retryLimit(3)
 
 				// Skip Logic (skip bad data rows, but crash on system errors)
 				.skip(ValidationException.class)
 				.skip(DataIntegrityViolationException.class)
-				.noSkip(NullPointerException.class)
-				.noSkip(Exception.class)
-				.noSkip(IOException.class)
-				.noSkip(FileNotFoundException.class)
 				.skipLimit(100)
 
 				// --- Listeners ---
