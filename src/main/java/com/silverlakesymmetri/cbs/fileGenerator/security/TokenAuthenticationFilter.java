@@ -1,5 +1,6 @@
 package com.silverlakesymmetri.cbs.fileGenerator.security;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -17,6 +18,8 @@ import java.util.Collections;
 public class TokenAuthenticationFilter extends OncePerRequestFilter {
 
 	private final TokenValidator tokenValidator;
+	@Value("${auth.token.header-name}")
+	private String tokenHeaderName;
 
 	public TokenAuthenticationFilter(TokenValidator tokenValidator) {
 		this.tokenValidator = tokenValidator;
@@ -25,8 +28,8 @@ public class TokenAuthenticationFilter extends OncePerRequestFilter {
 	@Override
 	protected void doFilterInternal(HttpServletRequest request,
 									HttpServletResponse response,
-									FilterChain chain)
-			throws ServletException, IOException {
+									FilterChain chain
+	) throws ServletException, IOException {
 
 		String token = extractToken(request);
 
@@ -42,11 +45,11 @@ public class TokenAuthenticationFilter extends OncePerRequestFilter {
 	}
 
 	private String extractToken(HttpServletRequest request) {
-		String token = request.getHeader("X-AUTH-TOKEN");
+		String token = request.getHeader(tokenHeaderName);
 
 		if (token == null && request.getCookies() != null) {
 			for (Cookie c : request.getCookies()) {
-				if ("X-AUTH-TOKEN".equals(c.getName())) {
+				if (tokenHeaderName.equals(c.getName())) {
 					return c.getValue();
 				}
 			}
