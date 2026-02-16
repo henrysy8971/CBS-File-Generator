@@ -1,4 +1,4 @@
-package com.silverlakesymmetri.cbs.fileGenerator.batch;
+package com.silverlakesymmetri.cbs.fileGenerator.tasklets;
 
 import com.silverlakesymmetri.cbs.fileGenerator.config.InterfaceConfigLoader;
 import com.silverlakesymmetri.cbs.fileGenerator.config.model.InterfaceConfig;

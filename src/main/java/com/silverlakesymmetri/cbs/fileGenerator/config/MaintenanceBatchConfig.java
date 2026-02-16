@@ -1,5 +1,6 @@
-package com.silverlakesymmetri.cbs.fileGenerator.batch;
+package com.silverlakesymmetri.cbs.fileGenerator.config;
 
+import com.silverlakesymmetri.cbs.fileGenerator.tasklets.BatchCleanupTasklet;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.JobBuilderFactory;

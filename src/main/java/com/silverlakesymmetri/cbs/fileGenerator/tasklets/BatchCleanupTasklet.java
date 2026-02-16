@@ -1,4 +1,4 @@
-package com.silverlakesymmetri.cbs.fileGenerator.batch;
+package com.silverlakesymmetri.cbs.fileGenerator.tasklets;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
