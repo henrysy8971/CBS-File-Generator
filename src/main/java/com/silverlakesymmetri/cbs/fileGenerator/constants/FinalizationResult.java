@@ -1,4 +1,4 @@
-package com.silverlakesymmetri.cbs.fileGenerator.model;
+package com.silverlakesymmetri.cbs.fileGenerator.constants;
 
 public enum FinalizationResult {
 	SUCCESS(true, false),

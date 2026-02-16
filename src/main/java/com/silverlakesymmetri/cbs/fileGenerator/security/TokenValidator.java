@@ -58,8 +58,4 @@ public class TokenValidator {
 
 		return true;
 	}
-
-	public Optional<DbToken> getToken(String token) {
-		return dbTokenRepository.findByTokenValueAndActiveTrue(token);
-	}
 }

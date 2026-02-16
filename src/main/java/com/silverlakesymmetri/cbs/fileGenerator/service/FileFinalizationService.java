@@ -1,6 +1,6 @@
 package com.silverlakesymmetri.cbs.fileGenerator.service;
 
-import com.silverlakesymmetri.cbs.fileGenerator.model.FinalizationResult;
+import com.silverlakesymmetri.cbs.fileGenerator.constants.FinalizationResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;

@@ -1,6 +1,6 @@
 package com.silverlakesymmetri.cbs.fileGenerator.batch;
 
-import com.silverlakesymmetri.cbs.fileGenerator.model.FinalizationResult;
+import com.silverlakesymmetri.cbs.fileGenerator.constants.FinalizationResult;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileFinalizationService;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
 import org.slf4j.Logger;
