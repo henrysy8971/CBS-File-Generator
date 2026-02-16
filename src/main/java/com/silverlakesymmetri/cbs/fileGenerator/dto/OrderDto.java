@@ -1,22 +1,26 @@
 package com.silverlakesymmetri.cbs.fileGenerator.dto;
 
-import javax.xml.bind.annotation.XmlAccessType;
-import javax.xml.bind.annotation.XmlAccessorType;
-import javax.xml.bind.annotation.XmlRootElement;
-import javax.xml.bind.annotation.XmlType;
+import javax.xml.bind.annotation.*;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
-@XmlRootElement(name = "order", namespace = "order")
+@XmlRootElement(name = "order", namespace = "http://www.example.com/order")
 @XmlAccessorType(XmlAccessType.FIELD)
-@XmlType(namespace = "order", propOrder = {
-		"orderId", "orderNumber", "orderAmount", "orderDate",
-		"customerId", "customerName", "status", "lineItems"
+// IMPORTANT: strict XSD sequence enforcement
+@XmlType(namespace = "http://www.example.com/order", propOrder = {
+		"orderId",
+		"orderNumber",
+		"orderAmount",
+		"orderDate",
+		"customerId",
+		"customerName",
+		"status",
+		"lineItems"
 })
 public class OrderDto implements Serializable {
-	private Long orderId;
+	private String orderId;
 	private String orderNumber;
 	private BigDecimal orderAmount;
 	private String orderDate;
@@ -25,6 +29,8 @@ public class OrderDto implements Serializable {
 	private String status;
 
 	// Child list
+	@XmlElementWrapper(name = "lineItems", namespace = "http://www.example.com/order")
+	@XmlElement(name = "lineItem", namespace = "http://www.example.com/order")
 	private List<LineItemDto> lineItems;
 
 	// Constructors
@@ -32,18 +38,18 @@ public class OrderDto implements Serializable {
 		this.lineItems = new ArrayList<>();
 	}
 
-	public OrderDto(Long orderId, String orderNumber) {
+	public OrderDto(String orderId, String orderNumber) {
 		this();
 		this.orderId = orderId;
 		this.orderNumber = orderNumber;
 	}
 
 	// Getters and Setters
-	public Long getOrderId() {
+	public String getOrderId() {
 		return orderId;
 	}
 
-	public void setOrderId(Long orderId) {
+	public void setOrderId(String orderId) {
 		this.orderId = orderId;
 	}
 

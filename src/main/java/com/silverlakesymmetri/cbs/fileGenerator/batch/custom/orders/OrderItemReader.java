@@ -34,7 +34,7 @@ public class OrderItemReader implements ItemStreamReader<OrderDto> {
 	private final OrderRowMapper orderRowMapper;
 
 	private Iterator<Order> resultIterator;
-	private Long lastProcessedId;
+	private String lastProcessedId;
 	private long totalProcessed;
 
 	public OrderItemReader(
@@ -118,7 +118,7 @@ public class OrderItemReader implements ItemStreamReader<OrderDto> {
 	public void open(ExecutionContext executionContext) {
 		this.totalProcessed = executionContext.getLong(CONTEXT_KEY_TOTAL, 0L);
 		this.lastProcessedId = executionContext.containsKey(CONTEXT_KEY_LAST_ID)
-				? executionContext.getLong(CONTEXT_KEY_LAST_ID)
+				? executionContext.getString(CONTEXT_KEY_LAST_ID)
 				: null;
 
 		logger.info(
@@ -133,7 +133,7 @@ public class OrderItemReader implements ItemStreamReader<OrderDto> {
 	public void update(ExecutionContext executionContext) {
 		executionContext.putLong(CONTEXT_KEY_TOTAL, totalProcessed);
 		if (lastProcessedId != null) {
-			executionContext.putLong(CONTEXT_KEY_LAST_ID, lastProcessedId);
+			executionContext.put(CONTEXT_KEY_LAST_ID, lastProcessedId);
 		}
 	}
 

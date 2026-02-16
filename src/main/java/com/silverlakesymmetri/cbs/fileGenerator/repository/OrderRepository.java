@@ -18,7 +18,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 	Page<Tuple> findActiveIds(Pageable pageable);
 
 	@Query("SELECT o.orderId as id FROM Order o WHERE o.status = 'ACTIVE' AND o.orderId > :lastId ORDER BY o.orderId ASC")
-	Page<Tuple> findActiveIdsAfter(@Param("lastId") Long lastId, Pageable pageable);
+	Page<Tuple> findActiveIdsAfter(@Param("lastId") String lastId, Pageable pageable);
 
 	@Query("SELECT DISTINCT o FROM Order o " +
 			"LEFT JOIN FETCH o.lineItems " +

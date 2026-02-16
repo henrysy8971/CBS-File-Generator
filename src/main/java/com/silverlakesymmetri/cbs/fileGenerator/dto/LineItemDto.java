@@ -1,21 +1,26 @@
 package com.silverlakesymmetri.cbs.fileGenerator.dto;
 
-import javax.xml.bind.annotation.XmlAccessType;
-import javax.xml.bind.annotation.XmlAccessorType;
-import javax.xml.bind.annotation.XmlRootElement;
-import javax.xml.bind.annotation.XmlType;
+import javax.xml.bind.annotation.*;
 import java.io.Serializable;
 import java.math.BigDecimal;
 
-@XmlRootElement(name = "lineItem", namespace = "order")
 @XmlAccessorType(XmlAccessType.FIELD)
-@XmlType(namespace = "order", propOrder = {
-		"lineItemId", "orderId", "productId", "productName",
-		"quantity", "unitPrice", "lineAmount", "status"
+@XmlRootElement(name = "lineItem", namespace = "http://www.example.com/order")
+// IMPORTANT: strict XSD sequence enforcement
+@XmlType(namespace = "http://www.example.com/order", propOrder = {
+		"lineItemId",
+		"productId",
+		"productName",
+		"quantity",
+		"unitPrice",
+		"lineAmount",
+		"status"
 })
 public class LineItemDto implements Serializable {
 	private String lineItemId;
-	private Long orderId;
+	// Internal use only - Not in XSD LineItemType
+	@XmlTransient
+	private String orderId;
 	private String productId;
 	private String productName;
 	private Integer quantity;
@@ -41,11 +46,11 @@ public class LineItemDto implements Serializable {
 		this.lineItemId = lineItemId;
 	}
 
-	public Long getOrderId() {
+	public String getOrderId() {
 		return orderId;
 	}
 
-	public void setOrderId(Long orderId) {
+	public void setOrderId(String orderId) {
 		this.orderId = orderId;
 	}
 

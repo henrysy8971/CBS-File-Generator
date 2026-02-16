@@ -11,7 +11,7 @@ import java.util.List;
 public class Order implements Serializable {
 	@Id
 	@Column(name = "ORDER_ID")
-	private Long orderId;
+	private String orderId;
 
 	@Column(name = "ORDER_NUMBER", nullable = false)
 	private String orderNumber;
@@ -40,18 +40,18 @@ public class Order implements Serializable {
 		this.lineItems = new ArrayList<>();
 	}
 
-	public Order(Long orderId, String orderNumber) {
+	public Order(String orderId, String orderNumber) {
 		this();
 		this.orderId = orderId;
 		this.orderNumber = orderNumber;
 	}
 
 	// Getters and Setters
-	public Long getOrderId() {
+	public String getOrderId() {
 		return orderId;
 	}
 
-	public void setOrderId(Long orderId) {
+	public void setOrderId(String orderId) {
 		this.orderId = orderId;
 	}
 
