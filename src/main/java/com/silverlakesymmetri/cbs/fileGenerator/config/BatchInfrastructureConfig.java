@@ -52,7 +52,7 @@ public class BatchInfrastructureConfig {
 	}
 
 	@Bean
-	@Primary // Ensure this one is used by the BatchJobLauncher service
+	@Primary // Ensure this one is used by the BatchJobLauncherService
 	public JobLauncher jobLauncher(JobRepository jobRepository) throws Exception {
 		SimpleJobLauncher jobLauncher = new SimpleJobLauncher();
 		jobLauncher.setJobRepository(jobRepository);

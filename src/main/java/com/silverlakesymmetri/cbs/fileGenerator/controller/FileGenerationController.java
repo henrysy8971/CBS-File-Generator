@@ -7,7 +7,7 @@ import com.silverlakesymmetri.cbs.fileGenerator.dto.FileGenerationResponse;
 import com.silverlakesymmetri.cbs.fileGenerator.dto.PagedResponse;
 import com.silverlakesymmetri.cbs.fileGenerator.entity.FileGeneration;
 import com.silverlakesymmetri.cbs.fileGenerator.exception.*;
-import com.silverlakesymmetri.cbs.fileGenerator.service.BatchJobLauncher;
+import com.silverlakesymmetri.cbs.fileGenerator.service.BatchJobLauncherService;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
 import com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationStatus;
 import com.silverlakesymmetri.cbs.fileGenerator.service.RateLimiterService;
@@ -48,7 +48,7 @@ public class FileGenerationController {
 	private static final Logger logger = LoggerFactory.getLogger(FileGenerationController.class);
 
 	private final FileGenerationService fileGenerationService;
-	private final BatchJobLauncher batchJobLauncher;
+	private final BatchJobLauncherService batchJobLauncherService;
 	private final InterfaceConfigLoader interfaceConfigLoader;
 	private final RateLimiterService rateLimiterService;
 	private final AtomicBoolean outputDirValid = new AtomicBoolean(false);
@@ -61,11 +61,11 @@ public class FileGenerationController {
 	@Autowired
 	public FileGenerationController(
 			FileGenerationService fileGenerationService,
-			BatchJobLauncher batchJobLauncher,
+			BatchJobLauncherService batchJobLauncherService,
 			InterfaceConfigLoader interfaceConfigLoader,
 			RateLimiterService rateLimiterService) {
 		this.fileGenerationService = fileGenerationService;
-		this.batchJobLauncher = batchJobLauncher;
+		this.batchJobLauncherService = batchJobLauncherService;
 		this.interfaceConfigLoader = interfaceConfigLoader;
 		this.rateLimiterService = rateLimiterService;
 	}
@@ -163,7 +163,7 @@ public class FileGenerationController {
 		}
 
 		// ===== Launch batch job asynchronously =====
-		batchJobLauncher.launchFileGenerationJob(fileGen.getJobId(), interfaceType, requestId);
+		batchJobLauncherService.launchFileGenerationJob(fileGen.getJobId(), interfaceType, requestId);
 
 		logger.info("File generation job queued - JobId: {}, Interface: {}",
 				fileGen.getJobId(), interfaceType);

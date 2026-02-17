@@ -14,7 +14,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * <ul>
  *   <li><b>Orchestration:</b> Quartz Scheduler (configured in {@code QuartzConfig}) triggers jobs.</li>
  *   <li><b>Execution:</b> Spring Batch processes data using Dynamic or Custom Readers/Writers.</li>
- *   <li><b>Concurrency:</b> Jobs are launched asynchronously via {@code BatchJobLauncher}.</li>
+ *   <li><b>Concurrency:</b> Jobs are launched asynchronously via {@code BatchJobLauncherService}.</li>
  * </ul>
  *
  * <p>Note on Annotations:</p>
@@ -25,7 +25,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  */
 @SpringBootApplication
 @EnableRetry           // Enables @Retryable (used in FileGenerationService for database locking recovery)
-@EnableAsync           // Enables @Async (used in BatchJobLauncher for non-blocking execution)
+@EnableAsync           // Enables @Async (used in BatchJobLauncherService for non-blocking execution)
 @EnableScheduling      // REQUIRED: Enables @Scheduled in AppConfigService
 @ComponentScan(basePackages = "com.silverlakesymmetri.cbs") // Ensures all sub-packages (config, batch, service) are scanned
 public class FileGeneratorApplication {

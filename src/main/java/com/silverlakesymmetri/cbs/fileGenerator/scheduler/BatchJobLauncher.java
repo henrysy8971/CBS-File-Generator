@@ -3,6 +3,7 @@ package com.silverlakesymmetri.cbs.fileGenerator.scheduler;
 import com.silverlakesymmetri.cbs.fileGenerator.config.InterfaceConfigLoader;
 import com.silverlakesymmetri.cbs.fileGenerator.config.model.InterfaceConfig;
 import com.silverlakesymmetri.cbs.fileGenerator.entity.FileGeneration;
+import com.silverlakesymmetri.cbs.fileGenerator.service.BatchJobLauncherService;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
 import org.quartz.DisallowConcurrentExecution;
 import org.quartz.JobDataMap;
@@ -23,18 +24,18 @@ import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationC
 public class BatchJobLauncher extends QuartzJobBean {
 	private static final Logger logger = LoggerFactory.getLogger(BatchJobLauncher.class);
 
-	private final com.silverlakesymmetri.cbs.fileGenerator.service.BatchJobLauncher batchJobLauncher;
+	private final BatchJobLauncherService batchJobLauncherService;
 	private final FileGenerationService fileGenerationService;
 	private final InterfaceConfigLoader interfaceConfigLoader;
 	private final String outputDir;
 
 	public BatchJobLauncher(
-			com.silverlakesymmetri.cbs.fileGenerator.service.BatchJobLauncher batchJobLauncher,
+			BatchJobLauncherService batchJobLauncherService,
 			FileGenerationService fileGenerationService,
 			InterfaceConfigLoader interfaceConfigLoader,
 			@Value("${file.generation.output-directory}") String outputDir
 	) {
-		this.batchJobLauncher = batchJobLauncher;
+		this.batchJobLauncherService = batchJobLauncherService;
 		this.fileGenerationService = fileGenerationService;
 		this.interfaceConfigLoader = interfaceConfigLoader;
 		this.outputDir = outputDir;
@@ -76,7 +77,7 @@ public class BatchJobLauncher extends QuartzJobBean {
 			fileGenerationService.markQueued(fileGen.getJobId());
 
 			// 2. Launch the Spring Batch Job
-			batchJobLauncher.launchFileGenerationJob(fileGen.getJobId(), interfaceType, requestId);
+			batchJobLauncherService.launchFileGenerationJob(fileGen.getJobId(), interfaceType, requestId);
 		} catch (Exception e) {
 			logger.error("Failed to launch scheduled job for {}", interfaceType, e);
 			throw new JobExecutionException(e);

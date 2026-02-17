@@ -1,7 +1,7 @@
 package com.silverlakesymmetri.cbs.fileGenerator.scheduler;
 
 import com.silverlakesymmetri.cbs.fileGenerator.entity.FileGeneration;
-import com.silverlakesymmetri.cbs.fileGenerator.service.BatchJobLauncher;
+import com.silverlakesymmetri.cbs.fileGenerator.service.BatchJobLauncherService;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
 import org.quartz.DisallowConcurrentExecution;
 import org.quartz.JobExecutionContext;
@@ -21,11 +21,11 @@ import java.util.UUID;
 public class FileGenerationScheduler extends QuartzJobBean {
 	private static final Logger logger = LoggerFactory.getLogger(FileGenerationScheduler.class);
 	private final FileGenerationService fileGenerationService;
-	private final BatchJobLauncher batchJobLauncher;
+	private final BatchJobLauncherService batchJobLauncherService;
 
-	public FileGenerationScheduler(FileGenerationService fileGenerationService, BatchJobLauncher batchJobLauncher) {
+	public FileGenerationScheduler(FileGenerationService fileGenerationService, BatchJobLauncherService batchJobLauncherService) {
 		this.fileGenerationService = fileGenerationService;
-		this.batchJobLauncher = batchJobLauncher;
+		this.batchJobLauncherService = batchJobLauncherService;
 	}
 
 	@Override
@@ -47,7 +47,7 @@ public class FileGenerationScheduler extends QuartzJobBean {
 
 					logger.info("Poller claiming request: {} for interface: {}", fileGen.getJobId(), fileGen.getInterfaceType());
 					// Pass requestId to the updated signature we discussed
-					batchJobLauncher.launchFileGenerationJob(
+					batchJobLauncherService.launchFileGenerationJob(
 							fileGen.getJobId(),
 							fileGen.getInterfaceType(),
 							requestId

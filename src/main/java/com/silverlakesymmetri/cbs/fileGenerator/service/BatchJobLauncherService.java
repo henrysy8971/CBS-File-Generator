@@ -26,8 +26,8 @@ import java.util.Map;
 import java.util.Optional;
 
 @Service
-public class BatchJobLauncher {
-	private static final Logger logger = LoggerFactory.getLogger(BatchJobLauncher.class);
+public class BatchJobLauncherService {
+	private static final Logger logger = LoggerFactory.getLogger(BatchJobLauncherService.class);
 	private final JobLauncher jobLauncher;
 	private final Job defaultJob;
 	private final InterfaceConfigLoader interfaceConfigLoader;
@@ -38,11 +38,11 @@ public class BatchJobLauncher {
 	private String outputDirectory;
 
 	@Autowired
-	public BatchJobLauncher(JobLauncher jobLauncher,
-							@Qualifier("dynamicFileGenerationJob") Job defaultJob, // Explicitly pick the generic job
-							InterfaceConfigLoader interfaceConfigLoader,
-							FileGenerationService fileGenerationService,
-							Map<String, Job> allJobs) {
+	public BatchJobLauncherService(JobLauncher jobLauncher,
+								   @Qualifier("dynamicFileGenerationJob") Job defaultJob, // Explicitly pick the generic job
+								   InterfaceConfigLoader interfaceConfigLoader,
+								   FileGenerationService fileGenerationService,
+								   Map<String, Job> allJobs) {
 		this.jobLauncher = jobLauncher;
 		this.defaultJob = defaultJob;
 		this.interfaceConfigLoader = interfaceConfigLoader;

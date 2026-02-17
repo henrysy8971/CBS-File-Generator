@@ -29,7 +29,7 @@ public class MaintenanceBatchConfig {
 
 	/**
 	 * The Cleanup Job.
-	 * This bean name "cleanupJob" will be visible in the BatchJobLauncher map.
+	 * This bean name "cleanupJob" will be visible in the BatchJobLauncherService map.
 	 */
 	@Bean
 	public Job cleanupJob() {
