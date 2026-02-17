@@ -1,6 +1,6 @@
 package com.silverlakesymmetri.cbs.fileGenerator.config;
 
-import com.silverlakesymmetri.cbs.fileGenerator.batch.listeners.JobExecutionListener;
+import com.silverlakesymmetri.cbs.fileGenerator.batch.listeners.FileGenerationJobListener;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileFinalizationService;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
 import org.slf4j.Logger;
@@ -76,10 +76,10 @@ public class BatchInfrastructureConfig {
 	}
 
 	@Bean
-	public JobExecutionListener sharedJobListener(
+	public FileGenerationJobListener sharedJobListener(
 			FileFinalizationService finalizationService,
 			FileGenerationService generationService) {
-		return new JobExecutionListener(finalizationService, generationService);
+		return new FileGenerationJobListener(finalizationService, generationService);
 	}
 
 	@Bean

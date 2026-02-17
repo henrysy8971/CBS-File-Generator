@@ -7,7 +7,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.JobExecution;
+import org.springframework.batch.core.JobExecutionListener;
+import org.springframework.batch.item.NonTransientResourceException;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
 
 /**
  * Job listener for safe finalization of .part files after batch completion.
@@ -17,25 +20,30 @@ import org.springframework.beans.factory.annotation.Autowired;
  * - Restart-safe behavior
  * - Backward-compatible constructors
  */
-public class JobExecutionListener implements org.springframework.batch.core.JobExecutionListener {
-	private static final Logger logger = LoggerFactory.getLogger(JobExecutionListener.class);
+@Component
+public class FileGenerationJobListener implements JobExecutionListener {
+	private static final Logger logger = LoggerFactory.getLogger(FileGenerationJobListener.class);
 	private final FileFinalizationService fileFinalizationService;
 	private final FileGenerationService fileGenerationService;
 
 	@Autowired
-	public JobExecutionListener(FileFinalizationService fileFinalizationService, FileGenerationService fileGenerationService) {
+	public FileGenerationJobListener(FileFinalizationService fileFinalizationService, FileGenerationService fileGenerationService) {
 		this.fileFinalizationService = fileFinalizationService;
 		this.fileGenerationService = fileGenerationService;
 	}
 
 	@Override
 	public void beforeJob(JobExecution jobExecution) {
-		logger.debug("Job started: {}", jobExecution.getJobInstance().getJobName());
+		logger.debug("Job started: {}, Job ID: {}", jobExecution.getJobInstance().getJobName(), jobExecution.getId());
 	}
 
 	@Override
 	public void afterJob(JobExecution jobExecution) {
 		String jobId = jobExecution.getJobParameters().getString("jobId");
+		if (jobId == null || jobId.trim().isEmpty()) {
+			logger.error("Missing JobParameter 'jobId'; cannot finalize file.");
+			return;
+		}
 		String partFilePath = jobExecution.getExecutionContext().getString("partFilePath", null);
 		String currentPath = partFilePath;
 
@@ -44,7 +52,7 @@ public class JobExecutionListener implements org.springframework.batch.core.JobE
 			return;
 		}
 
-		String finalFilePath = partFilePath.replaceAll("\\.part$", "");
+		String finalFilePath = partFilePath.replaceFirst("\\.part$", "");
 
 		// Handle FAILED or STOPPED jobs
 		if (jobExecution.getStatus() != BatchStatus.COMPLETED) {
@@ -60,7 +68,7 @@ public class JobExecutionListener implements org.springframework.batch.core.JobE
 			if (!FinalizationResult.SUCCESS.equals(finalizationResult)) {
 				String msg = "Atomic rename failed for " + partFilePath + ". Reason - " + finalizationResult.toString();
 				logger.error(msg);
-				throw new RuntimeException(msg);
+				throw new NonTransientResourceException(msg);
 			}
 
 			currentPath = finalFilePath;
@@ -70,7 +78,7 @@ public class JobExecutionListener implements org.springframework.batch.core.JobE
 			if (!verified) {
 				String msg = "SHA256 checksum mismatch for " + finalFilePath;
 				logger.error(msg);
-				throw new RuntimeException(msg);
+				throw new NonTransientResourceException(msg);
 			}
 
 			// Only mark as COMPLETED if all file operations succeeded

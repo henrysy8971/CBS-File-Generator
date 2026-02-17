@@ -1,7 +1,7 @@
 package com.silverlakesymmetri.cbs.fileGenerator.batch.custom.orders;
 
-import com.silverlakesymmetri.cbs.fileGenerator.batch.listeners.JobExecutionListener;
-import com.silverlakesymmetri.cbs.fileGenerator.batch.listeners.StepExecutionListener;
+import com.silverlakesymmetri.cbs.fileGenerator.batch.listeners.FileGenerationJobListener;
+import com.silverlakesymmetri.cbs.fileGenerator.batch.listeners.FileGenerationStepListener;
 import com.silverlakesymmetri.cbs.fileGenerator.dto.OrderDto;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
 import com.silverlakesymmetri.cbs.fileGenerator.tasklets.BatchCleanupTasklet;
@@ -65,8 +65,8 @@ public class OrderBatchConfig {
 	}
 
 	@Bean
-	public StepExecutionListener orderStepExecutionListener() {
-		return new StepExecutionListener(fileGenerationService);
+	public FileGenerationStepListener orderStepExecutionListener() {
+		return new FileGenerationStepListener(fileGenerationService);
 	}
 
 	@Bean
@@ -77,7 +77,7 @@ public class OrderBatchConfig {
 	}
 
 	@Bean(name = ORDER_INTERFACE)
-	public Job orderFileGenerationJob(JobExecutionListener sharedJobListener) {
+	public Job orderFileGenerationJob(FileGenerationJobListener sharedJobListener) {
 		return jobBuilderFactory.get(ORDER_INTERFACE)
 				.incrementer(new RunIdIncrementer())
 				.listener(sharedJobListener)

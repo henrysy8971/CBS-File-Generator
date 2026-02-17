@@ -98,7 +98,7 @@ public class OrderItemWriter extends StaxEventItemWriter<OrderDto> implements St
 		super.write(items);
 	}
 
-	// --- StepExecutionListener Logic ---
+	// --- FileGenerationStepListener Logic ---
 	@Override
 	public void beforeStep(StepExecution stepExecution) {
 		// On restart, sync the local count with what's already in the DB
@@ -111,7 +111,7 @@ public class OrderItemWriter extends StaxEventItemWriter<OrderDto> implements St
 	public ExitStatus afterStep(StepExecution stepExecution) {
 		ExecutionContext jobContext = stepExecution.getJobExecution().getExecutionContext();
 
-		// Pass the file path to the JobContext for the JobExecutionListener
+		// Pass the file path to the JobContext for the FileGenerationJobListener
 		if (this.partFilePath != null) {
 			jobContext.putString("partFilePath", this.partFilePath);
 			logger.debug("Step {} handed off partFilePath to JobContext: {}",
