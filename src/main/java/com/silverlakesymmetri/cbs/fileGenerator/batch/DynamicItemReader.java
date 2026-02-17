@@ -124,7 +124,6 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 			logger.error("Non-transient resource failure while reading interface {}", interfaceType, e);
 			throw e;
 		} catch (PersistenceException e) {
-			// Likely database issue – treat as fatal
 			logger.error("Persistence error while reading interface {}", interfaceType, e);
 			throw new NonTransientResourceException("Persistence error reading interface " + interfaceType, e);
 		} catch (RuntimeException e) {

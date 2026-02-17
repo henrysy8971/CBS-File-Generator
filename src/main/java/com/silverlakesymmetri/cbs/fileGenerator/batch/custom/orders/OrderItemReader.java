@@ -8,10 +8,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.item.ExecutionContext;
 import org.springframework.batch.item.ItemStreamReader;
+import org.springframework.batch.item.NonTransientResourceException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Component;
 
+import javax.persistence.PersistenceException;
 import javax.persistence.Tuple;
 import java.util.Collections;
 import java.util.Comparator;
@@ -45,6 +47,9 @@ public class OrderItemReader implements ItemStreamReader<OrderDto> {
 		this.orderRepository = orderRepository;
 		this.orderRowMapper = orderRowMapper;
 		this.pageSize = pageSize;
+		if (pageSize <= 0) {
+			throw new IllegalArgumentException("pageSize must be > 0");
+		}
 	}
 
 	@Override
@@ -72,9 +77,21 @@ public class OrderItemReader implements ItemStreamReader<OrderDto> {
 			}
 
 			return orderDto;
+		} catch (NonTransientResourceException e) {
+			// Fatal database error – rethrow immediately
+			logger.error("Non-transient resource failure while reading interface {}", ORDER_INTERFACE, e);
+			throw e;
+		} catch (PersistenceException e) {
+			logger.error("Persistence error while reading interface {}", ORDER_INTERFACE, e);
+			throw new NonTransientResourceException("Persistence error reading interface " + ORDER_INTERFACE, e);
+		} catch (RuntimeException e) {
+			// Programming or unexpected runtime issue
+			logger.error("Unexpected runtime error while reading interface {}", ORDER_INTERFACE, e);
+			throw e;
 		} catch (Exception e) {
-			logger.error("Error reading record for interface {}", ORDER_INTERFACE, e);
-			throw new RuntimeException(e);
+			// Truly unexpected checked exception
+			logger.error("Unexpected checked exception while reading interface {}", ORDER_INTERFACE, e);
+			throw new RuntimeException("Unexpected read failure", e);
 		}
 	}
 
