@@ -12,8 +12,6 @@
 			"xsdSchemaFile": "order_schema.xsd",
 			"outputFormat": "XML",
 			"outputFileExtension": "xml",
-			"rootElement": null,
-			"namespace": null,
 			"description": "Generate Orders Report in XML format"
 		}
 	}

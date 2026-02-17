@@ -29,8 +29,6 @@ public class InterfaceConfig {
 	private String xsdSchemaFile;
 	private OutputFormat outputFormat = DEFAULT_OUTPUT_FORMAT;
 	private String outputFileExtension = DEFAULT_FILE_EXTENSION;
-	private String rootElement;
-	private String namespace;
 	private String description;
 
 	/* ================= Getters / Setters ================= */
@@ -123,22 +121,6 @@ public class InterfaceConfig {
 		this.outputFileExtension = outputFileExtension != null ? outputFileExtension : DEFAULT_FILE_EXTENSION;
 	}
 
-	public String getRootElement() {
-		return rootElement;
-	}
-
-	public void setRootElement(String rootElement) {
-		this.rootElement = rootElement;
-	}
-
-	public String getNamespace() {
-		return namespace;
-	}
-
-	public void setNamespace(String namespace) {
-		this.namespace = namespace;
-	}
-
 	public String getDescription() {
 		return description;
 	}
@@ -163,8 +145,6 @@ public class InterfaceConfig {
 				", xsdSchemaFile='" + xsdSchemaFile + '\'' +
 				", outputFormat=" + outputFormat +
 				", outputFileExtension='" + outputFileExtension + '\'' +
-				", rootElement='" + rootElement + '\'' +
-				", namespace='" + namespace + '\'' +
 				", description='" + description + '\'' +
 				'}';
 	}

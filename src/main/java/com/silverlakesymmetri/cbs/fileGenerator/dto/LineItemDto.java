@@ -5,9 +5,9 @@ import java.io.Serializable;
 import java.math.BigDecimal;
 
 @XmlAccessorType(XmlAccessType.FIELD)
-@XmlRootElement(name = "lineItem", namespace = "http://www.example.com/order")
+@XmlRootElement(name = "lineItem")
 // IMPORTANT: strict XSD sequence enforcement
-@XmlType(namespace = "http://www.example.com/order", propOrder = {
+@XmlType(propOrder = {
 		"lineItemId",
 		"productId",
 		"productName",

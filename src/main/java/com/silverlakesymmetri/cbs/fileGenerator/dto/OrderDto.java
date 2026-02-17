@@ -6,10 +6,10 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 
-@XmlRootElement(name = "order", namespace = "http://www.example.com/order")
+@XmlRootElement(name = "order")
 @XmlAccessorType(XmlAccessType.FIELD)
 // IMPORTANT: strict XSD sequence enforcement
-@XmlType(namespace = "http://www.example.com/order", propOrder = {
+@XmlType(propOrder = {
 		"orderId",
 		"orderNumber",
 		"orderAmount",
@@ -26,11 +26,12 @@ public class OrderDto implements Serializable {
 	private String orderDate;
 	private String customerId;
 	private String customerName;
-	private String status;
+	@XmlElement(defaultValue = "ACTIVE")
+	private String status = "ACTIVE";
 
 	// Child list
-	@XmlElementWrapper(name = "lineItems", namespace = "http://www.example.com/order")
-	@XmlElement(name = "lineItem", namespace = "http://www.example.com/order")
+	@XmlElementWrapper(name = "lineItems")
+	@XmlElement(name = "lineItem")
 	private List<LineItemDto> lineItems;
 
 	// Constructors

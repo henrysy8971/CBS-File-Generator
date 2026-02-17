@@ -232,8 +232,6 @@ public class FileGenerationController {
 		target.setXsdSchemaFile(source.getXsdSchemaFile());
 		target.setOutputFormat(source.getOutputFormat());
 		target.setOutputFileExtension(source.getOutputFileExtension());
-		target.setRootElement(source.getRootElement());
-		target.setNamespace(source.getNamespace());
 		target.setKeySetColumn(source.getKeySetColumn());
 		target.setEnabled(source.isEnabled());
 		target.setDescription(source.getDescription());
