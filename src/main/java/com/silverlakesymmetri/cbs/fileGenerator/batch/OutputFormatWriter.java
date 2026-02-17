@@ -1,13 +1,14 @@
 package com.silverlakesymmetri.cbs.fileGenerator.batch;
 
 import com.silverlakesymmetri.cbs.fileGenerator.dto.DynamicRecord;
-import org.springframework.batch.item.ItemWriter;
+import org.springframework.batch.item.ItemStreamException;
+import org.springframework.batch.item.ItemStreamWriter;
 
 /**
  * Interface for pluggable output format writers.
  * Supports multiple formats: XML, CSV, Fixed-Length, Delimited, etc.
  */
-public interface OutputFormatWriter extends ItemWriter<DynamicRecord> {
+public interface OutputFormatWriter extends ItemStreamWriter<DynamicRecord> {
 
 	/**
 	 * Initialize writer with output file path and configuration
@@ -17,7 +18,7 @@ public interface OutputFormatWriter extends ItemWriter<DynamicRecord> {
 	/**
 	 * Close and finalize output file
 	 */
-	void close() throws Exception;
+	void close() throws ItemStreamException;
 
 	/**
 	 * Get total records written
@@ -32,5 +33,5 @@ public interface OutputFormatWriter extends ItemWriter<DynamicRecord> {
 	/**
 	 * Get temporary file path (before finalization)
 	 */
-	String getPartFilePath();
+	String getOutputFilePath();
 }

@@ -58,7 +58,7 @@ public class OutputFormatWriterFactory {
 			return applicationContext.getBean(writerClass);
 
 		} catch (Exception e) {
-			logger.error("Error selecting writer for interface: {}. Falling back to a fresh GenericXMLWriter instance.", interfaceType, e);
+			logger.warn("WARNING: selecting writer for interface: {}. Falling back to a fresh GenericXMLWriter instance.", interfaceType, e);
 			return applicationContext.getBean(GenericXMLWriter.class);
 		}
 	}

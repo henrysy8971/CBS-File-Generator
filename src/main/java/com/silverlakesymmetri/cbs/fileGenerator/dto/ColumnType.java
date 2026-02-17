@@ -16,4 +16,8 @@ public enum ColumnType {
 				value instanceof java.time.temporal.Temporal) return TIMESTAMP;
 		return STRING;
 	}
+
+	public boolean isNumeric() {
+		return this == INTEGER || this == DECIMAL;
+	}
 }

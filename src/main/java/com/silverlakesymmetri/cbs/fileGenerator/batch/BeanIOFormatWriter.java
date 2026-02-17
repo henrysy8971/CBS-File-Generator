@@ -3,20 +3,24 @@ package com.silverlakesymmetri.cbs.fileGenerator.batch;
 import com.silverlakesymmetri.cbs.fileGenerator.config.InterfaceConfigLoader;
 import com.silverlakesymmetri.cbs.fileGenerator.config.model.InterfaceConfig;
 import com.silverlakesymmetri.cbs.fileGenerator.dto.DynamicRecord;
-import org.beanio.*;
+import org.beanio.BeanIOConfigurationException;
+import org.beanio.BeanIOException;
+import org.beanio.BeanWriter;
+import org.beanio.StreamFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.batch.core.ExitStatus;
-import org.springframework.batch.core.StepExecution;
-import org.springframework.batch.core.StepExecutionListener;
 import org.springframework.batch.core.configuration.annotation.StepScope;
+import org.springframework.batch.item.ExecutionContext;
+import org.springframework.batch.item.ItemStreamException;
+import org.springframework.batch.item.ItemStreamWriter;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
+import org.springframework.util.Assert;
 import org.springframework.util.StringUtils;
 
 import java.io.*;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -25,87 +29,166 @@ import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Enhanced BeanIO Writer with Append-Support (Restart Safety) and Mapping Caching.
  */
 @Component
 @StepScope
-public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionListener {
+public class BeanIOFormatWriter implements OutputFormatWriter, ItemStreamWriter<DynamicRecord> {
 	private static final Logger logger = LoggerFactory.getLogger(BeanIOFormatWriter.class);
+	private static final String RESTART_KEY_OFFSET = "beanio.writer.byteOffset";
+	private static final String RESTART_KEY_COUNT = "beanio.writer.recordCount";
 	private static final Map<String, StreamFactory> FACTORY_CACHE = new ConcurrentHashMap<>();
 	private final InterfaceConfigLoader interfaceConfigLoader;
-	private final AtomicLong recordCount = new AtomicLong(0);
-
 	private BeanWriter beanIOWriter;
-	private BufferedWriter bufferedWriter;
+	private ByteTrackingOutputStream byteTrackingStream;
+	private FileOutputStream fileOutputStream;
 	private String partFilePath;
-
-	@Value("${file.generation.external.config-dir:}")
-	private String externalConfigDir;
+	private long recordCount;
+	private String interfaceType;
+	private String outputFilePath;
 
 	@Autowired
 	public BeanIOFormatWriter(InterfaceConfigLoader interfaceConfigLoader) {
 		this.interfaceConfigLoader = interfaceConfigLoader;
 	}
 
-	@Override
-	public void beforeStep(StepExecution stepExecution) {
-		long lastCommittedCount = stepExecution.getWriteCount();
-		this.recordCount.set(lastCommittedCount);
-
-		if (lastCommittedCount > 0) {
-			logger.info("Restart detected. Resuming BeanIO record count from: {}", lastCommittedCount);
-		}
-	}
-
-	@Override
-	public ExitStatus afterStep(StepExecution stepExecution) {
-		return null;
-	}
+	// --- Configuration Phase (Called by DynamicItemWriter) ---
 
 	@Override
 	public void init(String outputFilePath, String interfaceType) throws Exception {
-
-		InterfaceConfig interfaceConfig = interfaceConfigLoader.getConfig(interfaceType);
-		if (interfaceConfig == null || interfaceConfig.getBeanIoMappingFile() == null) {
-			throw new IllegalArgumentException("Invalid BeanIO interfaceConfig for: " + interfaceType);
+		if (outputFilePath == null || outputFilePath.trim().isEmpty()) {
+			throw new IllegalArgumentException("outputFilePath must not be empty");
 		}
 
-		this.partFilePath = outputFilePath.endsWith(".part") ? outputFilePath : outputFilePath + ".part";
-		File outputFile = new File(partFilePath);
+		this.outputFilePath = outputFilePath;
+		this.interfaceType = interfaceType;
+		this.partFilePath = outputFilePath.endsWith(".part")
+				? outputFilePath
+				: outputFilePath + ".part";
 
-		// RESTART LOGIC: Check if we should append
-		boolean append = outputFile.exists() && outputFile.length() > 0;
+		ensureDirectoryExists(this.outputFilePath);
+	}
 
-		File parent = outputFile.getParentFile();
-		if (parent != null && !parent.exists() && !parent.mkdirs()) {
-			throw new IOException("Failed to create directory: " + parent);
-		}
+	// --- Lifecycle Phase (Called by Spring Batch) ---
 
-		// Use BufferedWriter for significantly better I/O performance
-		this.bufferedWriter = new BufferedWriter(new OutputStreamWriter(
-				new FileOutputStream(outputFile, append), StandardCharsets.UTF_8));
+	@Override
+	public void open(ExecutionContext executionContext) throws ItemStreamException {
+		Assert.hasText(outputFilePath, "outputFilePath must not be empty");
+		Assert.hasText(interfaceType, "interfaceType must not be empty");
 
 		try {
-			StreamFactory streamFactory = getOrCreateFactory(interfaceConfig.getBeanIoMappingFile());
-			String streamName = interfaceConfig.getStreamName();
-			this.beanIOWriter = streamFactory.createWriter(streamName, bufferedWriter);
+			InterfaceConfig config = interfaceConfigLoader.getConfig(interfaceType);
+			if (config == null) throw new IllegalArgumentException("No config for " + interfaceType);
 
-			logger.info("BeanIO initialized [Append={}]: interface={}, file={}", append, interfaceType, partFilePath);
+			File file = new File(partFilePath);
+			Path parent = file.toPath().getParent();
+			if (parent != null) {
+				Files.createDirectories(parent);
+			}
+
+			// 1. Determine Restart State
+			long lastByteOffset = 0;
+			if (executionContext.containsKey(RESTART_KEY_OFFSET)) {
+				lastByteOffset = executionContext.getLong(RESTART_KEY_OFFSET, 0);
+				if (lastByteOffset < 0) lastByteOffset = 0;
+				this.recordCount = executionContext.getLong(RESTART_KEY_COUNT, 0L);
+				logger.info("Restart detected. Truncating file to byte offset: {}, records: {}", lastByteOffset, recordCount);
+			}
+
+			// 2. Open Stream and Truncate
+			this.fileOutputStream = new FileOutputStream(file, false);
+			FileChannel channel = this.fileOutputStream.getChannel();
+
+			long currentSize = channel.size();
+
+			if (lastByteOffset > currentSize) {
+				logger.warn("Stored offset {} exceeds file size {}. Resetting to file size.",
+						lastByteOffset, currentSize);
+				lastByteOffset = currentSize;
+			}
+
+			if (lastByteOffset < currentSize) {
+				channel.truncate(lastByteOffset); // CRITICAL: Cut off corrupt tail
+			}
+			channel.position(lastByteOffset);
+
+			// 3. Wrap in Byte Tracker
+			// We start tracking bytes from the current position (which is now lastByteOffset)
+			this.byteTrackingStream = new ByteTrackingOutputStream(this.fileOutputStream, lastByteOffset);
+
+			// 4. Initialize BeanIO
+			StreamFactory factory = getOrCreateFactory(config.getBeanIoMappingFile());
+			// Important: Use OutputStreamWriter with specific charset to ensure byte count matches
+			Writer writer = new OutputStreamWriter(this.byteTrackingStream, StandardCharsets.UTF_8);
+
+			this.beanIOWriter = factory.createWriter(config.getStreamName(), writer);
+
 		} catch (Exception e) {
-			close(); // Clean up on failure
-			throw e;
+			throw new ItemStreamException("Failed to initialize BeanIO writer", e);
+		}
+
+		logger.info("BeanIO writer initialized for interface={}, output={}",
+				interfaceType, partFilePath);
+	}
+
+	@Override
+	public void write(List<? extends DynamicRecord> items) throws Exception {
+		if (beanIOWriter == null) throw new IllegalStateException("Writer not opened");
+
+		for (DynamicRecord record : items) {
+			beanIOWriter.write(record.asMap());
+			recordCount++;
+		}
+
+		// Note: We do NOT flush here for performance.
+		// We only flush in update() to ensure the transaction boundary is safe.
+	}
+
+	@Override
+	public void update(ExecutionContext executionContext) {
+		if (beanIOWriter != null) {
+			// Force BeanIO to flush to the underlying ByteTrackingStream
+			beanIOWriter.flush();
+
+			// Save current state
+			executionContext.putLong(RESTART_KEY_OFFSET, byteTrackingStream.getBytesWritten());
+			executionContext.putLong(RESTART_KEY_COUNT, recordCount);
 		}
 	}
+
+	@Override
+	public void close() {
+		try {
+			if (beanIOWriter != null) {
+				beanIOWriter.close();
+			}
+		} catch (Exception e) {
+			logger.warn("Error closing beanIOWriter", e);
+		}
+		try {
+			if (fileOutputStream != null) fileOutputStream.close();
+		} catch (Exception e) {
+			logger.warn("Error closing fileOutputStream", e);
+		}
+	}
+
+	// --- Helper Methods ---
 
 	private StreamFactory getOrCreateFactory(String mappingFile) {
 		return FACTORY_CACHE.computeIfAbsent(mappingFile, file -> {
 			// 1. Try File System First
-			if (StringUtils.hasText(externalConfigDir)) {
-				String dir = externalConfigDir.trim();
-				Path baseDir = Paths.get(dir).toAbsolutePath().normalize();
+			if (StringUtils.hasText(outputFilePath)) {
+				Path outputPath = Paths.get(outputFilePath)
+						.toAbsolutePath()
+						.normalize();
+
+				Path baseDir = outputPath.getParent();
+				if (baseDir == null) {
+					baseDir = Paths.get("").toAbsolutePath();
+				}
+
 				Path externalPath = baseDir.resolve("beanio").resolve(file).normalize();
 
 				if (!externalPath.startsWith(baseDir)) {
@@ -135,51 +218,6 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 		});
 	}
 
-	@Override
-	public void write(List<? extends DynamicRecord> items) {
-		if (items == null || items.isEmpty()) return;
-		if (beanIOWriter == null) throw new IllegalStateException("Writer not initialized");
-
-		for (DynamicRecord record : items) {
-			try {
-				beanIOWriter.write(record.asMap());
-				recordCount.incrementAndGet();
-			} catch (BeanWriterException e) {
-				logger.error("Failed to write record: {}", record, e);
-				throw e;
-			}
-		}
-	}
-
-	@Override
-	public void close() {
-		try {
-			if (beanIOWriter != null) beanIOWriter.close();
-		} catch (Exception e) {
-			logger.warn("Error closing beanIOWriter", e);
-		}
-		try {
-			if (bufferedWriter != null) bufferedWriter.close();
-		} catch (Exception e) {
-			logger.warn("Error closing bufferedWriter", e);
-		}
-	}
-
-	@Override
-	public long getRecordCount() {
-		return recordCount.get();
-	}
-
-	@Override
-	public long getSkippedCount() {
-		return 0;
-	}
-
-	@Override
-	public String getPartFilePath() {
-		return partFilePath;
-	}
-
 	private StreamFactory loadFactoryFromStream(InputStream is, String filePath) {
 		StreamFactory factory = StreamFactory.newInstance();
 		try {
@@ -201,5 +239,67 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 	public static void clearFactoryCache() {
 		FACTORY_CACHE.clear();
 		logger.info("BeanIO Factory Cache cleared.");
+	}
+
+	// --- Getters ---
+	@Override
+	public long getRecordCount() {
+		return recordCount;
+	}
+
+	@Override
+	public long getSkippedCount() {
+		return 0;
+	}
+
+	@Override
+	public String getOutputFilePath() {
+		return partFilePath;
+	}
+
+	/**
+	 * Inner class to track exact byte count for restart purposes.
+	 */
+	private static class ByteTrackingOutputStream extends OutputStream {
+		private final OutputStream delegate;
+		private long bytesWritten;
+
+		public ByteTrackingOutputStream(OutputStream delegate, long initialOffset) {
+			this.delegate = delegate;
+			this.bytesWritten = initialOffset;
+		}
+
+		@Override
+		public void write(int b) throws IOException {
+			delegate.write(b);
+			bytesWritten++;
+		}
+
+		@Override
+		public void write(byte[] b, int off, int len) throws IOException {
+			delegate.write(b, off, len);
+			bytesWritten += len;
+		}
+
+		@Override
+		public void flush() throws IOException {
+			delegate.flush();
+		}
+
+		@Override
+		public void close() throws IOException {
+			delegate.close();
+		}
+
+		public long getBytesWritten() {
+			return bytesWritten;
+		}
+	}
+
+	private void ensureDirectoryExists(String path) throws Exception {
+		Path parent = Paths.get(path).toAbsolutePath().getParent();
+		if (parent != null) {
+			Files.createDirectories(parent);
+		}
 	}
 }

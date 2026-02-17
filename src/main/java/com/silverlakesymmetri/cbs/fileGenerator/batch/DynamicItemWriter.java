@@ -14,11 +14,13 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.List;
 
 @Component
 @StepScope
-public class DynamicItemWriter implements OutputFormatWriter, ItemStreamWriter<DynamicRecord>, StepExecutionListener {
+public class DynamicItemWriter implements ItemStreamWriter<DynamicRecord>, StepExecutionListener {
 	private static final Logger logger = LoggerFactory.getLogger(DynamicItemWriter.class);
 	private static final String CONTEXT_KEY_PART_FILE = "dynamic.writer.partFilePath";
 	private static final String CONTEXT_KEY_RECORD_COUNT = "dynamic.writer.recordCount";
@@ -36,11 +38,16 @@ public class DynamicItemWriter implements OutputFormatWriter, ItemStreamWriter<D
 
 	@Override
 	public void open(ExecutionContext executionContext) throws ItemStreamException {
+		ensureParametersPresent();
 		ensureDelegateInitialized();
 
 		try {
 			// RESTORE STATE: ExecutionContext is the source of truth for restarts
 			String existingPartFile = executionContext.getString(CONTEXT_KEY_PART_FILE, null);
+			if (existingPartFile != null && !Files.exists(Paths.get(existingPartFile))) {
+				logger.warn("Expected part file not found: {}", existingPartFile);
+			}
+
 			String pathToUse = (existingPartFile != null) ? existingPartFile : outputFilePath;
 
 			delegateWriter.init(pathToUse, interfaceType);
@@ -59,16 +66,10 @@ public class DynamicItemWriter implements OutputFormatWriter, ItemStreamWriter<D
 	public void update(ExecutionContext executionContext) {
 		// Periodically called by Spring Batch to save the current progress
 		if (delegateWriter != null) {
-			executionContext.putString(CONTEXT_KEY_PART_FILE, delegateWriter.getPartFilePath());
+			executionContext.putString(CONTEXT_KEY_PART_FILE, delegateWriter.getOutputFilePath());
 			executionContext.putLong(CONTEXT_KEY_RECORD_COUNT, delegateWriter.getRecordCount());
 			executionContext.putLong(CONTEXT_KEY_SKIPPED_COUNT, delegateWriter.getSkippedCount());
 		}
-	}
-
-	@Override
-	public void init(String outputFilePath, String interfaceType) {
-		// No-op: The framework calls open() which handles the delegate setup.
-		// We keep this to satisfy the interface contract.
 	}
 
 	@Override
@@ -80,21 +81,6 @@ public class DynamicItemWriter implements OutputFormatWriter, ItemStreamWriter<D
 				throw new ItemStreamException("Error closing delegate writer", e);
 			}
 		}
-	}
-
-	@Override
-	public long getRecordCount() {
-		return delegateWriter != null ? delegateWriter.getRecordCount() : 0;
-	}
-
-	@Override
-	public long getSkippedCount() {
-		return delegateWriter != null ? delegateWriter.getSkippedCount() : 0;
-	}
-
-	@Override
-	public String getPartFilePath() {
-		return delegateWriter != null ? delegateWriter.getPartFilePath() : null;
 	}
 
 	@Override
@@ -117,7 +103,11 @@ public class DynamicItemWriter implements OutputFormatWriter, ItemStreamWriter<D
 
 	@Override
 	public ExitStatus afterStep(StepExecution stepExecution) {
-		return null;
+		if (delegateWriter instanceof StepExecutionListener) {
+			StepExecutionListener listener = (StepExecutionListener) delegateWriter;
+			return listener.afterStep(stepExecution);
+		}
+		return stepExecution.getExitStatus();
 	}
 
 	// Setters for JobParameters (Injected by Spring Batch via @Value)
@@ -131,16 +121,6 @@ public class DynamicItemWriter implements OutputFormatWriter, ItemStreamWriter<D
 		this.outputFilePath = outputFilePath;
 	}
 
-	public void setStepSuccessful(boolean success) {
-		if (delegateWriter instanceof GenericXMLWriter) {
-			((GenericXMLWriter) delegateWriter).setStepSuccessful(success);
-		}
-	}
-
-	public OutputFormatWriter getDelegate() {
-		return delegateWriter;
-	}
-
 	private void ensureDelegateInitialized() {
 		if (this.delegateWriter == null) {
 			try {
@@ -148,6 +128,12 @@ public class DynamicItemWriter implements OutputFormatWriter, ItemStreamWriter<D
 			} catch (Exception e) {
 				throw new IllegalStateException("Critical: Could not create delegate writer for " + interfaceType, e);
 			}
+		}
+	}
+
+	private void ensureParametersPresent() {
+		if (interfaceType == null || outputFilePath == null) {
+			throw new IllegalStateException("JobParameters interfaceType and outputFilePath are required.");
 		}
 	}
 }
