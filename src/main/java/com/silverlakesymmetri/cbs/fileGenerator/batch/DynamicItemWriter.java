@@ -38,7 +38,7 @@ public class DynamicItemWriter implements ItemStreamWriter<DynamicRecord>, StepE
 
 	@Override
 	public void open(ExecutionContext executionContext) throws ItemStreamException {
-		ensureParametersPresent();
+
 		ensureDelegateInitialized();
 
 		try {
@@ -51,6 +51,7 @@ public class DynamicItemWriter implements ItemStreamWriter<DynamicRecord>, StepE
 			String pathToUse = (existingPartFile != null) ? existingPartFile : outputFilePath;
 
 			delegateWriter.init(pathToUse, interfaceType);
+			delegateWriter.open(executionContext);
 
 			if (existingPartFile != null) {
 				logger.info("Restart detected. Resuming [{}] from: {}", interfaceType, existingPartFile);
@@ -66,6 +67,7 @@ public class DynamicItemWriter implements ItemStreamWriter<DynamicRecord>, StepE
 	public void update(ExecutionContext executionContext) {
 		// Periodically called by Spring Batch to save the current progress
 		if (delegateWriter != null) {
+			delegateWriter.update(executionContext);
 			executionContext.putString(CONTEXT_KEY_PART_FILE, delegateWriter.getOutputFilePath());
 			executionContext.putLong(CONTEXT_KEY_RECORD_COUNT, delegateWriter.getRecordCount());
 			executionContext.putLong(CONTEXT_KEY_SKIPPED_COUNT, delegateWriter.getSkippedCount());
@@ -78,7 +80,7 @@ public class DynamicItemWriter implements ItemStreamWriter<DynamicRecord>, StepE
 			try {
 				delegateWriter.close();
 			} catch (Exception e) {
-				throw new ItemStreamException("Error closing delegate writer", e);
+				logger.error("Error closing delegate writer", e);
 			}
 		}
 	}
@@ -93,8 +95,6 @@ public class DynamicItemWriter implements ItemStreamWriter<DynamicRecord>, StepE
 
 	@Override
 	public void beforeStep(StepExecution stepExecution) {
-		ensureDelegateInitialized();
-
 		if (delegateWriter instanceof StepExecutionListener) {
 			((StepExecutionListener) delegateWriter).beforeStep(stepExecution);
 			logger.debug("Delegate synchronized with StepExecution writeCount");
@@ -122,6 +122,7 @@ public class DynamicItemWriter implements ItemStreamWriter<DynamicRecord>, StepE
 	}
 
 	private void ensureDelegateInitialized() {
+		ensureParametersPresent();
 		if (this.delegateWriter == null) {
 			try {
 				this.delegateWriter = writerFactory.selectWriter(interfaceType);

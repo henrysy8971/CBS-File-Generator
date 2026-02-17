@@ -24,7 +24,7 @@ import java.util.Locale;
 
 @Component
 @StepScope
-public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListener, ItemStream {
+public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListener {
 
 	private static final Logger logger = LoggerFactory.getLogger(GenericXMLWriter.class);
 
@@ -45,6 +45,7 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 	// Keys for ExecutionContext
 	private static final String BYTE_OFFSET_KEY = "xml.byte.offset";
 	private static final String RECORD_COUNT_KEY = "xml.record.count";
+	private BufferedOutputStream bufferedOutputStream;
 
 	// --------------------------------------------------
 	// StepExecutionListener
@@ -102,7 +103,7 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 
 			if (executionContext.containsKey(BYTE_OFFSET_KEY)) {
 				offset = executionContext.getLong(BYTE_OFFSET_KEY);
-				this.recordCount = executionContext.getLong(RECORD_COUNT_KEY);
+				this.recordCount = executionContext.getLong(RECORD_COUNT_KEY, 0L);
 				isRestart = true;
 			}
 
@@ -126,7 +127,7 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 
 			// 4. Create XML Writer
 			// We use a non-closing wrapper or simply be careful not to close byteTrackingStream twice
-			BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(byteTrackingStream);
+			bufferedOutputStream = new BufferedOutputStream(byteTrackingStream);
 
 			this.xmlStreamWriter = XMLOutputFactory.newInstance()
 					.createXMLStreamWriter(new OutputStreamWriter(bufferedOutputStream, StandardCharsets.UTF_8));
@@ -136,7 +137,7 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 				writeHeader();
 			}
 		} catch (Exception e) {
-			closeQuietly(); // Clean up partial streams
+			closeQuietly();
 			throw new ItemStreamException("Failed during restart open()", e);
 		}
 	}
@@ -146,6 +147,7 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 		try {
 			if (xmlStreamWriter != null) {
 				xmlStreamWriter.flush();
+				bufferedOutputStream.flush();
 				byteTrackingStream.flush();
 			}
 
@@ -180,9 +182,20 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 
 	private void closeQuietly() {
 		try {
+			if (xmlStreamWriter != null) xmlStreamWriter.close();
+		} catch (Exception ignored) {
+		}
+		try {
+			if (bufferedOutputStream != null) bufferedOutputStream.close();
+		} catch (Exception ignored) {
+		}
+		try {
 			if (fos != null) fos.close();
 		} catch (Exception ignored) {
 		}
+		xmlStreamWriter = null;
+		bufferedOutputStream = null;
+		fos = null;
 	}
 
 	private void writeHeader() throws IOException {
@@ -242,7 +255,6 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 			} catch (Exception e) {
 				logger.error("Failed closing XML writer", e);
 			} finally {
-				// Ensure FOS is closed if XML writer failed
 				closeQuietly();
 			}
 		}

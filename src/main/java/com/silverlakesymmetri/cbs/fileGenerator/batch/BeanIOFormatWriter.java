@@ -138,8 +138,10 @@ public class BeanIOFormatWriter implements OutputFormatWriter, ItemStreamWriter<
 		if (beanIOWriter == null) throw new IllegalStateException("Writer not opened");
 
 		for (DynamicRecord record : items) {
-			beanIOWriter.write(record.asMap());
-			recordCount++;
+			if (record != null) {
+				beanIOWriter.write(record.asMap());
+				recordCount++;
+			}
 		}
 
 		// Note: We do NOT flush here for performance.
@@ -148,13 +150,18 @@ public class BeanIOFormatWriter implements OutputFormatWriter, ItemStreamWriter<
 
 	@Override
 	public void update(ExecutionContext executionContext) {
-		if (beanIOWriter != null) {
-			// Force BeanIO to flush to the underlying ByteTrackingStream
-			beanIOWriter.flush();
+		try {
+			if (beanIOWriter != null) {
+				// Force BeanIO to flush to the underlying ByteTrackingStream
+				beanIOWriter.flush();
+				byteTrackingStream.flush();
 
-			// Save current state
-			executionContext.putLong(RESTART_KEY_OFFSET, byteTrackingStream.getBytesWritten());
-			executionContext.putLong(RESTART_KEY_COUNT, recordCount);
+				// Save current state
+				executionContext.putLong(RESTART_KEY_OFFSET, byteTrackingStream.getBytesWritten());
+				executionContext.putLong(RESTART_KEY_COUNT, recordCount);
+			}
+		} catch (Exception e) {
+			throw new ItemStreamException("Failed to update restart state", e);
 		}
 	}
 
@@ -162,6 +169,7 @@ public class BeanIOFormatWriter implements OutputFormatWriter, ItemStreamWriter<
 	public void close() {
 		try {
 			if (beanIOWriter != null) {
+				beanIOWriter.flush();
 				beanIOWriter.close();
 			}
 		} catch (Exception e) {
@@ -172,6 +180,9 @@ public class BeanIOFormatWriter implements OutputFormatWriter, ItemStreamWriter<
 		} catch (Exception e) {
 			logger.warn("Error closing fileOutputStream", e);
 		}
+		beanIOWriter = null;
+		fileOutputStream = null;
+		byteTrackingStream = null;
 	}
 
 	// --- Helper Methods ---
