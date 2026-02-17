@@ -1,4 +1,4 @@
-package com.silverlakesymmetri.cbs.fileGenerator.entity;
+package com.silverlakesymmetri.cbs.fileGenerator.entity.order;
 
 import javax.persistence.*;
 import java.io.Serializable;

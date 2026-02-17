@@ -107,7 +107,11 @@ public class LineItemDto implements Serializable {
 		return "LineItemDto{" +
 				"lineItemId='" + lineItemId + '\'' +
 				", productId='" + productId + '\'' +
+				", productName='" + productName + '\'' +
 				", quantity=" + quantity +
+				", unitPrice=" + unitPrice +
+				", lineAmount=" + lineAmount +
+				", status='" + status + '\'' +
 				'}';
 	}
 }

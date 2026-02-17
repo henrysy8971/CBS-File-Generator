@@ -119,10 +119,14 @@ public class OrderDto implements Serializable {
 	@Override
 	public String toString() {
 		return "OrderDto{" +
-				"orderId='" + orderId + '\'' +
+				"orderId=" + orderId +
 				", orderNumber='" + orderNumber + '\'' +
 				", orderAmount=" + orderAmount +
-				", lineItems=" + lineItems.size() +
+				", orderDate='" + orderDate + '\'' +
+				", customerId='" + customerId + '\'' +
+				", customerName='" + customerName + '\'' +
+				", status='" + status + '\'' +
+				", lineItems=" + lineItems +
 				'}';
 	}
 }

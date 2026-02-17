@@ -1,6 +1,6 @@
 package com.silverlakesymmetri.cbs.fileGenerator.repository;
 
-import com.silverlakesymmetri.cbs.fileGenerator.entity.Order;
+import com.silverlakesymmetri.cbs.fileGenerator.entity.order.Order;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
