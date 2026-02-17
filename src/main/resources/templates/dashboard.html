@@ -29,7 +29,7 @@
 					<h3 id="healthStatus" class="text-secondary">
 						<i class="fas fa-circle-notch fa-spin"></i> Checking...
 					</h3>
-					<button id="checkHealthBtn" class="btn btn-sm btn-outline-info mt-2">
+					<button id="checkHealthBtn" type="button" class="btn btn-sm btn-outline-info mt-2">
 						Check Connectivity
 					</button>
 				</div>
@@ -42,19 +42,19 @@
 					<div class="row">
 						<div class="col-md-4">
 							<button class="btn btn-outline-dark w-100 btn-action admin-btn"
-									data-endpoint="/reload-config">
+									type="button" data-endpoint="/reload-config">
 								<i class="fas fa-sync"></i> Reload Config
 							</button>
 						</div>
 						<div class="col-md-4">
 							<button class="btn btn-outline-danger w-100 btn-action admin-btn"
-									data-endpoint="/cleanup">
+									type="button" data-endpoint="/cleanup">
 								<i class="fas fa-trash"></i> Force Cleanup
 							</button>
 						</div>
 						<div class="col-md-4">
 							<button class="btn btn-outline-warning w-100 btn-action admin-btn"
-									data-endpoint="/scheduler/force-run">
+									type="button" data-endpoint="/scheduler/force-run">
 								<i class="fas fa-bolt"></i> Force Poller
 							</button>
 						</div>
@@ -62,13 +62,13 @@
 					<div class="row mt-2">
 						<div class="col-md-6">
 							<button class="btn btn-outline-secondary w-100 btn-action admin-btn"
-									data-endpoint="/scheduler/pause">
+									type="button" data-endpoint="/scheduler/pause">
 								<i class="fas fa-pause"></i> Pause Scheduler
 							</button>
 						</div>
 						<div class="col-md-6">
 							<button class="btn btn-outline-success w-100 btn-action admin-btn"
-									data-endpoint="/scheduler/resume">
+									type="button" data-endpoint="/scheduler/resume">
 								<i class="fas fa-play"></i> Resume Scheduler
 							</button>
 						</div>
@@ -130,7 +130,7 @@
 					<span class="input-group-text bg-white"><i class="fas fa-search text-muted"></i></span>
 					<input type="text" id="tableSearch" class="form-control" placeholder="Search ID or Interface..." aria-label="Search Jobs">
 				</div>
-				<button id="refreshTableBtn" class="btn btn-sm btn-light border">
+				<button id="refreshTableBtn" type="button" class="btn btn-sm btn-light border">
 					<i class="fas fa-sync-alt"></i> Refresh
 				</button>
 			</div>
@@ -166,6 +166,7 @@
 					<td>
 						<button th:if="${job.status.name() == 'COMPLETED'}"
 								th:attr="data-job-id=${job.jobId}"
+								type="button"
 								class="btn btn-sm btn-outline-primary download-btn">
 							<i class="fas fa-download"></i>
 						</button>
@@ -187,7 +188,7 @@
 						<div class="text-muted">
 							<i class="fas fa-search fa-2x mb-2"></i>
 							<p>No jobs match your search criteria.</p>
-							<button id="clearFiltersBtn" class="btn btn-sm btn-outline-secondary">Clear Filters</button>
+							<button id="clearFiltersBtn" type="button" class="btn btn-sm btn-outline-secondary">Clear Filters</button>
 						</div>
 					</td>
 				</tr>
@@ -216,6 +217,7 @@
 		const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
 		const csrfHeader = document.querySelector('meta[name="csrf-header"]')?.content;
 		const headers = { 'Content-Type': 'application/json' };
+		const headers = { 'Accept': 'application/json' };
 		if(csrfToken && csrfHeader) headers[csrfHeader] = csrfToken;
 		return headers;
 	}
