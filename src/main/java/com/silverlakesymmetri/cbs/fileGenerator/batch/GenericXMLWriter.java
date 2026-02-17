@@ -16,10 +16,7 @@ import org.springframework.stereotype.Component;
 import javax.xml.stream.XMLOutputFactory;
 import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamWriter;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStreamWriter;
+import java.io.*;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -129,14 +126,17 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 
 			// 4. Create XML Writer
 			// We use a non-closing wrapper or simply be careful not to close byteTrackingStream twice
+			BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(byteTrackingStream);
+
 			this.xmlStreamWriter = XMLOutputFactory.newInstance()
-					.createXMLStreamWriter(new OutputStreamWriter(byteTrackingStream, StandardCharsets.UTF_8));
+					.createXMLStreamWriter(new OutputStreamWriter(bufferedOutputStream, StandardCharsets.UTF_8));
 
 			// 5. Write Header if new file
 			if (!isRestart) {
 				writeHeader();
 			}
 		} catch (Exception e) {
+			closeQuietly(); // Clean up partial streams
 			throw new ItemStreamException("Failed during restart open()", e);
 		}
 	}
@@ -149,12 +149,14 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 				byteTrackingStream.flush();
 			}
 
-			long currentOffset = byteTrackingStream.getBytesWritten();
-			executionContext.putLong(BYTE_OFFSET_KEY, currentOffset);
-			executionContext.putLong(RECORD_COUNT_KEY, recordCount);
+			if (byteTrackingStream != null) {
+				long currentOffset = byteTrackingStream.getBytesWritten();
+				executionContext.putLong(BYTE_OFFSET_KEY, currentOffset);
+				executionContext.putLong(RECORD_COUNT_KEY, recordCount);
 
-			logger.debug("Saved restart state: bytes={}, records={}",
-					currentOffset, recordCount);
+				logger.debug("Saved restart state: bytes={}, records={}",
+						currentOffset, recordCount);
+			}
 		} catch (Exception e) {
 			throw new ItemStreamException("Failed to update ExecutionContext", e);
 		}
@@ -176,11 +178,19 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 		logger.debug("Chunk written: {} records, total written: {}", items.size(), recordCount);
 	}
 
+	private void closeQuietly() {
+		try {
+			if (fos != null) fos.close();
+		} catch (Exception ignored) {
+		}
+	}
+
 	private void writeHeader() throws IOException {
 		try {
 			xmlStreamWriter.writeStartDocument("UTF-8", "1.0");
 			xmlStreamWriter.writeStartElement(rootElement);
 			xmlStreamWriter.writeStartElement("records");
+			xmlStreamWriter.flush();
 		} catch (XMLStreamException e) {
 			throw new IOException("Failed to write header", e);
 		}
@@ -227,15 +237,13 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 						logger.warn("Step failed. Footer not written to allow restart.");
 					}
 					xmlStreamWriter.close();
+					xmlStreamWriter = null;
 				}
 			} catch (Exception e) {
 				logger.error("Failed closing XML writer", e);
 			} finally {
 				// Ensure FOS is closed if XML writer failed
-				try {
-					if (fos != null) fos.close();
-				} catch (Exception ignored) {
-				}
+				closeQuietly();
 			}
 		}
 	}
@@ -260,16 +268,12 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 
 	private String sanitizeElementName(String name) {
 		if (name == null || name.trim().isEmpty()) return "field";
-		String sanitized = name.toLowerCase(Locale.ROOT)
-				.replaceAll("[^a-z0-9_]", "_")
-				.replaceAll("_+", "_")
-				.replaceAll("^_+|_+$", "");
-
-		if (!sanitized.matches("^[a-z_].*")) {
-			sanitized = "_" + sanitized;
+		// Ensure starts with letter or underscore, then alphanumeric/underscore
+		String sanitized = name.replaceAll("[^a-zA-Z0-9_]", "_");
+		if (Character.isDigit(sanitized.charAt(0))) {
+			return "_" + sanitized;
 		}
-
-		return sanitized.isEmpty() ? "_" : sanitized;
+		return sanitized;
 	}
 
 	// --------------------------------------------------

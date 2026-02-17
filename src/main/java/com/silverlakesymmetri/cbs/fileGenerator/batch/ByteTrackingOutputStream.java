@@ -3,14 +3,11 @@ package com.silverlakesymmetri.cbs.fileGenerator.batch;
 import java.io.IOException;
 import java.io.OutputStream;
 
+@SuppressWarnings("NullableProblems")
 public class ByteTrackingOutputStream extends OutputStream {
 
 	private final OutputStream delegate;
-	private long bytesWritten = 0;
-
-	public ByteTrackingOutputStream(OutputStream delegate) {
-		this.delegate = delegate;
-	}
+	private long bytesWritten;
 
 	public ByteTrackingOutputStream(OutputStream delegate, long initialOffset) {
 		this.delegate = delegate;
