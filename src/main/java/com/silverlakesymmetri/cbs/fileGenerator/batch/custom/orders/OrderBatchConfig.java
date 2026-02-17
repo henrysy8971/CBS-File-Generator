@@ -61,15 +61,14 @@ public class OrderBatchConfig {
 		this.orderItemWriter = orderItemWriter;
 		this.fileValidationTasklet = fileValidationTasklet;
 		this.batchCleanupTasklet = batchCleanupTasklet;
-		logger.info("Configuring order FileGeneration with chunk size {}", chunkSize);
+		logger.info("Configuring Order FileGeneration with chunk size {}", chunkSize);
 	}
 
 	@Bean
-	public StepExecutionListener orderStepListener() {
+	public StepExecutionListener orderStepExecutionListener() {
 		return new StepExecutionListener(fileGenerationService);
 	}
 
-	// Define the Job Listener as a Bean
 	@Bean
 	public Step orderFileValidationStep() {
 		return stepBuilderFactory.get("orderFileValidationStep")
@@ -95,11 +94,6 @@ public class OrderBatchConfig {
 				.build();
 	}
 
-	/**
-	 * Defines the specialized step for Order processing.
-	 * Configures reader, processor, and writer for Order processing.
-	 * Uses OrderDto instead of generic DynamicRecord.
-	 */
 	@Bean
 	public Step orderFileGenerationStep() {
 		return stepBuilderFactory.get("orderFileGenerationStep")
@@ -122,7 +116,7 @@ public class OrderBatchConfig {
 				.skipLimit(100)
 
 				// --- Listeners ---
-				.listener(orderStepListener())
+				.listener(orderStepExecutionListener())
 				.allowStartIfComplete(true)
 				.build();
 	}
