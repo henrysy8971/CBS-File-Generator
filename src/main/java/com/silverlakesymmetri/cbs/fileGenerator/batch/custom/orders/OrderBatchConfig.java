@@ -2,7 +2,7 @@ package com.silverlakesymmetri.cbs.fileGenerator.batch.custom.orders;
 
 import com.silverlakesymmetri.cbs.fileGenerator.batch.listeners.FileGenerationJobListener;
 import com.silverlakesymmetri.cbs.fileGenerator.batch.listeners.FileGenerationStepListener;
-import com.silverlakesymmetri.cbs.fileGenerator.dto.OrderDto;
+import com.silverlakesymmetri.cbs.fileGenerator.dto.order.OrderDto;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
 import com.silverlakesymmetri.cbs.fileGenerator.tasklets.BatchCleanupTasklet;
 import com.silverlakesymmetri.cbs.fileGenerator.tasklets.FileValidationTasklet;

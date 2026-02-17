@@ -1,4 +1,6 @@
-package com.silverlakesymmetri.cbs.fileGenerator.dto;
+package com.silverlakesymmetri.cbs.fileGenerator.dto.order;
+
+import com.silverlakesymmetri.cbs.fileGenerator.dto.order.LineItemDto;
 
 import javax.xml.bind.annotation.*;
 import java.io.Serializable;

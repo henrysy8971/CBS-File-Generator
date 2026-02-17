@@ -1,7 +1,7 @@
 package com.silverlakesymmetri.cbs.fileGenerator.batch.custom.orders;
 
-import com.silverlakesymmetri.cbs.fileGenerator.dto.LineItemDto;
-import com.silverlakesymmetri.cbs.fileGenerator.dto.OrderDto;
+import com.silverlakesymmetri.cbs.fileGenerator.dto.order.LineItemDto;
+import com.silverlakesymmetri.cbs.fileGenerator.dto.order.OrderDto;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

@@ -1,6 +1,6 @@
 package com.silverlakesymmetri.cbs.fileGenerator.batch.custom.orders;
 
-import com.silverlakesymmetri.cbs.fileGenerator.dto.OrderDto;
+import com.silverlakesymmetri.cbs.fileGenerator.dto.order.OrderDto;
 import com.silverlakesymmetri.cbs.fileGenerator.entity.Order;
 import com.silverlakesymmetri.cbs.fileGenerator.repository.OrderRepository;
 import org.slf4j.Logger;
