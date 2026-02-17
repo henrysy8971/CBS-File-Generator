@@ -1,105 +1,279 @@
 package com.silverlakesymmetri.cbs.fileGenerator.batch;
 
 import com.silverlakesymmetri.cbs.fileGenerator.dto.DynamicRecord;
-import com.silverlakesymmetri.cbs.fileGenerator.xml.DynamicRecordMarshaller;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.batch.core.BatchStatus;
+import org.springframework.batch.core.ExitStatus;
+import org.springframework.batch.core.StepExecution;
+import org.springframework.batch.core.StepExecutionListener;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.item.ExecutionContext;
+import org.springframework.batch.item.ItemStream;
 import org.springframework.batch.item.ItemStreamException;
-import org.springframework.batch.item.xml.StaxEventItemWriter;
-import org.springframework.core.io.FileSystemResource;
 import org.springframework.stereotype.Component;
-import org.springframework.util.Assert;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import javax.xml.stream.XMLOutputFactory;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamWriter;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Locale;
 
 @Component
 @StepScope
-public class GenericXMLWriter implements OutputFormatWriter {
+public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListener, ItemStream {
+
 	private static final Logger logger = LoggerFactory.getLogger(GenericXMLWriter.class);
 
-	private final DynamicRecordMarshaller marshaller;
-	private StaxEventItemWriter<DynamicRecord> delegate;
-	private static final String RESTART_KEY_COUNT = "xml.record.count";
+	private XMLStreamWriter xmlStreamWriter;
+	private BufferedOutputStream bufferedStream;
+	private ByteTrackingOutputStream byteTrackingStream;
 
-	private String outputFilePath;
+	private String partFilePath;
 	private String interfaceType;
+	private String rootElement;
+	private String itemElement;
+
 	private long recordCount = 0;
+	private boolean headerWritten = false;
+	private boolean stepSuccessful = false;
 
-	public GenericXMLWriter(DynamicRecordMarshaller marshaller) {
-		this.marshaller = marshaller;
-	}
+	private final Object lock = new Object(); // Thread-safety for write operations
 
-	// ============================================================
-	// INIT (called from DynamicItemWriter)
-	// ============================================================
+	// Keys for ExecutionContext
+	private static final String BYTE_OFFSET_KEY = "xml.byte.offset";
+	private static final String RECORD_COUNT_KEY = "xml.record.count";
+
+	// --------------------------------------------------
+	// StepExecutionListener
+	// --------------------------------------------------
 
 	@Override
-	public void init(String outputFilePath, String interfaceType) throws Exception {
+	public void beforeStep(StepExecution stepExecution) {
+		this.stepSuccessful = false;
+	}
+
+	@Override
+	public ExitStatus afterStep(StepExecution stepExecution) {
+		this.stepSuccessful = stepExecution.getStatus() == BatchStatus.COMPLETED;
+		return stepExecution.getExitStatus();
+	}
+
+	// --------------------------------------------------
+	// Initialization
+	// --------------------------------------------------
+
+	@Override
+	public void init(String outputFilePath, String interfaceType) throws IOException {
 		if (outputFilePath == null || outputFilePath.trim().isEmpty()) {
-			throw new IllegalArgumentException("outputFilePath must not be empty");
+			throw new IllegalArgumentException("outputFilePath must not be null or empty");
 		}
 
-		this.interfaceType = interfaceType;
-		this.outputFilePath = outputFilePath.endsWith(".part")
+		this.interfaceType = (interfaceType != null && !interfaceType.trim().isEmpty())
+				? interfaceType.trim()
+				: null;
+
+		this.partFilePath = outputFilePath.endsWith(".part")
 				? outputFilePath
 				: outputFilePath + ".part";
 
-		ensureDirectoryExists(this.outputFilePath);
+		File file = new File(partFilePath);
+		ensureParentDirectory(file);
 
-		delegate = new StaxEventItemWriter<>();
-		delegate.setName("genericXmlWriter");
-		delegate.setResource(new FileSystemResource(this.outputFilePath));
-		delegate.setMarshaller(marshaller);
-		delegate.setRootTagName(resolveRootTag());
-		delegate.setEncoding("UTF-8");
-		delegate.setSaveState(true);
-		delegate.setOverwriteOutput(false);
-		delegate.afterPropertiesSet();
+		this.rootElement = resolveRootElement();
+		this.itemElement = rootElement + "Item";
 
-		logger.info("Initialized XML writer for interface={} file={}",
-				interfaceType, this.outputFilePath);
+		openStreams(file, false);
+
+		writeHeader();
+		headerWritten = true;
+
+		logger.info("Initialized XML writer: {}", partFilePath);
 	}
 
-	// ============================================================
-	// SPRING BATCH LIFECYCLE
-	// ============================================================
+	private void openStreams(File file, boolean append) throws IOException {
+		FileOutputStream fos = new FileOutputStream(file, append);
+		this.byteTrackingStream = new ByteTrackingOutputStream(fos);
+		this.bufferedStream = new BufferedOutputStream(byteTrackingStream);
 
+		try {
+			this.xmlStreamWriter = XMLOutputFactory.newInstance()
+					.createXMLStreamWriter(
+							new OutputStreamWriter(
+									bufferedStream,
+									StandardCharsets.UTF_8));
+		} catch (XMLStreamException e) {
+			throw new IOException("Failed to create XMLStreamWriter", e);
+		}
+	}
+
+	// --------------------------------------------------
+	// Restart Handling
+	// --------------------------------------------------
 	@Override
 	public void open(ExecutionContext executionContext) throws ItemStreamException {
-		Assert.hasText(outputFilePath, "outputFilePath must not be empty");
-		Assert.hasText(interfaceType, "interfaceType must not be empty");
-		delegate.open(executionContext);
-		recordCount = executionContext.getLong(RESTART_KEY_COUNT, 0L);
-		logger.info("XML writer opened. Resuming from recordCount={}", recordCount);
+		try {
+			if (executionContext.containsKey(BYTE_OFFSET_KEY)) {
+				long offset = executionContext.getLong(BYTE_OFFSET_KEY);
+				this.recordCount = executionContext.getLong(RECORD_COUNT_KEY);
+
+				File file = new File(partFilePath);
+
+				RandomAccessFile raf = new RandomAccessFile(file, "rw");
+				raf.setLength(offset);
+				raf.close();
+
+				logger.info("Restart detected. Truncated file to byte offset {}. Resuming from record {}",
+						offset, recordCount);
+
+				openStreams(file, true);
+				headerWritten = true;
+			}
+		} catch (Exception e) {
+			throw new ItemStreamException("Failed during restart open()", e);
+		}
+	}
+
+	@Override
+	public void update(ExecutionContext executionContext) throws ItemStreamException {
+		try {
+			xmlStreamWriter.flush();
+			bufferedStream.flush();
+
+			long currentOffset = byteTrackingStream.getBytesWritten();
+			executionContext.putLong(BYTE_OFFSET_KEY, currentOffset);
+			executionContext.putLong(RECORD_COUNT_KEY, recordCount);
+
+			logger.debug("Saved restart state: bytes={}, records={}",
+					currentOffset, recordCount);
+		} catch (Exception e) {
+			throw new ItemStreamException("Failed to update ExecutionContext", e);
+		}
 	}
 
 	@Override
 	public void write(List<? extends DynamicRecord> items) throws Exception {
 		if (items == null || items.isEmpty()) return;
-		delegate.write(items);
-		recordCount += items.size();
+
+		synchronized (lock) { // ensure thread-safe writes
+			for (DynamicRecord record : items) {
+				if (record != null) {
+					writeRecordXml(record);
+					recordCount++;
+				}
+			}
+			xmlStreamWriter.flush();
+			bufferedStream.flush();
+		}
+
+		logger.debug("Chunk written: {} records, total written: {}", items.size(), recordCount);
 	}
 
-	@Override
-	public void update(ExecutionContext executionContext) throws ItemStreamException {
-		executionContext.putLong(RESTART_KEY_COUNT, recordCount);
-		delegate.update(executionContext);
+	private void writeHeader() throws IOException {
+		try {
+			xmlStreamWriter.writeStartDocument("UTF-8", "1.0");
+			xmlStreamWriter.writeStartElement(rootElement);
+			xmlStreamWriter.writeStartElement("records");
+		} catch (XMLStreamException e) {
+			throw new IOException("Failed to write header", e);
+		}
+	}
+
+	private void writeRecordXml(DynamicRecord record) throws XMLStreamException {
+		xmlStreamWriter.writeStartElement(itemElement);
+
+		for (String column : record.keySet()) {
+			Object value = record.get(column);
+			if (value != null) {
+				xmlStreamWriter.writeStartElement(sanitizeElementName(column));
+				xmlStreamWriter.writeCharacters(value.toString());
+				xmlStreamWriter.writeEndElement();
+			}
+		}
+
+		xmlStreamWriter.writeEndElement(); // itemElement
+	}
+
+	private void writeFooter() throws IOException {
+		try {
+			xmlStreamWriter.writeEndElement(); // records
+			xmlStreamWriter.writeStartElement("totalRecords");
+			xmlStreamWriter.writeCharacters(String.valueOf(recordCount));
+			xmlStreamWriter.writeEndElement();
+			xmlStreamWriter.writeEndElement(); // root element
+			xmlStreamWriter.writeEndDocument();
+			xmlStreamWriter.flush();
+		} catch (XMLStreamException e) {
+			throw new IOException("Failed to write footer", e);
+		}
 	}
 
 	@Override
 	public void close() throws ItemStreamException {
-		delegate.close();
-		logger.info("XML writing completed. Total records={}", recordCount);
+		synchronized (lock) {
+			try {
+
+				if (stepSuccessful) {
+					writeFooter();
+					logger.info("Footer written. XML completed.");
+				} else {
+					logger.warn("Step failed. Footer not written to allow restart.");
+				}
+
+				if (xmlStreamWriter != null) {
+					xmlStreamWriter.close();
+				}
+
+				if (bufferedStream != null) {
+					bufferedStream.close();
+				}
+
+			} catch (Exception e) {
+				logger.error("Failed closing XML writer", e);
+				throw new ItemStreamException("Failed to close XML writer", e);
+			}
+		}
 	}
 
-	// ============================================================
-	// OutputFormatWriter Contract
-	// ============================================================
+	// --------------------------------------------------
+	// Helpers
+	// --------------------------------------------------
+
+	private void ensureParentDirectory(File file)
+			throws IOException {
+
+		File parent = file.getParentFile();
+		if (parent != null && !parent.exists()) {
+			if (!parent.mkdirs()) {
+				throw new IOException(
+						"Unable to create directory: " + parent);
+			}
+		}
+	}
+
+	private String resolveRootElement() {
+		if (interfaceType == null) return "data";
+		return interfaceType.toLowerCase(Locale.ROOT)
+				.replaceFirst("(?i)_interface$", "");
+	}
+
+	private String sanitizeElementName(String name) {
+		if (name == null || name.trim().isEmpty()) return "_";
+		String sanitized = name.toLowerCase(Locale.ROOT)
+				.replaceAll("[^a-z0-9_]", "_")
+				.replaceAll("_+", "_")
+				.replaceAll("^_+|_+$", "");
+
+		if (!sanitized.matches("^[a-z_].*")) {
+			sanitized = "_" + sanitized;
+		}
+
+		return sanitized.isEmpty() ? "_" : sanitized;
+	}
+
+	// --------------------------------------------------
 
 	@Override
 	public long getRecordCount() {
@@ -113,27 +287,6 @@ public class GenericXMLWriter implements OutputFormatWriter {
 
 	@Override
 	public String getOutputFilePath() {
-		return outputFilePath;
-	}
-
-	// ============================================================
-	// Helpers
-	// ============================================================
-
-	private void ensureDirectoryExists(String path) throws Exception {
-		Path parent = Paths.get(path).toAbsolutePath().getParent();
-		if (parent != null) {
-			Files.createDirectories(parent);
-		}
-	}
-
-	private String resolveRootTag() {
-		if (interfaceType == null || interfaceType.trim().isEmpty()) {
-			return "records";
-		}
-
-		return interfaceType
-				.toLowerCase()
-				.replaceFirst("(?i)_interface$", "");
+		return partFilePath;
 	}
 }
