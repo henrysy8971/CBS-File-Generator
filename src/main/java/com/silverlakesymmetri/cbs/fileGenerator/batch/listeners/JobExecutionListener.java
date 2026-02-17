@@ -1,4 +1,4 @@
-package com.silverlakesymmetri.cbs.fileGenerator.batch;
+package com.silverlakesymmetri.cbs.fileGenerator.batch.listeners;
 
 import com.silverlakesymmetri.cbs.fileGenerator.constants.FinalizationResult;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileFinalizationService;
@@ -7,7 +7,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.JobExecution;
-import org.springframework.batch.core.JobExecutionListener;
 import org.springframework.beans.factory.annotation.Autowired;
 
 /**
@@ -18,13 +17,13 @@ import org.springframework.beans.factory.annotation.Autowired;
  * - Restart-safe behavior
  * - Backward-compatible constructors
  */
-public class DynamicJobExecutionListener implements JobExecutionListener {
-	private static final Logger logger = LoggerFactory.getLogger(DynamicJobExecutionListener.class);
+public class JobExecutionListener implements org.springframework.batch.core.JobExecutionListener {
+	private static final Logger logger = LoggerFactory.getLogger(JobExecutionListener.class);
 	private final FileFinalizationService fileFinalizationService;
 	private final FileGenerationService fileGenerationService;
 
 	@Autowired
-	public DynamicJobExecutionListener(FileFinalizationService fileFinalizationService, FileGenerationService fileGenerationService) {
+	public JobExecutionListener(FileFinalizationService fileFinalizationService, FileGenerationService fileGenerationService) {
 		this.fileFinalizationService = fileFinalizationService;
 		this.fileGenerationService = fileGenerationService;
 	}

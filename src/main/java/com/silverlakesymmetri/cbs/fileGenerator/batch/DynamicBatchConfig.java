@@ -1,5 +1,7 @@
 package com.silverlakesymmetri.cbs.fileGenerator.batch;
 
+import com.silverlakesymmetri.cbs.fileGenerator.batch.listeners.JobExecutionListener;
+import com.silverlakesymmetri.cbs.fileGenerator.batch.listeners.StepExecutionListener;
 import com.silverlakesymmetri.cbs.fileGenerator.dto.DynamicRecord;
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
 import com.silverlakesymmetri.cbs.fileGenerator.tasklets.BatchCleanupTasklet;
@@ -61,8 +63,8 @@ public class DynamicBatchConfig {
 	}
 
 	@Bean
-	public DynamicStepExecutionListener dynamicStepExecutionListener() {
-		return new DynamicStepExecutionListener(fileGenerationService);
+	public StepExecutionListener dynamicStepExecutionListener() {
+		return new StepExecutionListener(fileGenerationService);
 	}
 
 	@Bean
@@ -78,7 +80,7 @@ public class DynamicBatchConfig {
 	 * @param sharedJobListener Injected from BatchInfrastructureConfig
 	 */
 	@Bean
-	public Job dynamicFileGenerationJob(DynamicJobExecutionListener sharedJobListener) {
+	public Job dynamicFileGenerationJob(JobExecutionListener sharedJobListener) {
 		return jobBuilderFactory.get("dynamicFileGenerationJob")
 				.incrementer(new RunIdIncrementer())
 				.listener(sharedJobListener)

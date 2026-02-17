@@ -1,4 +1,4 @@
-package com.silverlakesymmetri.cbs.fileGenerator.batch;
+package com.silverlakesymmetri.cbs.fileGenerator.batch.listeners;
 
 import com.silverlakesymmetri.cbs.fileGenerator.service.FileGenerationService;
 import org.slf4j.Logger;
@@ -6,16 +6,15 @@ import org.slf4j.LoggerFactory;
 import org.springframework.batch.core.BatchStatus;
 import org.springframework.batch.core.ExitStatus;
 import org.springframework.batch.core.StepExecution;
-import org.springframework.batch.core.StepExecutionListener;
 import org.springframework.batch.item.ExecutionContext;
 
 import java.util.Objects;
 
-public class DynamicStepExecutionListener implements StepExecutionListener {
-	private static final Logger logger = LoggerFactory.getLogger(DynamicStepExecutionListener.class);
+public class StepExecutionListener implements org.springframework.batch.core.StepExecutionListener {
+	private static final Logger logger = LoggerFactory.getLogger(StepExecutionListener.class);
 	private final FileGenerationService fileGenerationService;
 
-	public DynamicStepExecutionListener(FileGenerationService fileGenerationService) {
+	public StepExecutionListener(FileGenerationService fileGenerationService) {
 		this.fileGenerationService = Objects.requireNonNull(fileGenerationService, "fileGenerationService must not be null");
 	}
 
