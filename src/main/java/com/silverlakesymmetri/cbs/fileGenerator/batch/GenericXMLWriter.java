@@ -16,7 +16,11 @@ import org.springframework.stereotype.Component;
 import javax.xml.stream.XMLOutputFactory;
 import javax.xml.stream.XMLStreamException;
 import javax.xml.stream.XMLStreamWriter;
-import java.io.*;
+import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
@@ -28,8 +32,8 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 	private static final Logger logger = LoggerFactory.getLogger(GenericXMLWriter.class);
 
 	private XMLStreamWriter xmlStreamWriter;
-	private BufferedOutputStream bufferedStream;
 	private ByteTrackingOutputStream byteTrackingStream;
+	private FileOutputStream fos;
 
 	private String partFilePath;
 	private String interfaceType;
@@ -37,7 +41,6 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 	private String itemElement;
 
 	private long recordCount = 0;
-	private boolean headerWritten = false;
 	private boolean stepSuccessful = false;
 
 	private final Object lock = new Object(); // Thread-safety for write operations
@@ -85,28 +88,7 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 		this.rootElement = resolveRootElement();
 		this.itemElement = rootElement + "Item";
 
-		openStreams(file, false);
-
-		writeHeader();
-		headerWritten = true;
-
 		logger.info("Initialized XML writer: {}", partFilePath);
-	}
-
-	private void openStreams(File file, boolean append) throws IOException {
-		FileOutputStream fos = new FileOutputStream(file, append);
-		this.byteTrackingStream = new ByteTrackingOutputStream(fos);
-		this.bufferedStream = new BufferedOutputStream(byteTrackingStream);
-
-		try {
-			this.xmlStreamWriter = XMLOutputFactory.newInstance()
-					.createXMLStreamWriter(
-							new OutputStreamWriter(
-									bufferedStream,
-									StandardCharsets.UTF_8));
-		} catch (XMLStreamException e) {
-			throw new IOException("Failed to create XMLStreamWriter", e);
-		}
 	}
 
 	// --------------------------------------------------
@@ -115,21 +97,44 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 	@Override
 	public void open(ExecutionContext executionContext) throws ItemStreamException {
 		try {
+			File file = new File(partFilePath);
+			ensureParentDirectory(file);
+
+			long offset = 0;
+			boolean isRestart = false;
+
 			if (executionContext.containsKey(BYTE_OFFSET_KEY)) {
-				long offset = executionContext.getLong(BYTE_OFFSET_KEY);
+				offset = executionContext.getLong(BYTE_OFFSET_KEY);
 				this.recordCount = executionContext.getLong(RECORD_COUNT_KEY);
+				isRestart = true;
+			}
 
-				File file = new File(partFilePath);
+			// 1. Open FileOutputStream in APPEND mode
+			fos = new FileOutputStream(file, true);
+			FileChannel channel = fos.getChannel();
 
-				RandomAccessFile raf = new RandomAccessFile(file, "rw");
-				raf.setLength(offset);
-				raf.close();
+			// 2. Truncate if necessary (Critical for restart safety)
+			if (isRestart) {
+				if (offset < channel.size()) {
+					channel.truncate(offset);
+					logger.info("Restart: Truncated file to offset {}, resuming record {}", offset, recordCount);
+				}
+			} else {
+				// Fresh run: Truncate to 0 to overwrite any existing garbage
+				channel.truncate(0);
+			}
 
-				logger.info("Restart detected. Truncated file to byte offset {}. Resuming from record {}",
-						offset, recordCount);
+			// 3. Wrap in ByteTracker with correct INITIAL offset
+			this.byteTrackingStream = new ByteTrackingOutputStream(fos, offset);
 
-				openStreams(file, true);
-				headerWritten = true;
+			// 4. Create XML Writer
+			// We use a non-closing wrapper or simply be careful not to close byteTrackingStream twice
+			this.xmlStreamWriter = XMLOutputFactory.newInstance()
+					.createXMLStreamWriter(new OutputStreamWriter(byteTrackingStream, StandardCharsets.UTF_8));
+
+			// 5. Write Header if new file
+			if (!isRestart) {
+				writeHeader();
 			}
 		} catch (Exception e) {
 			throw new ItemStreamException("Failed during restart open()", e);
@@ -139,8 +144,10 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 	@Override
 	public void update(ExecutionContext executionContext) throws ItemStreamException {
 		try {
-			xmlStreamWriter.flush();
-			bufferedStream.flush();
+			if (xmlStreamWriter != null) {
+				xmlStreamWriter.flush();
+				byteTrackingStream.flush();
+			}
 
 			long currentOffset = byteTrackingStream.getBytesWritten();
 			executionContext.putLong(BYTE_OFFSET_KEY, currentOffset);
@@ -164,8 +171,6 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 					recordCount++;
 				}
 			}
-			xmlStreamWriter.flush();
-			bufferedStream.flush();
 		}
 
 		logger.debug("Chunk written: {} records, total written: {}", items.size(), recordCount);
@@ -214,25 +219,23 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 	public void close() throws ItemStreamException {
 		synchronized (lock) {
 			try {
-
-				if (stepSuccessful) {
-					writeFooter();
-					logger.info("Footer written. XML completed.");
-				} else {
-					logger.warn("Step failed. Footer not written to allow restart.");
-				}
-
 				if (xmlStreamWriter != null) {
+					if (stepSuccessful) {
+						writeFooter();
+						logger.info("Footer written. XML completed.");
+					} else {
+						logger.warn("Step failed. Footer not written to allow restart.");
+					}
 					xmlStreamWriter.close();
 				}
-
-				if (bufferedStream != null) {
-					bufferedStream.close();
-				}
-
 			} catch (Exception e) {
 				logger.error("Failed closing XML writer", e);
-				throw new ItemStreamException("Failed to close XML writer", e);
+			} finally {
+				// Ensure FOS is closed if XML writer failed
+				try {
+					if (fos != null) fos.close();
+				} catch (Exception ignored) {
+				}
 			}
 		}
 	}
@@ -241,26 +244,22 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 	// Helpers
 	// --------------------------------------------------
 
-	private void ensureParentDirectory(File file)
-			throws IOException {
-
+	private void ensureParentDirectory(File file) throws IOException {
 		File parent = file.getParentFile();
 		if (parent != null && !parent.exists()) {
 			if (!parent.mkdirs()) {
-				throw new IOException(
-						"Unable to create directory: " + parent);
+				throw new IOException("Unable to create directory: " + parent);
 			}
 		}
 	}
 
 	private String resolveRootElement() {
 		if (interfaceType == null) return "data";
-		return interfaceType.toLowerCase(Locale.ROOT)
-				.replaceFirst("(?i)_interface$", "");
+		return interfaceType.toLowerCase(Locale.ROOT).replaceFirst("(?i)_interface$", "");
 	}
 
 	private String sanitizeElementName(String name) {
-		if (name == null || name.trim().isEmpty()) return "_";
+		if (name == null || name.trim().isEmpty()) return "field";
 		String sanitized = name.toLowerCase(Locale.ROOT)
 				.replaceAll("[^a-z0-9_]", "_")
 				.replaceAll("_+", "_")
