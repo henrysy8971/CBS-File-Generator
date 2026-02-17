@@ -59,6 +59,9 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 		this.interfaceConfigLoader = interfaceConfigLoader;
 		this.entityManager = entityManager;
 		this.pageSize = pageSize;
+		if (pageSize <= 0) {
+			throw new IllegalArgumentException("pageSize must be > 0");
+		}
 	}
 
 	@Value("#{jobParameters['interfaceType']}")
@@ -123,7 +126,7 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 		} catch (PersistenceException e) {
 			// Likely database issue – treat as fatal
 			logger.error("Persistence error while reading interface {}", interfaceType, e);
-			throw new RuntimeException("Database read failure", e);
+			throw new NonTransientResourceException("Persistence error reading interface " + interfaceType, e);
 		} catch (RuntimeException e) {
 			// Programming or unexpected runtime issue
 			logger.error("Unexpected runtime error while reading interface {}", interfaceType, e);
@@ -136,7 +139,7 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 	}
 
 	@Retryable(
-			value = {QueryTimeoutException.class, DataAccessResourceFailureException.class},
+			value = {javax.persistence.QueryTimeoutException.class, DataAccessResourceFailureException.class},
 			maxAttempts = 3,
 			backoff = @Backoff(delay = 1000, multiplier = 2))
 	private void fetchNextPage() {
@@ -276,7 +279,7 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 	 */
 	private String parseLastProcessedId(Object idValue) {
 		if (idValue == null) return null;
-		if (idValue instanceof Number) return String.valueOf(((Number) idValue).longValue());
+		if (idValue instanceof Number) return new java.math.BigDecimal(idValue.toString()).toPlainString();
 		String s = idValue.toString().trim();
 		return s.isEmpty() ? null : s;
 	}
