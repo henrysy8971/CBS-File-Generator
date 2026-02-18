@@ -105,13 +105,11 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto>, StepExecutio
 				channel.truncate(0);
 			}
 
-			lastByteOffset = channel.size();
-			channel.position(lastByteOffset);
+			// Force channel to the end (which is now 'offset' or 0)
+			// This ensures the byte tracker starts at the exact physical end of file
+			long actualPosition = channel.size();
 
-			// Wrap in Byte Tracker
-			// We start tracking bytes from the current position (which is now lastByteOffset)
-			this.byteTrackingStream = new ByteTrackingOutputStream(this.fileOutputStream, lastByteOffset);
-
+			this.byteTrackingStream = new ByteTrackingOutputStream(this.fileOutputStream, actualPosition);
 			this.bufferedOutputStream = new BufferedOutputStream(this.byteTrackingStream);
 			this.xmlStreamWriter = XMLOutputFactory.newInstance()
 					.createXMLStreamWriter(new OutputStreamWriter(this.bufferedOutputStream, StandardCharsets.UTF_8));

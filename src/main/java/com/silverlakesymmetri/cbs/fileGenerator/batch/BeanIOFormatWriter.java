@@ -126,13 +126,11 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 				channel.truncate(0);
 			}
 
-			lastByteOffset = channel.size();
-			channel.position(lastByteOffset);
+			// Force channel to the end (which is now 'offset' or 0)
+			// This ensures the byte tracker starts at the exact physical end of file
+			long actualPosition = channel.size();
 
-			// Wrap in Byte Tracker
-			// We start tracking bytes from the current position (which is now lastByteOffset)
-			this.byteTrackingStream = new ByteTrackingOutputStream(this.fileOutputStream, lastByteOffset);
-
+			this.byteTrackingStream = new ByteTrackingOutputStream(this.fileOutputStream, actualPosition);
 			bufferedOutputStream = new BufferedOutputStream(byteTrackingStream);
 			StreamFactory factory = getOrCreateFactory(config.getBeanIoMappingFile());
 			this.beanIOWriter = factory.createWriter(config.getStreamName(),
