@@ -1,5 +1,7 @@
 package com.silverlakesymmetri.cbs.fileGenerator.batch;
 
+import com.silverlakesymmetri.cbs.fileGenerator.config.InterfaceConfigLoader;
+import com.silverlakesymmetri.cbs.fileGenerator.config.model.InterfaceConfig;
 import com.silverlakesymmetri.cbs.fileGenerator.dto.DynamicRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -9,9 +11,9 @@ import org.springframework.batch.core.StepExecution;
 import org.springframework.batch.core.StepExecutionListener;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.batch.item.ExecutionContext;
-import org.springframework.batch.item.ItemStream;
 import org.springframework.batch.item.ItemStreamException;
 import org.springframework.stereotype.Component;
+import org.springframework.util.Assert;
 
 import javax.xml.stream.XMLOutputFactory;
 import javax.xml.stream.XMLStreamException;
@@ -19,21 +21,27 @@ import javax.xml.stream.XMLStreamWriter;
 import java.io.*;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.Locale;
 
 @Component
 @StepScope
 public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListener {
-
 	private static final Logger logger = LoggerFactory.getLogger(GenericXMLWriter.class);
+	private static final String RESTART_KEY_OFFSET = "xml.writer.byteOffset";
+	private static final String RESTART_KEY_COUNT = "xml.writer.recordCount";
+	private final InterfaceConfigLoader interfaceConfigLoader;
 
 	private XMLStreamWriter xmlStreamWriter;
 	private ByteTrackingOutputStream byteTrackingStream;
-	private FileOutputStream fos;
+	private FileOutputStream fileOutputStream;
 
 	private String partFilePath;
 	private String interfaceType;
+	private String outputFilePath;
 	private String rootElement;
 	private String itemElement;
 
@@ -42,24 +50,10 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 
 	private final Object lock = new Object(); // Thread-safety for write operations
 
-	// Keys for ExecutionContext
-	private static final String BYTE_OFFSET_KEY = "xml.byte.offset";
-	private static final String RECORD_COUNT_KEY = "xml.record.count";
 	private BufferedOutputStream bufferedOutputStream;
 
-	// --------------------------------------------------
-	// StepExecutionListener
-	// --------------------------------------------------
-
-	@Override
-	public void beforeStep(StepExecution stepExecution) {
-		this.stepSuccessful = false;
-	}
-
-	@Override
-	public ExitStatus afterStep(StepExecution stepExecution) {
-		this.stepSuccessful = stepExecution.getStatus() == BatchStatus.COMPLETED;
-		return stepExecution.getExitStatus();
+	public GenericXMLWriter(InterfaceConfigLoader interfaceConfigLoader) {
+		this.interfaceConfigLoader = interfaceConfigLoader;
 	}
 
 	// --------------------------------------------------
@@ -72,6 +66,8 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 			throw new IllegalArgumentException("outputFilePath must not be null or empty");
 		}
 
+		this.outputFilePath = outputFilePath;
+
 		this.interfaceType = (interfaceType != null && !interfaceType.trim().isEmpty())
 				? interfaceType.trim()
 				: null;
@@ -80,8 +76,7 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 				? outputFilePath
 				: outputFilePath + ".part";
 
-		File file = new File(partFilePath);
-		ensureParentDirectory(file);
+		ensureDirectoryExists(this.outputFilePath);
 
 		this.rootElement = resolveRootElement();
 		this.itemElement = rootElement + "Item";
@@ -94,41 +89,48 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 	// --------------------------------------------------
 	@Override
 	public void open(ExecutionContext executionContext) throws ItemStreamException {
+		Assert.hasText(outputFilePath, "outputFilePath must not be empty");
+		Assert.hasText(interfaceType, "interfaceType must not be empty");
+
 		try {
 			File file = new File(partFilePath);
-			ensureParentDirectory(file);
 
-			long offset = 0;
+			InterfaceConfig config = interfaceConfigLoader.getConfig(interfaceType);
+			if (config == null) throw new IllegalArgumentException("No config for " + interfaceType);
+
+			long lastByteOffset = 0;
 			boolean isRestart = false;
 
-			if (executionContext.containsKey(BYTE_OFFSET_KEY)) {
-				offset = executionContext.getLong(BYTE_OFFSET_KEY);
-				this.recordCount = executionContext.getLong(RECORD_COUNT_KEY, 0L);
+			if (executionContext.containsKey(RESTART_KEY_OFFSET)) {
+				lastByteOffset = executionContext.getLong(RESTART_KEY_OFFSET, 0L);
+				if (lastByteOffset < 0) lastByteOffset = 0;
+				this.recordCount = executionContext.getLong(RESTART_KEY_COUNT, 0L);
+				logger.info("Restart detected. Truncating file to byte offset: {}, records: {}", lastByteOffset, recordCount);
 				isRestart = true;
 			}
 
-			// 1. Open FileOutputStream in APPEND mode
-			fos = new FileOutputStream(file, true);
-			FileChannel channel = fos.getChannel();
+			fileOutputStream = new FileOutputStream(file, true);
+			FileChannel channel = fileOutputStream.getChannel();
 
-			// 2. Truncate if necessary (Critical for restart safety)
+			// Truncate if necessary (Critical for restart safety)
 			if (isRestart) {
-				if (offset < channel.size()) {
-					channel.truncate(offset);
-					logger.info("Restart: Truncated file to offset {}, resuming record {}", offset, recordCount);
+				if (lastByteOffset < channel.size()) {
+					channel.truncate(lastByteOffset);
+					logger.info("Restart: Truncated file to offset {}, resuming record {}", lastByteOffset, recordCount);
 				}
 			} else {
 				// Fresh run: Truncate to 0 to overwrite any existing garbage
 				channel.truncate(0);
 			}
 
-			// 3. Wrap in ByteTracker with correct INITIAL offset
-			this.byteTrackingStream = new ByteTrackingOutputStream(fos, offset);
+			lastByteOffset = channel.size();
+			channel.position(lastByteOffset);
 
-			// 4. Create XML Writer
-			// We use a non-closing wrapper or simply be careful not to close byteTrackingStream twice
+			// Wrap in Byte Tracker
+			// We start tracking bytes from the current position (which is now lastByteOffset)
+			this.byteTrackingStream = new ByteTrackingOutputStream(fileOutputStream, lastByteOffset);
+
 			bufferedOutputStream = new BufferedOutputStream(byteTrackingStream);
-
 			this.xmlStreamWriter = XMLOutputFactory.newInstance()
 					.createXMLStreamWriter(new OutputStreamWriter(bufferedOutputStream, StandardCharsets.UTF_8));
 
@@ -139,28 +141,6 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 		} catch (Exception e) {
 			closeQuietly();
 			throw new ItemStreamException("Failed during restart open()", e);
-		}
-	}
-
-	@Override
-	public void update(ExecutionContext executionContext) throws ItemStreamException {
-		try {
-			if (xmlStreamWriter != null) {
-				xmlStreamWriter.flush();
-				bufferedOutputStream.flush();
-				byteTrackingStream.flush();
-			}
-
-			if (byteTrackingStream != null) {
-				long currentOffset = byteTrackingStream.getBytesWritten();
-				executionContext.putLong(BYTE_OFFSET_KEY, currentOffset);
-				executionContext.putLong(RECORD_COUNT_KEY, recordCount);
-
-				logger.debug("Saved restart state: bytes={}, records={}",
-						currentOffset, recordCount);
-			}
-		} catch (Exception e) {
-			throw new ItemStreamException("Failed to update ExecutionContext", e);
 		}
 	}
 
@@ -180,6 +160,73 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 		logger.debug("Chunk written: {} records, total written: {}", items.size(), recordCount);
 	}
 
+	@Override
+	public void update(ExecutionContext executionContext) throws ItemStreamException {
+		try {
+			// Flush cascade: XML -> Buffer -> ByteTracker -> Disk
+			if (xmlStreamWriter != null) xmlStreamWriter.flush();
+			if (bufferedOutputStream != null) bufferedOutputStream.flush();
+			if (byteTrackingStream != null) {
+				long currentOffset = byteTrackingStream.getBytesWritten();
+				executionContext.putLong(RESTART_KEY_OFFSET, currentOffset);
+				executionContext.putLong(RESTART_KEY_COUNT, recordCount);
+				logger.debug("Saved restart state: bytes={}, records={}", currentOffset, recordCount);
+			}
+		} catch (Exception e) {
+			throw new ItemStreamException("Failed to update ExecutionContext", e);
+		}
+	}
+
+	@Override
+	public void close() throws ItemStreamException {
+		synchronized (lock) {
+			try {
+				if (xmlStreamWriter != null) {
+					if (stepSuccessful) {
+						writeFooter();
+						logger.info("Footer written. XML completed.");
+					} else {
+						logger.warn("Step failed. Footer NOT written to allow safe restart.");
+					}
+					xmlStreamWriter.close();
+				}
+			} catch (Exception e) {
+				logger.error("Failed closing XML writer", e);
+			} finally {
+				closeQuietly();
+			}
+		}
+	}
+
+	// --------------------------------------------------
+	// Listeners
+	// --------------------------------------------------
+	@Override
+	public void beforeStep(StepExecution stepExecution) {
+		this.stepSuccessful = false;
+	}
+
+	@Override
+	public ExitStatus afterStep(StepExecution stepExecution) {
+		this.stepSuccessful = (stepExecution.getStatus() == BatchStatus.COMPLETED);
+		return null;
+	}
+
+	@Override
+	public long getRecordCount() {
+		return recordCount;
+	}
+
+	@Override
+	public long getSkippedCount() {
+		return 0;
+	}
+
+	@Override
+	public String getOutputFilePath() {
+		return partFilePath;
+	}
+
 	private void closeQuietly() {
 		try {
 			if (xmlStreamWriter != null) xmlStreamWriter.close();
@@ -190,12 +237,12 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 		} catch (Exception ignored) {
 		}
 		try {
-			if (fos != null) fos.close();
+			if (fileOutputStream != null) fileOutputStream.close();
 		} catch (Exception ignored) {
 		}
 		xmlStreamWriter = null;
 		bufferedOutputStream = null;
-		fos = null;
+		fileOutputStream = null;
 	}
 
 	private void writeHeader() throws IOException {
@@ -238,38 +285,14 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 		}
 	}
 
-	@Override
-	public void close() throws ItemStreamException {
-		synchronized (lock) {
-			try {
-				if (xmlStreamWriter != null) {
-					if (stepSuccessful) {
-						writeFooter();
-						logger.info("Footer written. XML completed.");
-					} else {
-						logger.warn("Step failed. Footer not written to allow restart.");
-					}
-					xmlStreamWriter.close();
-					xmlStreamWriter = null;
-				}
-			} catch (Exception e) {
-				logger.error("Failed closing XML writer", e);
-			} finally {
-				closeQuietly();
-			}
-		}
-	}
-
 	// --------------------------------------------------
 	// Helpers
 	// --------------------------------------------------
 
-	private void ensureParentDirectory(File file) throws IOException {
-		File parent = file.getParentFile();
-		if (parent != null && !parent.exists()) {
-			if (!parent.mkdirs()) {
-				throw new IOException("Unable to create directory: " + parent);
-			}
+	private void ensureDirectoryExists(String path) throws IOException {
+		Path parent = Paths.get(path).toAbsolutePath().getParent();
+		if (parent != null) {
+			Files.createDirectories(parent);
 		}
 	}
 
@@ -286,22 +309,5 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 			return "_" + sanitized;
 		}
 		return sanitized;
-	}
-
-	// --------------------------------------------------
-
-	@Override
-	public long getRecordCount() {
-		return recordCount;
-	}
-
-	@Override
-	public long getSkippedCount() {
-		return 0;
-	}
-
-	@Override
-	public String getOutputFilePath() {
-		return partFilePath;
 	}
 }
