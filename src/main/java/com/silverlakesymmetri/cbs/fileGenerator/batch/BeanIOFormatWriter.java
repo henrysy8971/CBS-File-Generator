@@ -47,6 +47,7 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 
 	private BeanWriter beanIOWriter;
 	private ByteTrackingOutputStream byteTrackingStream;
+	private BufferedOutputStream bufferedOutputStream;
 	private FileOutputStream fileOutputStream;
 
 	private String partFilePath;
@@ -57,7 +58,6 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 	private boolean stepSuccessful = false;
 
 	private final Object lock = new Object(); // Thread-safety for write operations
-	private BufferedOutputStream bufferedOutputStream;
 
 	@Autowired
 	public BeanIOFormatWriter(InterfaceConfigLoader interfaceConfigLoader) {

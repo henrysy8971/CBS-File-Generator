@@ -37,6 +37,7 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 
 	private XMLStreamWriter xmlStreamWriter;
 	private ByteTrackingOutputStream byteTrackingStream;
+	private BufferedOutputStream bufferedOutputStream;
 	private FileOutputStream fileOutputStream;
 
 	private String partFilePath;
@@ -50,7 +51,6 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 
 	private final Object lock = new Object(); // Thread-safety for write operations
 
-	private BufferedOutputStream bufferedOutputStream;
 
 	public GenericXMLWriter(InterfaceConfigLoader interfaceConfigLoader) {
 		this.interfaceConfigLoader = interfaceConfigLoader;
@@ -134,7 +134,6 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 			this.xmlStreamWriter = XMLOutputFactory.newInstance()
 					.createXMLStreamWriter(new OutputStreamWriter(bufferedOutputStream, StandardCharsets.UTF_8));
 
-			// 5. Write Header if new file
 			if (!isRestart) {
 				writeHeader();
 			}
@@ -284,10 +283,6 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 			throw new IOException("Failed to write footer", e);
 		}
 	}
-
-	// --------------------------------------------------
-	// Helpers
-	// --------------------------------------------------
 
 	private void ensureDirectoryExists(String path) throws IOException {
 		Path parent = Paths.get(path).toAbsolutePath().getParent();
