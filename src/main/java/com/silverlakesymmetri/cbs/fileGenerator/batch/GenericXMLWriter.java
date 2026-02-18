@@ -164,6 +164,9 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 			// Flush cascade: XML -> Buffer -> ByteTracker -> Disk
 			if (xmlStreamWriter != null) xmlStreamWriter.flush();
 			if (bufferedOutputStream != null) bufferedOutputStream.flush();
+			if (fileOutputStream != null) {
+				fileOutputStream.getChannel().force(false);
+			}
 			if (byteTrackingStream != null) {
 				long currentOffset = byteTrackingStream.getBytesWritten();
 				executionContext.putLong(RESTART_KEY_OFFSET, currentOffset);

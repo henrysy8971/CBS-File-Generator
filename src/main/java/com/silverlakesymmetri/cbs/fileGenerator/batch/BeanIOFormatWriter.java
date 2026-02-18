@@ -170,6 +170,9 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 		try {
 			if (beanIOWriter != null) beanIOWriter.flush();
 			if (bufferedOutputStream != null) bufferedOutputStream.flush();
+			if (fileOutputStream != null) {
+				fileOutputStream.getChannel().force(false);
+			}
 			if (byteTrackingStream != null) {
 				long currentOffset = byteTrackingStream.getBytesWritten();
 				executionContext.putLong(RESTART_KEY_OFFSET, currentOffset);

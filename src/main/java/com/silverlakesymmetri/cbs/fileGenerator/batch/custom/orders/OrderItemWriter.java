@@ -68,7 +68,7 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto>, StepExecutio
 		this.marshaller.setClassesToBeBound(OrderDto.class);
 		// Ensure formatted output for readability
 		this.marshaller.setMarshallerProperties(Collections.singletonMap(
-				javax.xml.bind.Marshaller.JAXB_FORMATTED_OUTPUT, true
+				javax.xml.bind.Marshaller.JAXB_FORMATTED_OUTPUT, false
 		));
 	}
 
@@ -155,6 +155,9 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto>, StepExecutio
 			// Flush cascade: XML -> Buffer -> ByteTracker -> Disk
 			if (xmlStreamWriter != null) xmlStreamWriter.flush();
 			if (bufferedOutputStream != null) bufferedOutputStream.flush();
+			if (fileOutputStream != null) {
+				fileOutputStream.getChannel().force(false);
+			}
 			if (byteTrackingStream != null) {
 				long currentOffset = byteTrackingStream.getBytesWritten();
 				executionContext.putLong(RESTART_KEY_OFFSET, currentOffset);
