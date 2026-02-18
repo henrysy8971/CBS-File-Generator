@@ -109,8 +109,8 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 				isRestart = true;
 			}
 
-			fileOutputStream = new FileOutputStream(file, true);
-			FileChannel channel = fileOutputStream.getChannel();
+			this.fileOutputStream = new FileOutputStream(file, true);
+			FileChannel channel = this.fileOutputStream.getChannel();
 
 			// Truncate if necessary (Critical for restart safety)
 			if (isRestart) {
@@ -130,9 +130,9 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 			// We start tracking bytes from the current position (which is now lastByteOffset)
 			this.byteTrackingStream = new ByteTrackingOutputStream(fileOutputStream, lastByteOffset);
 
-			bufferedOutputStream = new BufferedOutputStream(byteTrackingStream);
+			this.bufferedOutputStream = new BufferedOutputStream(this.byteTrackingStream);
 			this.xmlStreamWriter = XMLOutputFactory.newInstance()
-					.createXMLStreamWriter(new OutputStreamWriter(bufferedOutputStream, StandardCharsets.UTF_8));
+					.createXMLStreamWriter(new OutputStreamWriter(this.bufferedOutputStream, StandardCharsets.UTF_8));
 
 			if (!isRestart) {
 				writeHeader();
@@ -145,6 +145,7 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 
 	@Override
 	public void write(List<? extends DynamicRecord> items) throws Exception {
+		if (this.xmlStreamWriter == null) throw new IllegalStateException("Writer not opened");
 		if (items == null || items.isEmpty()) return;
 
 		synchronized (lock) { // ensure thread-safe writes
@@ -187,6 +188,7 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 					} else {
 						logger.warn("Step failed. Footer NOT written to allow safe restart.");
 					}
+					xmlStreamWriter.flush();
 					xmlStreamWriter.close();
 				}
 			} catch (Exception e) {

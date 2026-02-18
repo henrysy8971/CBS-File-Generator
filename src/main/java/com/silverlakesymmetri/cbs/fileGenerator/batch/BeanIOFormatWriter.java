@@ -142,6 +142,7 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 				writeHeader();
 			}
 		} catch (Exception e) {
+			closeQuietly();
 			throw new ItemStreamException("Failed to initialize BeanIO writer", e);
 		}
 
@@ -152,6 +153,7 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 	@Override
 	public void write(List<? extends DynamicRecord> items) throws Exception {
 		if (beanIOWriter == null) throw new IllegalStateException("Writer not opened");
+		if (items == null || items.isEmpty()) return;
 
 		synchronized (lock) { // ensure thread-safe writes
 			for (DynamicRecord record : items) {
@@ -168,18 +170,13 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 	@Override
 	public void update(ExecutionContext executionContext) {
 		try {
-			if (beanIOWriter != null) {
-				beanIOWriter.flush();
-				byteTrackingStream.flush();
-			}
-
+			if (beanIOWriter != null) beanIOWriter.flush();
+			if (bufferedOutputStream != null) bufferedOutputStream.flush();
 			if (byteTrackingStream != null) {
 				long currentOffset = byteTrackingStream.getBytesWritten();
 				executionContext.putLong(RESTART_KEY_OFFSET, currentOffset);
 				executionContext.putLong(RESTART_KEY_COUNT, recordCount);
-
-				logger.debug("Saved restart state: bytes={}, records={}",
-						currentOffset, recordCount);
+				logger.debug("Saved restart state: bytes={}, records={}", currentOffset, recordCount);
 			}
 		} catch (Exception e) {
 			throw new ItemStreamException("Failed to update restart state", e);
@@ -193,7 +190,9 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 				if (beanIOWriter != null) {
 					if (stepSuccessful) {
 						writeFooter();
+						logger.info("Footer written. File completed.");
 					} else {
+						logger.warn("Step failed. Footer NOT written to allow safe restart.");
 					}
 					beanIOWriter.flush();
 					beanIOWriter.close();
@@ -206,6 +205,9 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 		}
 	}
 
+	// --------------------------------------------------
+	// Listeners
+	// --------------------------------------------------
 	@Override
 	public void beforeStep(StepExecution stepExecution) {
 		this.stepSuccessful = false;

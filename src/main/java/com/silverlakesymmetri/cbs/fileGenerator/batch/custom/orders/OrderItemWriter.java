@@ -112,9 +112,9 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto>, StepExecutio
 			// We start tracking bytes from the current position (which is now lastByteOffset)
 			this.byteTrackingStream = new ByteTrackingOutputStream(this.fileOutputStream, lastByteOffset);
 
-			this.bufferedOutputStream = new BufferedOutputStream(byteTrackingStream);
+			this.bufferedOutputStream = new BufferedOutputStream(this.byteTrackingStream);
 			this.xmlStreamWriter = XMLOutputFactory.newInstance()
-					.createXMLStreamWriter(new OutputStreamWriter(bufferedOutputStream, StandardCharsets.UTF_8));
+					.createXMLStreamWriter(new OutputStreamWriter(this.bufferedOutputStream, StandardCharsets.UTF_8));
 
 			if (!isRestart) {
 				writeHeader();
@@ -128,6 +128,7 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto>, StepExecutio
 
 	@Override
 	public void write(List<? extends OrderDto> items) throws Exception {
+		if (this.xmlStreamWriter == null) throw new IllegalStateException("Writer not opened");
 		if (items == null || items.isEmpty()) return;
 
 		synchronized (lock) { // ensure thread-safe writes
@@ -143,7 +144,6 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto>, StepExecutio
 
 				Result result = new StAXResult(xmlStreamWriter);
 				marshaller.marshal(element, result);
-
 				recordCount++;
 			}
 		}
@@ -154,7 +154,7 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto>, StepExecutio
 	@Override
 	public void update(ExecutionContext executionContext) {
 		try {
-			// FLUSH ORDER IS CRITICAL
+			// Flush cascade: XML -> Buffer -> ByteTracker -> Disk
 			if (xmlStreamWriter != null) xmlStreamWriter.flush();
 			if (bufferedOutputStream != null) bufferedOutputStream.flush();
 			if (byteTrackingStream != null) {
@@ -179,6 +179,7 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto>, StepExecutio
 					} else {
 						logger.warn("Step failed. Footer NOT written to allow safe restart.");
 					}
+					xmlStreamWriter.flush();
 					xmlStreamWriter.close();
 				}
 			} catch (Exception e) {
@@ -219,7 +220,7 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto>, StepExecutio
 
 		// Flush immediately to ensure file structure is created
 		xmlStreamWriter.flush();
-		bufferedOutputStream.flush();
+		if (bufferedOutputStream != null) bufferedOutputStream.flush();
 	}
 
 	private void writeFooter() throws XMLStreamException, IOException {
@@ -251,6 +252,10 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto>, StepExecutio
 
 	private void closeQuietly() {
 		try {
+			if (xmlStreamWriter != null) xmlStreamWriter.close();
+		} catch (Exception ignored) {
+		}
+		try {
 			if (bufferedOutputStream != null) bufferedOutputStream.close();
 		} catch (Exception ignored) {
 		}
@@ -258,6 +263,9 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto>, StepExecutio
 			if (fileOutputStream != null) fileOutputStream.close();
 		} catch (Exception ignored) {
 		}
+		xmlStreamWriter = null;
+		bufferedOutputStream = null;
+		fileOutputStream = null;
 	}
 
 	// --------------------------------------------------
