@@ -112,7 +112,7 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 				isRestart = true;
 			}
 
-			this.fileOutputStream = new FileOutputStream(file, true);
+			this.fileOutputStream = new FileOutputStream(file, isRestart);
 			FileChannel channel = this.fileOutputStream.getChannel();
 
 			// Truncate if necessary (Critical for restart safety)
@@ -162,7 +162,7 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 			}
 		}
 
-		logger.debug("Chunk written: {} records, total written: {}", items.size(), recordCount);
+		logger.debug("Chunk written: {}, total written: {}", items.size(), recordCount);
 	}
 
 	@Override
@@ -194,6 +194,7 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 					}
 					beanIOWriter.flush();
 					beanIOWriter.close();
+					beanIOWriter = null;
 				}
 			} catch (Exception e) {
 				logger.warn("Failed closing BeanIO Writer", e);

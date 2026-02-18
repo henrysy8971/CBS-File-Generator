@@ -91,7 +91,7 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto>, StepExecutio
 				isRestart = true;
 			}
 
-			this.fileOutputStream = new FileOutputStream(file, true);
+			this.fileOutputStream = new FileOutputStream(file, isRestart);
 			FileChannel channel = this.fileOutputStream.getChannel();
 
 			// Truncate if necessary (Critical for restart safety)
@@ -146,7 +146,7 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto>, StepExecutio
 			}
 		}
 
-		logger.debug("Chunk written: {} records, total written: {}", items.size(), recordCount);
+		logger.debug("Chunk written: {}, total written: {}", items.size(), recordCount);
 	}
 
 	@Override
@@ -179,6 +179,7 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto>, StepExecutio
 					}
 					xmlStreamWriter.flush();
 					xmlStreamWriter.close();
+					xmlStreamWriter = null;
 				}
 			} catch (Exception e) {
 				logger.error("Error closing XML writer", e);
