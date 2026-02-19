@@ -134,44 +134,45 @@ mvn clean package -Pwar
 src/main/java/com/silverlakesymmetri/cbs/fileGenerator/
 ├── FileGeneratorApplication.java           <- Main entry point
 ├── batch/
-│   ├── BatchCleanupTasklet.java            <- Deletes stale files & DB rows
-│   ├── BeanIOFormatWriter.java             <- Generic BeanIO writer
 │   ├── DynamicBatchConfig.java             <- Generic batch config
 │   ├── DynamicItemProcessor.java           <- Generic processor
 │   ├── DynamicItemReader.java              <- Generic reader
 │   ├── DynamicItemWriter.java              <- Generic writer
-│   ├── DynamicJobExecutionListener.java    <- Job listener
-│   ├── DynamicStepExecutionListener.java   <- Step listener
-│   ├── FileValidationTasklet.java          <- Validates output against XSD
+│   ├── GenericBeanIOWriter.java            <- Generic BeanIO writer
 │   ├── GenericXMLWriter.java               <- Generic XML writer
-│   ├── MaintenanceBatchConfig.java         <- Configures the cleanup job
 │   ├── OutputFormatWriter.java             <- Generic output format writer
 │   ├── OutputFormatWriterFactory.java      <- Factory for selecting appropriate output format writer
-│   └── custom/
+│   ├── listeners/
+│   │   ├── FileGenerationJobListener.java  <- Job listener for all file generation jobs
+│   │   └── FileGenerationStepListener.java <- Step listener for all file generation jobs
+│   └── order/
 │       ├── OrderBatchConfig.java           <- Example: specialized batch config
 │       ├── OrderItemProcessor.java         <- Example: specialized processor
 │       ├── OrderItemReader.java            <- Example: specialized reader
 │       ├── OrderItemWriter.java            <- Example: specialized writer
-│       ├── OrderRowMapper.java             <- Example: entity->DTO mapper
-│       └── OrderStepExecutionListener.java <- Example: specialized step listener
+│       └── OrderRowMapper.java             <- Example: entity->DTO mapper
 ├── config/
 │   ├── AsyncConfig.java                    <- ThreadPool for @Async tasks
 │   ├── AutowiringSpringBeanJobFactory.java <- Injects Spring beans into Quartz
 │   ├── BatchInfrastructureConfig.java      <- Core Batch engine config
 │   ├── DatabaseConfig.java                 <- Database configuration
+│   ├── FilterConfig.java                   <- Configures ???
 │   ├── InterfaceConfigLoader.java          <- Interface configuration loader
-│   ├── QuartzConfiguration.java            <- Quartz scheduler configuration
-│   ├── SchedulerStartupRunner.jav          <- Starts Quartz on app boot
-│   ├── SecurityConfig.java                 <- Security configuration
+│   ├── MaintenanceBatchConfig.java         <- Configures the cleanup job
+│   ├── MdcTaskDecorator.java               <- 
+│   ├── QuartzConfig.java                   <- Quartz scheduler configuration
 │   ├── TomcatConfig.java                   <- Tomcat configuration
+│   ├── WebSecurityConfig.java              <- Web Security configuration
 │   └── model/
 │       ├── InterfaceConfig.java            <- Interface Config model
 │       └── InterfaceConfigWrapper.java     <- Wrapper for interface-config.json
 ├── constants/
-│   ├── BatchMetricsConstants.java          <- Metric key definitions
-│   └── FileGenerationConstants.java        <- Global app constants
+│   ├── FileGenerationConstants.java        <- Global app constants
+│   ├── FileGenerationStatus.java           <- File Generation Status Constants
+│   └── FinalizationResult.java             <- File finalization results constants
 ├── controller/
 │   ├── AdminController.java                <- Admin REST endpoints
+│   ├── DashboardController.java            <- Landing page REST endpoint
 │   └── FileGenerationController.java       <- File Generation REST endpoints
 ├── dto/
 │   ├── ApiResponse.java                    <- Standard HTTP response wrapper
@@ -179,16 +180,20 @@ src/main/java/com/silverlakesymmetri/cbs/fileGenerator/
 │   ├── DynamicRecord.java                  <- Generic record holder for dynamic data
 │   ├── FileGenerationRequest.java          <- API request
 │   ├── FileGenerationResponse.java         <- API response
-│   ├── LineItemDto.java                    <- Example: nested DTO
-│   ├── OrderDto.java                       <- Example: complex DTO
-│   └── PagedResponse.java                  <- Wrapper for paginated results
-│   └── RecordSchema.java                   <- Metadata for dynamic columns
+│   ├── PagedResponse.java                  <- Wrapper for paginated results
+│   ├── RecordSchema.java                   <- Metadata for dynamic columns
+│   └── order/
+│       ├── LineItemDto.java                <- Example: nested DTO
+│       ├── OrderDto.java                   <- Example: complex DTO
+│       └── package-info.java               <- Example: complex DTO
 ├── entity/
 │   ├── AppConfig.java                      <- Application config
 │   ├── DbToken.java                        <- Auth tokens
 │   ├── FileGeneration.java                 <- Tracks file generation job execution
-│   ├── LineItem.java                       <- Example: JPA entity
-│   └── Order.java                          <- Example: JPA entity
+│   ├── FileGenerationAudit.java            <- Tracks file generation status transition
+│   └── order/
+│       ├── LineItem.java                   <- Example: JPA entity
+│       └── Order.java                      <- Example: JPA entity
 ├── exception/
 │   ├── ConfigurationException.java         <- Invalid config error
 │   ├── ConflictException.java              <- HTTP 409 Conflict error
@@ -203,11 +208,14 @@ src/main/java/com/silverlakesymmetri/cbs/fileGenerator/
 ├── repository/
 │   ├── AppConfigRepository.java            <- Config access
 │   ├── DbTokenRepository.java              <- Token access
+│   ├── FileGenerationAuditRepository.java  <- Job status change audit
 │   ├── FileGenerationRepository.java       <- Job tracking
 │   └── OrderRepository.java                <- Example: custom queries
+├── retry/
+│   └── DbRetryable.java                    <- common jpe retry annotation
 ├── scheduler/
-│   └── BatchJobLauncherJob.java            <- Quartz job triggering Batch
-│   └── FileGenerationScheduler.java        <- Job scheduling
+│   ├── BatchJobLauncherJob.java            <- Quartz job triggering Batch
+│   ├── FileGenerationScheduler.java        <- Job scheduling
 │   └── MaintenanceScheduler.java           <- Quartz job triggering Cleanup
 ├── security/
 │   ├── CorrelationIdFilter.java            <- Adds Request ID to MDC logs
@@ -218,17 +226,24 @@ src/main/java/com/silverlakesymmetri/cbs/fileGenerator/
 │   ├── BatchJobLauncher.java               <- Job routing
 │   ├── FileFinalizationService.java        <- Finalizes file generation
 │   ├── FileGenerationService.java          <- Business logic
-│   └── FileGenerationStatus.java           <- Enum for Job lifecycle states
-── validation/
+│   └── RateLimiterService.java             <- User request rate limiting logic
+├── tasklets/
+│   ├── BatchCleanupTasklet.java            <- Deletes stale files & DB rows
+│   └── FileValidationTasklet.java          <- Validates output against XSD
+└─ validation/
     └── XsdValidator.java                   <- Optional XSD validation
 
 src/main/resources/
 ├── application.properties                  <- App configuration
 ├── interface-config.json                   <- Interface definitions
+├── logback-spring.xml                      <-
 ├── beanio/
 │   └── (mapping files)
 ├── db/
 │   └── schema.sql                          <- Database schema
+├─── static/
+├─── template/
+│   └── dashboard.html                      <- Application landing page
 └── xsd/
     ├── order_schema.xsd                    <- Example: XSD schema
     └── (other schemas)
