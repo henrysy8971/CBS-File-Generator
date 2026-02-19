@@ -61,7 +61,7 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 	// --------------------------------------------------
 
 	@Override
-	public void init(String outputFilePath, String interfaceType) throws IOException {
+	public void init(String outputFilePath, String interfaceType) throws Exception {
 		if (outputFilePath == null || outputFilePath.trim().isEmpty()) {
 			throw new IllegalArgumentException("outputFilePath must not be null or empty");
 		}
@@ -72,14 +72,14 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 				? interfaceType.trim()
 				: null;
 
-		this.partFilePath = outputFilePath.endsWith(".part")
+		partFilePath = outputFilePath.endsWith(".part")
 				? outputFilePath
 				: outputFilePath + ".part";
 
-		ensureDirectoryExists(this.outputFilePath);
+		ensureDirectoryExists(outputFilePath);
 
-		this.rootElement = resolveRootElement();
-		this.itemElement = rootElement + "Item";
+		rootElement = resolveRootElement();
+		itemElement = rootElement + "Item";
 
 		logger.info("Initialized XML writer: {}", partFilePath);
 	}
@@ -104,13 +104,13 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 			if (executionContext.containsKey(RESTART_KEY_OFFSET)) {
 				lastByteOffset = executionContext.getLong(RESTART_KEY_OFFSET, 0L);
 				if (lastByteOffset < 0) lastByteOffset = 0;
-				this.recordCount = executionContext.getLong(RESTART_KEY_COUNT, 0L);
+				recordCount = executionContext.getLong(RESTART_KEY_COUNT, 0L);
 				logger.info("Restart detected. Truncating file to byte offset: {}, records: {}", lastByteOffset, recordCount);
 				isRestart = true;
 			}
 
-			this.fileOutputStream = new FileOutputStream(file, isRestart);
-			FileChannel channel = this.fileOutputStream.getChannel();
+			fileOutputStream = new FileOutputStream(file, isRestart);
+			FileChannel channel = fileOutputStream.getChannel();
 
 			// Truncate if necessary (Critical for restart safety)
 			if (isRestart) {
@@ -127,10 +127,10 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 			// This ensures the byte tracker starts at the exact physical end of file
 			long actualPosition = channel.size();
 
-			this.byteTrackingStream = new ByteTrackingOutputStream(fileOutputStream, actualPosition);
-			this.bufferedOutputStream = new BufferedOutputStream(this.byteTrackingStream);
-			this.xmlStreamWriter = XMLOutputFactory.newInstance()
-					.createXMLStreamWriter(new OutputStreamWriter(this.bufferedOutputStream, StandardCharsets.UTF_8));
+			byteTrackingStream = new ByteTrackingOutputStream(fileOutputStream, actualPosition);
+			bufferedOutputStream = new BufferedOutputStream(byteTrackingStream);
+			xmlStreamWriter = XMLOutputFactory.newInstance()
+					.createXMLStreamWriter(new OutputStreamWriter(bufferedOutputStream, StandardCharsets.UTF_8));
 
 			if (!isRestart) {
 				writeHeader();
@@ -139,11 +139,14 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 			closeQuietly();
 			throw new ItemStreamException("Failed during restart open()", e);
 		}
+
+		logger.info("XML Stream writer initialized for interface={}, output={}",
+				interfaceType, partFilePath);
 	}
 
 	@Override
 	public void write(List<? extends DynamicRecord> items) throws Exception {
-		if (this.xmlStreamWriter == null) throw new IllegalStateException("Writer not opened");
+		if (xmlStreamWriter == null) throw new IllegalStateException("Writer not opened");
 		if (items == null || items.isEmpty()) return;
 
 		synchronized (lock) { // ensure thread-safe writes
@@ -161,7 +164,7 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 	@Override
 	public void update(ExecutionContext executionContext) throws ItemStreamException {
 		try {
-			// Flush cascade: XML -> Buffer -> ByteTracker -> Disk
+			// Flush cascade: Writer -> Buffer -> ByteTracker -> Disk
 			if (xmlStreamWriter != null) xmlStreamWriter.flush();
 			if (bufferedOutputStream != null) bufferedOutputStream.flush();
 			if (fileOutputStream != null) {
@@ -206,13 +209,14 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 	// --------------------------------------------------
 	@Override
 	public void beforeStep(StepExecution stepExecution) {
-		this.stepSuccessful = false;
+		stepSuccessful = false;
 	}
 
 	@Override
 	public ExitStatus afterStep(StepExecution stepExecution) {
-		this.stepSuccessful = (stepExecution.getStatus() == BatchStatus.COMPLETED);
-		return null;
+		if (stepExecution == null) return null;
+		stepSuccessful = (stepExecution.getStatus() == BatchStatus.COMPLETED);
+		return stepExecution.getExitStatus();
 	}
 
 	@Override
@@ -288,13 +292,6 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 		}
 	}
 
-	private void ensureDirectoryExists(String path) throws IOException {
-		Path parent = Paths.get(path).toAbsolutePath().getParent();
-		if (parent != null) {
-			Files.createDirectories(parent);
-		}
-	}
-
 	private String resolveRootElement() {
 		if (interfaceType == null) return "data";
 		return interfaceType.toLowerCase(Locale.ROOT).replaceFirst("(?i)_interface$", "");
@@ -311,6 +308,16 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 	}
 
 	// --------------------------------------------------
+	// Automatic output directory creation if non existing
+	// --------------------------------------------------
+	private void ensureDirectoryExists(String path) throws IOException {
+		Path parent = Paths.get(path).toAbsolutePath().getParent();
+		if (parent != null) {
+			Files.createDirectories(parent);
+		}
+	}
+
+	// --------------------------------------------------
 	// Inner Class: Byte Tracking
 	// --------------------------------------------------
 	private static class ByteTrackingOutputStream extends OutputStream {
@@ -319,7 +326,7 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 
 		public ByteTrackingOutputStream(OutputStream delegate, long initialOffset) {
 			this.delegate = delegate;
-			this.bytesWritten = initialOffset;
+			bytesWritten = initialOffset;
 		}
 
 		@Override

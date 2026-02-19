@@ -27,6 +27,9 @@ import javax.xml.transform.stax.StAXResult;
 import java.io.*;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
@@ -54,31 +57,41 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto>, StepExecutio
 	private FileOutputStream fileOutputStream;
 
 	private final String partFilePath;
+	private final String outputFilePath;
 	private boolean stepSuccessful = false;
 
 	private long recordCount = 0;
 	private final Object lock = new Object();
 
 	@Autowired
-	public OrderItemWriter(@Value("#{jobParameters['outputFilePath']}") String partFilePath) {
-		this.partFilePath = Objects.requireNonNull(partFilePath, "outputFilePath is required");
+	public OrderItemWriter(@Value("#{jobParameters['outputFilePath']}") String outputFilePath) {
+		this.outputFilePath = Objects.requireNonNull(outputFilePath, "outputFilePath is required");
+
+		partFilePath = outputFilePath.endsWith(".part")
+				? outputFilePath
+				: outputFilePath + ".part";
+
+		try {
+			ensureDirectoryExists(outputFilePath);
+		} catch (IOException e) {
+			throw new IllegalArgumentException("outputFilePath '" + outputFilePath + "' is invalid");
+		}
 
 		// Initialize JAXB
-		this.marshaller = new Jaxb2Marshaller();
-		this.marshaller.setClassesToBeBound(OrderDto.class);
+		marshaller = new Jaxb2Marshaller();
+		marshaller.setClassesToBeBound(OrderDto.class);
 		// Ensure formatted output for readability
-		this.marshaller.setMarshallerProperties(Collections.singletonMap(
+		marshaller.setMarshallerProperties(Collections.singletonMap(
 				javax.xml.bind.Marshaller.JAXB_FORMATTED_OUTPUT, false
 		));
 	}
 
 	@Override
 	public void open(ExecutionContext executionContext) throws ItemStreamException {
-		Assert.hasText(partFilePath, "outputFilePath must not be empty");
+		Assert.hasText(outputFilePath, "outputFilePath must not be empty");
 
 		try {
 			File file = new File(partFilePath);
-			ensureParentDirectory(file);
 
 			long lastByteOffset = 0;
 			boolean isRestart = false;
@@ -86,13 +99,13 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto>, StepExecutio
 			if (executionContext.containsKey(RESTART_KEY_OFFSET)) {
 				lastByteOffset = executionContext.getLong(RESTART_KEY_OFFSET, 0L);
 				if (lastByteOffset < 0) lastByteOffset = 0;
-				this.recordCount = executionContext.getLong(RESTART_KEY_COUNT, 0L);
+				recordCount = executionContext.getLong(RESTART_KEY_COUNT, 0L);
 				logger.info("Restart detected. Truncating file to byte offset: {}, records: {}", lastByteOffset, recordCount);
 				isRestart = true;
 			}
 
-			this.fileOutputStream = new FileOutputStream(file, isRestart);
-			FileChannel channel = this.fileOutputStream.getChannel();
+			fileOutputStream = new FileOutputStream(file, isRestart);
+			FileChannel channel = fileOutputStream.getChannel();
 
 			// Truncate if necessary (Critical for restart safety)
 			if (isRestart) {
@@ -109,24 +122,25 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto>, StepExecutio
 			// This ensures the byte tracker starts at the exact physical end of file
 			long actualPosition = channel.size();
 
-			this.byteTrackingStream = new ByteTrackingOutputStream(this.fileOutputStream, actualPosition);
-			this.bufferedOutputStream = new BufferedOutputStream(this.byteTrackingStream);
-			this.xmlStreamWriter = XMLOutputFactory.newInstance()
-					.createXMLStreamWriter(new OutputStreamWriter(this.bufferedOutputStream, StandardCharsets.UTF_8));
+			byteTrackingStream = new ByteTrackingOutputStream(fileOutputStream, actualPosition);
+			bufferedOutputStream = new BufferedOutputStream(byteTrackingStream);
+			xmlStreamWriter = XMLOutputFactory.newInstance()
+					.createXMLStreamWriter(new OutputStreamWriter(bufferedOutputStream, StandardCharsets.UTF_8));
 
 			if (!isRestart) {
 				writeHeader();
 			}
-
 		} catch (Exception e) {
 			closeQuietly();
 			throw new ItemStreamException("Failed to open OrderItemWriter", e);
 		}
+
+		logger.info("XML Stream writer initialized for output={}", outputFilePath);
 	}
 
 	@Override
 	public void write(List<? extends OrderDto> items) throws Exception {
-		if (this.xmlStreamWriter == null) throw new IllegalStateException("Writer not opened");
+		if (xmlStreamWriter == null) throw new IllegalStateException("Writer not opened");
 		if (items == null || items.isEmpty()) return;
 
 		synchronized (lock) { // ensure thread-safe writes
@@ -197,15 +211,15 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto>, StepExecutio
 	// -------------------------------------------------------------------------
 	@Override
 	public void beforeStep(StepExecution stepExecution) {
-		this.stepSuccessful = false;
+		stepSuccessful = false;
 	}
 
 	@Override
 	public ExitStatus afterStep(StepExecution stepExecution) {
-		this.stepSuccessful = (stepExecution.getStatus() == BatchStatus.COMPLETED);
+		stepSuccessful = (stepExecution.getStatus() == BatchStatus.COMPLETED);
 		ExecutionContext jobContext = stepExecution.getJobExecution().getExecutionContext();
-		jobContext.putString("partFilePath", this.partFilePath);
-		jobContext.putLong("totalRecordCount", this.recordCount);
+		jobContext.putString("partFilePath", partFilePath);
+		jobContext.putLong("totalRecordCount", recordCount);
 		return stepExecution.getExitStatus();
 	}
 
@@ -243,12 +257,13 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto>, StepExecutio
 		if (bufferedOutputStream != null) bufferedOutputStream.flush();
 	}
 
-	private void ensureParentDirectory(File file) throws IOException {
-		File parent = file.getParentFile();
-		if (parent != null && !parent.exists()) {
-			if (!parent.mkdirs()) {
-				throw new IOException("Unable to create directory: " + parent);
-			}
+	// --------------------------------------------------
+	// Automatic output directory creation if non existing
+	// --------------------------------------------------
+	private void ensureDirectoryExists(String path) throws IOException {
+		Path parent = Paths.get(path).toAbsolutePath().getParent();
+		if (parent != null) {
+			Files.createDirectories(parent);
 		}
 	}
 
@@ -279,7 +294,7 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto>, StepExecutio
 
 		public ByteTrackingOutputStream(OutputStream delegate, long initialOffset) {
 			this.delegate = delegate;
-			this.bytesWritten = initialOffset;
+			bytesWritten = initialOffset;
 		}
 
 		@Override

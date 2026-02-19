@@ -45,7 +45,7 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 	private static final Map<String, StreamFactory> FACTORY_CACHE = new ConcurrentHashMap<>();
 	private final InterfaceConfigLoader interfaceConfigLoader;
 
-	private BeanWriter beanIOWriter;
+	private BeanWriter beanWriter;
 	private ByteTrackingOutputStream byteTrackingStream;
 	private BufferedOutputStream bufferedOutputStream;
 	private FileOutputStream fileOutputStream;
@@ -80,11 +80,11 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 				? interfaceType.trim()
 				: null;
 
-		this.partFilePath = outputFilePath.endsWith(".part")
+		partFilePath = outputFilePath.endsWith(".part")
 				? outputFilePath
 				: outputFilePath + ".part";
 
-		ensureDirectoryExists(this.outputFilePath);
+		ensureDirectoryExists(outputFilePath);
 	}
 
 	// --------------------------------------------------
@@ -107,13 +107,13 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 			if (executionContext.containsKey(RESTART_KEY_OFFSET)) {
 				lastByteOffset = executionContext.getLong(RESTART_KEY_OFFSET, 0L);
 				if (lastByteOffset < 0) lastByteOffset = 0;
-				this.recordCount = executionContext.getLong(RESTART_KEY_COUNT, 0L);
+				recordCount = executionContext.getLong(RESTART_KEY_COUNT, 0L);
 				logger.info("Restart detected. Truncating file to byte offset: {}, records: {}", lastByteOffset, recordCount);
 				isRestart = true;
 			}
 
-			this.fileOutputStream = new FileOutputStream(file, isRestart);
-			FileChannel channel = this.fileOutputStream.getChannel();
+			fileOutputStream = new FileOutputStream(file, isRestart);
+			FileChannel channel = fileOutputStream.getChannel();
 
 			// Truncate if necessary (Critical for restart safety)
 			if (isRestart) {
@@ -130,10 +130,10 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 			// This ensures the byte tracker starts at the exact physical end of file
 			long actualPosition = channel.size();
 
-			this.byteTrackingStream = new ByteTrackingOutputStream(this.fileOutputStream, actualPosition);
+			byteTrackingStream = new ByteTrackingOutputStream(fileOutputStream, actualPosition);
 			bufferedOutputStream = new BufferedOutputStream(byteTrackingStream);
 			StreamFactory factory = getOrCreateFactory(config.getBeanIoMappingFile());
-			this.beanIOWriter = factory.createWriter(config.getStreamName(),
+			beanWriter = factory.createWriter(config.getStreamName(),
 					new OutputStreamWriter(bufferedOutputStream, StandardCharsets.UTF_8));
 
 			if (!isRestart) {
@@ -145,18 +145,18 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 		}
 
 		logger.info("BeanIO writer initialized for interface={}, output={}",
-				interfaceType, partFilePath);
+				interfaceType, outputFilePath);
 	}
 
 	@Override
 	public void write(List<? extends DynamicRecord> items) throws Exception {
-		if (beanIOWriter == null) throw new IllegalStateException("Writer not opened");
+		if (beanWriter == null) throw new IllegalStateException("Writer not opened");
 		if (items == null || items.isEmpty()) return;
 
 		synchronized (lock) { // ensure thread-safe writes
 			for (DynamicRecord record : items) {
 				if (record != null) {
-					beanIOWriter.write(record.asMap());
+					beanWriter.write(record.asMap());
 					recordCount++;
 				}
 			}
@@ -168,7 +168,8 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 	@Override
 	public void update(ExecutionContext executionContext) {
 		try {
-			if (beanIOWriter != null) beanIOWriter.flush();
+			// Flush cascade: Writer -> Buffer -> ByteTracker -> Disk
+			if (beanWriter != null) beanWriter.flush();
 			if (bufferedOutputStream != null) bufferedOutputStream.flush();
 			if (fileOutputStream != null) {
 				fileOutputStream.getChannel().force(false);
@@ -188,16 +189,16 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 	public void close() {
 		synchronized (lock) {
 			try {
-				if (beanIOWriter != null) {
+				if (beanWriter != null) {
 					if (stepSuccessful) {
 						writeFooter();
 						logger.info("Footer written. File completed.");
 					} else {
 						logger.warn("Step failed. Footer NOT written to allow safe restart.");
 					}
-					beanIOWriter.flush();
-					beanIOWriter.close();
-					beanIOWriter = null;
+					beanWriter.flush();
+					beanWriter.close();
+					beanWriter = null;
 				}
 			} catch (Exception e) {
 				logger.warn("Failed closing BeanIO Writer", e);
@@ -212,13 +213,14 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 	// --------------------------------------------------
 	@Override
 	public void beforeStep(StepExecution stepExecution) {
-		this.stepSuccessful = false;
+		stepSuccessful = false;
 	}
 
 	@Override
 	public ExitStatus afterStep(StepExecution stepExecution) {
-		this.stepSuccessful = (stepExecution.getStatus() == BatchStatus.COMPLETED);
-		return null;
+		if (stepExecution == null) return null;
+		stepSuccessful = (stepExecution.getStatus() == BatchStatus.COMPLETED);
+		return stepExecution.getExitStatus();
 	}
 
 	@Override
@@ -238,7 +240,7 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 
 	private void closeQuietly() {
 		try {
-			if (beanIOWriter != null) beanIOWriter.close();
+			if (beanWriter != null) beanWriter.close();
 		} catch (Exception ignored) {
 		}
 		try {
@@ -249,7 +251,7 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 			if (fileOutputStream != null) fileOutputStream.close();
 		} catch (Exception ignored) {
 		}
-		beanIOWriter = null;
+		beanWriter = null;
 		bufferedOutputStream = null;
 		fileOutputStream = null;
 	}
@@ -261,7 +263,7 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 	}
 
 	// --------------------------------------------------
-	// Helpers
+	// Stream Factory related methods
 	// --------------------------------------------------
 
 	private StreamFactory getOrCreateFactory(String mappingFile) {
@@ -329,6 +331,9 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 		logger.info("BeanIO Factory Cache cleared.");
 	}
 
+	// --------------------------------------------------
+	// Automatic output directory creation if non existing
+	// --------------------------------------------------
 	private void ensureDirectoryExists(String path) throws IOException {
 		Path parent = Paths.get(path).toAbsolutePath().getParent();
 		if (parent != null) {
@@ -345,7 +350,7 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 
 		public ByteTrackingOutputStream(OutputStream delegate, long initialOffset) {
 			this.delegate = delegate;
-			this.bytesWritten = initialOffset;
+			bytesWritten = initialOffset;
 		}
 
 		@Override
