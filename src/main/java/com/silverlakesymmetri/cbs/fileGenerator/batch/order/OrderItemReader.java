@@ -12,19 +12,18 @@ import org.springframework.batch.item.NonTransientResourceException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import javax.persistence.PersistenceException;
 import javax.persistence.Tuple;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.ORDER_INTERFACE;
 
 @Component
 @StepScope
+@Transactional(readOnly = true)
 public class OrderItemReader implements ItemStreamReader<OrderDto> {
 	private static final Logger logger = LoggerFactory.getLogger(OrderItemReader.class);
 	private static final String CONTEXT_KEY_TOTAL = "order.reader.totalProcessed";
@@ -44,8 +43,9 @@ public class OrderItemReader implements ItemStreamReader<OrderDto> {
 			OrderRowMapper orderRowMapper,
 			@Value("${file.generation.chunk-size:1000}") int pageSize
 	) {
-		this.orderRepository = orderRepository;
-		this.orderRowMapper = orderRowMapper;
+		this.orderRepository = Objects.requireNonNull(orderRepository, "orderRepository must not be null");
+		this.orderRowMapper = Objects.requireNonNull(orderRowMapper, "orderRowMapper must not be null");
+
 		this.pageSize = pageSize;
 		if (pageSize <= 0) {
 			throw new IllegalArgumentException("pageSize must be > 0");
@@ -57,17 +57,23 @@ public class OrderItemReader implements ItemStreamReader<OrderDto> {
 		try {
 			// Load next page if iterator is empty
 			if (resultIterator == null || !resultIterator.hasNext()) {
-				Page<Order> page = loadNextPage();
-				if (!page.hasContent()) {
+				List<Order> nextBatch = loadNextPage();
+				if (nextBatch.isEmpty()) {
 					logger.info("End of data reached. Total records processed={}", totalProcessed);
 					return null;
 				}
-				resultIterator = page.getContent().iterator();
+				resultIterator = nextBatch.iterator();
 			}
 
 			// Map next Order to DTO
 			Order order = resultIterator.next();
-			OrderDto orderDto = orderRowMapper.mapRow(order);
+
+			if (order == null) return null;
+
+			OrderDto orderDto = Objects.requireNonNull(
+					orderRowMapper.mapRow(order),
+					"OrderRowMapper returned null for orderId=" + order.getOrderId()
+			);
 
 			lastProcessedId = orderDto.getOrderId();
 			totalProcessed++;
@@ -84,50 +90,75 @@ public class OrderItemReader implements ItemStreamReader<OrderDto> {
 		} catch (PersistenceException e) {
 			logger.error("Persistence error while reading interface {}", ORDER_INTERFACE, e);
 			throw new NonTransientResourceException("Persistence error reading interface " + ORDER_INTERFACE, e);
-		} catch (RuntimeException e) {
-			// Programming or unexpected runtime issue
-			logger.error("Unexpected runtime error while reading interface {}", ORDER_INTERFACE, e);
-			throw e;
-		} catch (Exception e) {
-			// Truly unexpected checked exception
-			logger.error("Unexpected checked exception while reading interface {}", ORDER_INTERFACE, e);
-			throw new RuntimeException("Unexpected read failure", e);
 		}
 	}
 
-	private Page<Order> loadNextPage() {
+	private List<Order> loadNextPage() {
 		try {
 			Pageable pageable = new PageRequest(0, pageSize, Sort.Direction.ASC, "orderId");
 
 			// STEP 1: Fetch only the IDs using Tuples (Extremely lightweight)
-			Page<Tuple> idPage = (lastProcessedId == null)
-					? orderRepository.findActiveIds(pageable)
-					: orderRepository.findActiveIdsAfter(lastProcessedId, pageable);
+			Slice<Tuple> idSlice = (lastProcessedId == null)
+					? orderRepository.findActiveIds("ACTIVE", pageable)
+					: orderRepository.findActiveIdsAfter("ACTIVE", lastProcessedId, pageable);
 
-			if (!idPage.hasContent()) {
-				return new PageImpl<>(Collections.emptyList());
+			if (!idSlice.hasContent()) {
+				return Collections.emptyList();
 			}
 
 			// STEP 2: Extract IDs
-			List<Long> orderIds = idPage.getContent()
-					.stream()
-					.map(t -> t.get("id", Long.class))
-					.collect(Collectors.toList());
+			List<Tuple> tuples = idSlice.getContent();
+			List<Long> orderIds = new ArrayList<>(tuples.size());
+
+			for (Tuple tuple : tuples) {
+				Long id = tuple.get("id", Long.class);
+				if (id != null) {
+					orderIds.add(id);
+				}
+			}
+
+			if (orderIds.isEmpty()) {
+				return Collections.emptyList();
+			}
 
 			// STEP 3: Bulk Fetch details
 			List<Order> ordersWithLines = orderRepository.findWithLineItemsByOrderIdIn(orderIds);
 
-			// Sort to maintain Keyset sequence
-			ordersWithLines.sort(Comparator.comparing(Order::getOrderId));
+			if (ordersWithLines.isEmpty()) {
+				return Collections.emptyList();
+			}
+
+			// Preserve strict ordering based on key set sequence
+			Map<Long, Order> orderMap = new HashMap<>(ordersWithLines.size());
+
+			for (Order order : ordersWithLines) {
+				Long orderId = order.getOrderId();
+
+				if (orderMap.containsKey(orderId)) {
+					logger.warn("Duplicate orderId detected: {}", orderId);
+					continue; // keep existing (same behavior as merge function)
+				}
+
+				orderMap.put(orderId, order);
+			}
 
 			logger.debug("Fetched {} full entities with line items. Last ID: {}",
 					ordersWithLines.size(), lastProcessedId);
 
-			return new PageImpl<>(ordersWithLines);
+			List<Order> orderedOrders = new ArrayList<>(orderIds.size());
 
-		} catch (Exception e) {
-			logger.error("Error performing two-step fetch after ID {}", lastProcessedId, e);
-			throw new RuntimeException("Error reading orders from database", e);
+			for (Long orderId : orderIds) {
+				Order order = orderMap.get(orderId);
+				if (order != null) {
+					orderedOrders.add(order);
+				}
+			}
+
+			return orderedOrders;
+
+		} catch (PersistenceException e) {
+			logger.error("Persistence error performing two-step fetch after ID {}", lastProcessedId, e);
+			throw e;
 		}
 	}
 

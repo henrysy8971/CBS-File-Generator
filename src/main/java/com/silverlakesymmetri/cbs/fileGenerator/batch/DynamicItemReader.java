@@ -13,11 +13,8 @@ import org.springframework.batch.item.ItemStreamReader;
 import org.springframework.batch.item.NonTransientResourceException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.dao.DataAccessResourceFailureException;
-import org.springframework.retry.annotation.Backoff;
-import org.springframework.retry.annotation.Recover;
-import org.springframework.retry.annotation.Retryable;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.PostConstruct;
 import javax.persistence.*;
@@ -27,6 +24,7 @@ import java.util.Locale;
 
 @Component
 @StepScope
+@Transactional(readOnly = true)
 public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 	private static final Logger logger = LoggerFactory.getLogger(DynamicItemReader.class);
 	private static final String CONTEXT_KEY_TOTAL = "dynamic.reader.totalProcessed";
@@ -48,7 +46,6 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 	private long totalProcessed = 0;
 	private ColumnType keyColumnType;
 	private int keySetColumnIndex = -1;
-	private static final Object SCHEMA_LOCK = new Object();
 
 	@Autowired
 	public DynamicItemReader(
@@ -126,21 +123,9 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 		} catch (PersistenceException e) {
 			logger.error("Persistence error while reading interface {}", interfaceType, e);
 			throw new NonTransientResourceException("Persistence error reading interface " + interfaceType, e);
-		} catch (RuntimeException e) {
-			// Programming or unexpected runtime issue
-			logger.error("Unexpected runtime error while reading interface {}", interfaceType, e);
-			throw e;
-		} catch (Exception e) {
-			// Truly unexpected checked exception
-			logger.error("Unexpected checked exception while reading interface {}", interfaceType, e);
-			throw new RuntimeException("Unexpected read failure", e);
 		}
 	}
 
-	@Retryable(
-			value = {javax.persistence.QueryTimeoutException.class, DataAccessResourceFailureException.class},
-			maxAttempts = 3,
-			backoff = @Backoff(delay = 1000, multiplier = 2))
 	private void fetchNextPage() {
 		Query query = entityManager.createNativeQuery(queryString, Tuple.class);
 
@@ -200,10 +185,8 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 		}
 
 		// Initialize schema once, thread-safely
-		synchronized (SCHEMA_LOCK) {
-			if (sharedSchema == null) {
-				initializeSchemaFromTuple(tuples.get(0));
-			}
+		if (sharedSchema == null) {
+			initializeSchemaFromTuple(tuples.get(0));
 		}
 
 		currentPage = tuples;
@@ -265,6 +248,8 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 				logger.error("CRITICAL CONFIGURATION ERROR: KeySet column '{}' not found in SQL results for interface '{}'. " +
 								"Verify that your SELECT statement includes this column.",
 						keySetColumnName, interfaceType);
+				throw new IllegalStateException("KeySet column '" + keySetColumnName +
+						"' not found in SQL results for interface '" + interfaceType + "'.");
 			}
 		}
 
@@ -278,18 +263,17 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 	 */
 	private String parseLastProcessedId(Object idValue) {
 		if (idValue == null) return null;
-		if (idValue instanceof Number) return new java.math.BigDecimal(idValue.toString()).toPlainString();
+		if (idValue instanceof Number) return String.valueOf(((Number) idValue).longValue());
 		String s = idValue.toString().trim();
 		return s.isEmpty() ? null : s;
 	}
 
 	private DynamicRecord convertRowToRecord(Tuple tuple) {
 		DynamicRecord record = new DynamicRecord(sharedSchema);
-		String[] names = sharedSchema.getNames();
 
 		// Set values by index (much faster than string-based map lookup)
 		for (int i = 0; i < sharedSchema.size(); i++) {
-			record.setValue(i, tuple.get(names[i]));
+			record.setValue(i, tuple.get(i));
 		}
 
 		return record;
@@ -326,12 +310,5 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 	@Override
 	public void close() {
 		logger.info("DynamicItemReader closed. Total records read: {}", totalProcessed);
-	}
-
-
-	@Recover
-	public void recoverPageFetch(Exception e) {
-		logger.error("Failed to fetch page after retries", e);
-		throw new RuntimeException("Cannot recover from database error", e);
 	}
 }
