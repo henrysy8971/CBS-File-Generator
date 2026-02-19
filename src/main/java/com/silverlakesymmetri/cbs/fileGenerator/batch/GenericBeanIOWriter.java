@@ -38,8 +38,8 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @Component
 @StepScope
-public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionListener {
-	private static final Logger logger = LoggerFactory.getLogger(BeanIOFormatWriter.class);
+public class GenericBeanIOWriter implements OutputFormatWriter, StepExecutionListener {
+	private static final Logger logger = LoggerFactory.getLogger(GenericBeanIOWriter.class);
 	private static final String RESTART_KEY_OFFSET = "beanio.writer.byteOffset";
 	private static final String RESTART_KEY_COUNT = "beanio.writer.recordCount";
 	private static final Map<String, StreamFactory> FACTORY_CACHE = new ConcurrentHashMap<>();
@@ -60,7 +60,7 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 	private final Object lock = new Object(); // Thread-safety for write operations
 
 	@Autowired
-	public BeanIOFormatWriter(InterfaceConfigLoader interfaceConfigLoader) {
+	public GenericBeanIOWriter(InterfaceConfigLoader interfaceConfigLoader) {
 		this.interfaceConfigLoader = interfaceConfigLoader;
 	}
 
@@ -126,8 +126,6 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 				channel.truncate(0);
 			}
 
-			// Force channel to the end (which is now 'offset' or 0)
-			// This ensures the byte tracker starts at the exact physical end of file
 			long actualPosition = channel.size();
 
 			byteTrackingStream = new ByteTrackingOutputStream(fileOutputStream, actualPosition);
@@ -144,8 +142,7 @@ public class BeanIOFormatWriter implements OutputFormatWriter, StepExecutionList
 			throw new ItemStreamException("Failed to initialize BeanIO writer", e);
 		}
 
-		logger.info("BeanIO writer initialized for interface={}, output={}",
-				interfaceType, outputFilePath);
+		logger.info("BeanIO writer initialized for interface={}, output={}", interfaceType, outputFilePath);
 	}
 
 	@Override

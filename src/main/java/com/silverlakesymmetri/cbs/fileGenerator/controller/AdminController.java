@@ -1,6 +1,6 @@
 package com.silverlakesymmetri.cbs.fileGenerator.controller;
 
-import com.silverlakesymmetri.cbs.fileGenerator.batch.BeanIOFormatWriter;
+import com.silverlakesymmetri.cbs.fileGenerator.batch.GenericBeanIOWriter;
 import com.silverlakesymmetri.cbs.fileGenerator.config.InterfaceConfigLoader;
 import com.silverlakesymmetri.cbs.fileGenerator.dto.PagedResponse;
 import com.silverlakesymmetri.cbs.fileGenerator.exception.ConflictException;
@@ -88,7 +88,7 @@ public class AdminController {
 		xsdValidator.clearSchemaCache();
 
 		// 3. Clear BeanIO Cache
-		BeanIOFormatWriter.clearFactoryCache();
+		GenericBeanIOWriter.clearFactoryCache();
 
 		return ResponseEntity.ok("Configuration and Caches reloaded successfully.");
 	}

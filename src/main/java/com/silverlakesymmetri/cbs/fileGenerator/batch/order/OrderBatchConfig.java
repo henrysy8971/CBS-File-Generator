@@ -1,4 +1,4 @@
-package com.silverlakesymmetri.cbs.fileGenerator.batch.custom.orders;
+package com.silverlakesymmetri.cbs.fileGenerator.batch.order;
 
 import com.silverlakesymmetri.cbs.fileGenerator.batch.listeners.FileGenerationJobListener;
 import com.silverlakesymmetri.cbs.fileGenerator.batch.listeners.FileGenerationStepListener;

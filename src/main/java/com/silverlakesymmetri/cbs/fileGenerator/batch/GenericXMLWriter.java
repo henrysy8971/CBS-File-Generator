@@ -123,8 +123,6 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 				channel.truncate(0);
 			}
 
-			// Force channel to the end (which is now 'offset' or 0)
-			// This ensures the byte tracker starts at the exact physical end of file
 			long actualPosition = channel.size();
 
 			byteTrackingStream = new ByteTrackingOutputStream(fileOutputStream, actualPosition);
@@ -140,8 +138,7 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 			throw new ItemStreamException("Failed during restart open()", e);
 		}
 
-		logger.info("XML Stream writer initialized for interface={}, output={}",
-				interfaceType, partFilePath);
+		logger.info("XML Stream writer initialized for interface={}, output={}", interfaceType, partFilePath);
 	}
 
 	@Override

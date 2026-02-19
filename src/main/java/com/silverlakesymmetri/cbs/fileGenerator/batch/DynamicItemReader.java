@@ -80,15 +80,15 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 			throw new IllegalArgumentException("Interface configuration not found for: " + interfaceType);
 		}
 
-		this.queryString = config.getDataSourceQuery();
-		this.keySetColumnName = config.getKeySetColumn();
+		queryString = config.getDataSourceQuery();
+		keySetColumnName = config.getKeySetColumn();
 
-		if (this.queryString == null) {
+		if (queryString == null) {
 			throw new IllegalArgumentException("Data source query must be defined for " + interfaceType);
 		}
 
 		// VALIDATION: Check for infinite loop risk
-		if (this.keySetColumnName != null && !this.queryString.contains(":lastId")) {
+		if (keySetColumnName != null && !queryString.contains(":lastId")) {
 			throw new IllegalArgumentException(String.format(
 					"Configuration Error for [%s]: 'keySetColumn' is defined as '%s', but SQL query is missing ':lastId'.",
 					interfaceType, keySetColumnName
@@ -206,8 +206,8 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 			}
 		}
 
-		this.currentPage = tuples;
-		this.currentIndex = 0;
+		currentPage = tuples;
+		currentIndex = 0;
 		logger.debug("Fetched {} rows after lastProcessedId={}", currentPage.size(), lastProcessedId);
 	}
 
@@ -236,7 +236,7 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 		}
 
 		// 2. Create the immutable Shared Schema
-		this.sharedSchema = new RecordSchema(names, types);
+		sharedSchema = new RecordSchema(names, types);
 
 		// 3. Resolve KeySet Configuration (The most important part for Paging)
 		if (keySetColumnName != null) {
@@ -244,7 +244,7 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 			int idx = sharedSchema.getIndex(keySetColumnName);
 
 			if (idx != -1) {
-				this.keySetColumnIndex = idx;
+				keySetColumnIndex = idx;
 				// We capture the ACTUAL case-sensitive alias used by Hibernate/DB
 				// This ensures tuple.get(actualKeySetColumnName) works every time.
 				String actualKeySetColumnName = elements.get(idx).getAlias();
@@ -254,9 +254,9 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 					actualKeySetColumnName = "column_" + idx;
 				}
 
-				this.keySetColumnName = actualKeySetColumnName;
+				keySetColumnName = actualKeySetColumnName;
 				// Identify the type, so we know how to bind the ":lastId" parameter
-				this.keyColumnType = sharedSchema.getType(idx);
+				keyColumnType = sharedSchema.getType(idx);
 
 				logger.info("KeySet Column Resolved - Configuration: [{}], Database Alias: [{}], Index: [{}], Type: [{}]",
 						keySetColumnName, actualKeySetColumnName, idx, keyColumnType);
@@ -298,14 +298,14 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 	@Override
 	public void open(ExecutionContext executionContext) {
 		// Restore total processed
-		this.totalProcessed = executionContext.getLong(CONTEXT_KEY_TOTAL, 0L);
+		totalProcessed = executionContext.getLong(CONTEXT_KEY_TOTAL, 0L);
 
 		// Restore lastProcessedId safely
 		if (executionContext.containsKey(CONTEXT_KEY_LAST_ID)) {
 			Object lastId = executionContext.get(CONTEXT_KEY_LAST_ID);
-			this.lastProcessedId = parseLastProcessedId(lastId); // Use centralized parser
+			lastProcessedId = parseLastProcessedId(lastId); // Use centralized parser
 		} else {
-			this.lastProcessedId = null;
+			lastProcessedId = null;
 		}
 
 		logger.info("Opening DynamicItemReader. Restart={}, lastProcessedId={}, totalProcessed={}",

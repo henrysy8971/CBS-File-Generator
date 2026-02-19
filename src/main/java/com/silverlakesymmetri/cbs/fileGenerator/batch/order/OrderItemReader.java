@@ -1,4 +1,4 @@
-package com.silverlakesymmetri.cbs.fileGenerator.batch.custom.orders;
+package com.silverlakesymmetri.cbs.fileGenerator.batch.order;
 
 import com.silverlakesymmetri.cbs.fileGenerator.dto.order.OrderDto;
 import com.silverlakesymmetri.cbs.fileGenerator.entity.order.Order;
@@ -133,8 +133,8 @@ public class OrderItemReader implements ItemStreamReader<OrderDto> {
 
 	@Override
 	public void open(ExecutionContext executionContext) {
-		this.totalProcessed = executionContext.getLong(CONTEXT_KEY_TOTAL, 0L);
-		this.lastProcessedId = executionContext.containsKey(CONTEXT_KEY_LAST_ID)
+		totalProcessed = executionContext.getLong(CONTEXT_KEY_TOTAL, 0L);
+		lastProcessedId = executionContext.containsKey(CONTEXT_KEY_LAST_ID)
 				? executionContext.getLong(CONTEXT_KEY_LAST_ID)
 				: null;
 
@@ -157,7 +157,7 @@ public class OrderItemReader implements ItemStreamReader<OrderDto> {
 	@Override
 	public void close() {
 		// Cleanup resources like the resultIterator or temporary files
-		this.resultIterator = null;
+		resultIterator = null;
 		logger.info("OrderItemReader closed. Total records read: {}", totalProcessed);
 	}
 }

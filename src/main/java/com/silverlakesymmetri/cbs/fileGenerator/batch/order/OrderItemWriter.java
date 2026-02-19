@@ -1,4 +1,4 @@
-package com.silverlakesymmetri.cbs.fileGenerator.batch.custom.orders;
+package com.silverlakesymmetri.cbs.fileGenerator.batch.order;
 
 import com.silverlakesymmetri.cbs.fileGenerator.dto.order.OrderDto;
 import org.slf4j.Logger;
@@ -118,8 +118,6 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto>, StepExecutio
 				channel.truncate(0);
 			}
 
-			// Force channel to the end (which is now 'offset' or 0)
-			// This ensures the byte tracker starts at the exact physical end of file
 			long actualPosition = channel.size();
 
 			byteTrackingStream = new ByteTrackingOutputStream(fileOutputStream, actualPosition);

@@ -30,7 +30,7 @@ public class OutputFormatWriterFactory {
 	/**
 	 * Select writer based on interface configuration.
 	 * Priority:
-	 * 1. If beanioMappingFile is configured -> Use BeanIOFormatWriter
+	 * 1. If beanioMappingFile is configured -> Use GenericBeanIOWriter
 	 * 2. Otherwise -> Use .part-aware GenericXMLWriter (safe fallback)
 	 */
 	public OutputFormatWriter selectWriter(String interfaceType) {
@@ -43,8 +43,8 @@ public class OutputFormatWriterFactory {
 			if (interfaceConfig != null) {
 				String beanioMappingFile = interfaceConfig.getBeanIoMappingFile();
 				if (beanioMappingFile != null && !beanioMappingFile.trim().isEmpty()) {
-					logger.info("Selecting BeanIOFormatWriter for interface: {}", interfaceType);
-					writerClass = BeanIOFormatWriter.class;
+					logger.info("Selecting GenericBeanIOWriter for interface: {}", interfaceType);
+					writerClass = GenericBeanIOWriter.class;
 				} else {
 					logger.info("Selecting GenericXMLWriter for interface: {}", interfaceType);
 				}
