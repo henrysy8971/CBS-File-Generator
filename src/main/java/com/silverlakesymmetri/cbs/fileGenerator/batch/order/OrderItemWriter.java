@@ -153,7 +153,14 @@ public class OrderItemWriter implements ItemStreamWriter<OrderDto>, StepExecutio
 				);
 
 				Result result = new StAXResult(xmlStreamWriter);
-				marshaller.marshal(element, result);
+
+				try {
+					marshaller.marshal(element, result);
+				} catch (Exception e) {
+					logger.error("Failed to marshal orderId={}", order.getOrderId(), e);
+					throw e;
+				}
+
 				recordCount++;
 			}
 		}

@@ -153,8 +153,13 @@ public class GenericBeanIOWriter implements OutputFormatWriter, StepExecutionLis
 		synchronized (lock) { // ensure thread-safe writes
 			for (DynamicRecord record : items) {
 				if (record != null) {
-					beanWriter.write(record.asMap());
-					recordCount++;
+					try {
+						beanWriter.write(record.asMap());
+						recordCount++;
+					} catch (Exception e) {
+						logger.error("Failed to write record: {}", record, e);
+						throw e;
+					}
 				}
 			}
 		}

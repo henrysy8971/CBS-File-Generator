@@ -149,8 +149,13 @@ public class GenericXMLWriter implements OutputFormatWriter, StepExecutionListen
 		synchronized (lock) { // ensure thread-safe writes
 			for (DynamicRecord record : items) {
 				if (record != null) {
-					writeRecordXml(record);
-					recordCount++;
+					try {
+						writeRecordXml(record);
+						recordCount++;
+					} catch (Exception e) {
+						logger.error("Failed writing record: {}", record, e);
+						throw e;
+					}
 				}
 			}
 		}
