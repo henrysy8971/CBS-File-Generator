@@ -7,11 +7,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationContext;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
-/**
- * Factory for selecting appropriate output format writer.
- * Ensures all consumers use .part-aware GenericXMLWriter safely.
- */
 @Component
 public class OutputFormatWriterFactory {
 	private static final Logger logger = LoggerFactory.getLogger(OutputFormatWriterFactory.class);
@@ -27,39 +24,45 @@ public class OutputFormatWriterFactory {
 		this.applicationContext = applicationContext;
 	}
 
-	/**
-	 * Select writer based on interface configuration.
-	 * Priority:
-	 * 1. If beanioMappingFile is configured -> Use GenericBeanIOWriter
-	 * 2. Otherwise -> Use .part-aware GenericXMLWriter (safe fallback)
-	 */
 	public OutputFormatWriter selectWriter(String interfaceType) {
-		try {
-			InterfaceConfig interfaceConfig = interfaceConfigLoader.getConfig(interfaceType);
+		InterfaceConfig config = interfaceConfigLoader.getConfig(interfaceType);
 
-			// 1. Determine which bean type we need
-			Class<? extends OutputFormatWriter> writerClass = GenericXMLWriter.class; // Default
-
-			if (interfaceConfig != null) {
-				String beanioMappingFile = interfaceConfig.getBeanIoMappingFile();
-				if (beanioMappingFile != null && !beanioMappingFile.trim().isEmpty()) {
-					logger.info("Selecting GenericBeanIOWriter for interface: {}", interfaceType);
-					writerClass = GenericBeanIOWriter.class;
-				} else {
-					logger.info("Selecting GenericXMLWriter for interface: {}", interfaceType);
-				}
-			} else {
-				logger.warn("Interface configuration not found: {}", interfaceType);
-			}
-
-			// 2. Fetch the bean from context
-			// Because these are @StepScope, Spring will provide a thread-safe,
-			// fresh instance for the current Step execution.
-			return applicationContext.getBean(writerClass);
-
-		} catch (Exception e) {
-			logger.warn("WARNING: selecting writer for interface: {}. Falling back to a fresh GenericXMLWriter instance.", interfaceType, e);
+		if (config == null) {
+			logger.warn("No config found for {}. Defaulting to GenericXMLWriter.", interfaceType);
 			return applicationContext.getBean(GenericXMLWriter.class);
 		}
+
+		Class<? extends OutputFormatWriter> writerClass = determineWriterClass(config);
+		logger.info("Interface: {} | Format: {} | Writer: {}",
+				interfaceType, config.getOutputFormat(), writerClass.getSimpleName());
+
+		try {
+			return applicationContext.getBean(writerClass);
+		} catch (Exception e) {
+			logger.error("Failed to instantiate {}. Falling back to XML.", writerClass.getName(), e);
+			return applicationContext.getBean(GenericXMLWriter.class);
+		}
+	}
+
+	private Class<? extends OutputFormatWriter> determineWriterClass(InterfaceConfig config) {
+		String format = config.getOutputFormat().name();
+
+		// 1. Explicit JSON Check
+		if ("JSON".equalsIgnoreCase(format)) {
+			return GenericJSONWriter.class;
+		}
+
+		// 2. Explicit XML Check
+		if ("XML".equalsIgnoreCase(format)) {
+			return GenericXMLWriter.class;
+		}
+
+		// 3. BeanIO Fallback (CSV/Fixed-Length)
+		if (StringUtils.hasText(config.getBeanIoMappingFile())) {
+			return GenericBeanIOWriter.class;
+		}
+
+		// 4. Ultimate Fallback
+		return GenericXMLWriter.class;
 	}
 }
