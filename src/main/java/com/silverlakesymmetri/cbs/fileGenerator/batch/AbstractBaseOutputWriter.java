@@ -175,8 +175,10 @@ public abstract class AbstractBaseOutputWriter<T> implements ItemStreamWriter<T>
 			bytesWritten++;
 		}
 
+		@SuppressWarnings("NullableProblems")
 		@Override
 		public void write(byte[] b, int off, int len) throws IOException {
+			java.util.Objects.requireNonNull(b);
 			delegate.write(b, off, len);
 			bytesWritten += len;
 		}

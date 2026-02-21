@@ -25,7 +25,7 @@ public class GenericJSONWriter extends AbstractBaseOutputWriter<DynamicRecord> i
 	protected String getRecordCountKey() { return "json.writer.recordCount"; }
 
 	@Override
-	protected void onInit() throws Exception {
+	protected void onInit() {
 		// Initialization if needed
 	}
 
@@ -54,12 +54,12 @@ public class GenericJSONWriter extends AbstractBaseOutputWriter<DynamicRecord> i
 		if (sequenceWriter != null) sequenceWriter.flush();
 	}
 
-	@Override protected void writeHeader() throws Exception {
+	@Override protected void writeHeader() {
 		/* Handled by SequenceWriter */
 	}
 
 	@Override
-	protected void writeFooter() throws Exception {
+	protected void writeFooter() {
 		// SequenceWriter handles closing the JSON array structure automatically on close
 	}
 
