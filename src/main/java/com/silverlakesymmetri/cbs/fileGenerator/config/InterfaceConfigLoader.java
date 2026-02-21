@@ -56,10 +56,10 @@ public class InterfaceConfigLoader {
 	public void refreshConfigs() {
 		synchronized (reloadLock) {
 			if (configResource == null || !configResource.exists()) {
-				throw new IllegalStateException("interface-config.json not found on classpath");
+				throw new IllegalStateException("interface-config.json not found in " + configResource.getDescription());
 			}
 
-			logger.info("Reloading interface configurations from classpath resource [{}]", configResource.getFilename());
+			logger.info("Reloading interface configurations from resource [{}]", configResource.getDescription());
 
 			try (InputStream is = configResource.getInputStream()) {
 				InterfaceConfigWrapper wrapper = objectMapper.readValue(is, InterfaceConfigWrapper.class);
@@ -149,8 +149,8 @@ public class InterfaceConfigLoader {
 
 			// A. Check for Required Fields
 			if (cfg.isDynamic()) {
-				if (cfg.getDataSourceQuery() == null || cfg.getDataSourceQuery().trim().isEmpty()) {
-					throw new IllegalStateException("Config Error [" + key + "]: 'dataSourceQuery' is required");
+				if (cfg.getQueryFile() == null || cfg.getQueryFile().trim().isEmpty()) {
+					throw new IllegalStateException("Config Error [" + key + "]: 'queryFile' is required");
 				}
 			}
 

@@ -13,14 +13,22 @@ import org.springframework.batch.item.ItemStreamReader;
 import org.springframework.batch.item.NonTransientResourceException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import javax.annotation.PostConstruct;
 import javax.persistence.*;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.stream.Collectors;
 
 @Component
 @StepScope
@@ -47,6 +55,9 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 	private ColumnType keyColumnType;
 	private int keySetColumnIndex = -1;
 
+	@Value("${file.generation.external.sql-dir:classpath:sql}")
+	private Resource resource;
+
 	@Autowired
 	public DynamicItemReader(
 			InterfaceConfigLoader interfaceConfigLoader,
@@ -68,7 +79,9 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 
 	@PostConstruct
 	public void init() {
-		if (interfaceType == null || interfaceType.isEmpty()) {
+		interfaceType = interfaceType == null ? "" : interfaceType.trim();
+
+		if (interfaceType.isEmpty()) {
 			throw new IllegalArgumentException("Job Parameter 'interfaceType' is missing");
 		}
 
@@ -77,14 +90,54 @@ public class DynamicItemReader implements ItemStreamReader<DynamicRecord> {
 			throw new IllegalArgumentException("Interface configuration not found for: " + interfaceType);
 		}
 
-		queryString = config.getDataSourceQuery();
-		keySetColumnName = config.getKeySetColumn();
+		String queryFile = config.getQueryFile();
+		if (queryFile == null || queryFile.trim().isEmpty()) {
+			throw new IllegalArgumentException("Data source query file must be defined for " + interfaceType);
+		}
 
-		if (queryString == null) {
-			throw new IllegalArgumentException("Data source query must be defined for " + interfaceType);
+		queryFile = queryFile.trim();
+
+		// Try loading SQL file from external directory first, then classpath fallback
+		InputStream sqlInputStream = null;
+		try {
+			// 1. Attempt external directory
+			Resource externalResource = resource.createRelative(queryFile);
+			if (externalResource.exists() && externalResource.isReadable()) {
+				sqlInputStream = externalResource.getInputStream();
+				logger.info("Loaded SQL query file [{}] from external directory for interface [{}]",
+						queryFile, interfaceType);
+			} else {
+				// 2. Fallback to classpath
+				Resource classpathResource = new ClassPathResource("sql/" + queryFile);
+				if (!classpathResource.exists() || !classpathResource.isReadable()) {
+					throw new IllegalStateException(String.format(
+							"SQL query file [%s] not found in external directory or classpath for interface [%s]",
+							queryFile, interfaceType));
+				}
+				sqlInputStream = classpathResource.getInputStream();
+				logger.info("Loaded SQL query file [{}] from classpath for interface [{}]",
+						queryFile, interfaceType);
+			}
+
+			// Read file content safely
+			try (BufferedReader reader = new BufferedReader(new InputStreamReader(sqlInputStream, StandardCharsets.UTF_8))) {
+				queryString = reader.lines().collect(Collectors.joining(System.lineSeparator())).trim();
+			}
+
+			if (queryString.isEmpty()) {
+				throw new IllegalStateException(
+						String.format("SQL query file [%s] is empty for interface [%s]", queryFile, interfaceType)
+				);
+			}
+
+		} catch (IOException e) {
+			logger.error("Unable to read data source query file: {}", queryFile, e);
+			throw new IllegalStateException(
+					String.format("Failed to read SQL file [%s] for interface [%s]", queryFile, interfaceType), e);
 		}
 
 		// VALIDATION: Check for infinite loop risk
+		keySetColumnName = config.getKeySetColumn();
 		if (keySetColumnName != null && !queryString.contains(":lastId")) {
 			throw new IllegalArgumentException(String.format(
 					"Configuration Error for [%s]: 'keySetColumn' is defined as '%s', but SQL query is missing ':lastId'.",

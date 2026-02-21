@@ -19,7 +19,7 @@ public class InterfaceConfig {
 
 	// BeanIO Related
 	private boolean dynamic = false;
-	private String dataSourceQuery;
+	private String queryFile;
 	private String beanIoMappingFile;
 	private String keySetColumn;
 	private boolean haveHeaders = false;
@@ -57,12 +57,12 @@ public class InterfaceConfig {
 		this.dynamic = dynamic;
 	}
 
-	public void setDataSourceQuery(String dataSourceQuery) {
-		this.dataSourceQuery = dataSourceQuery;
+	public void setQueryFile(String queryFile) {
+		this.queryFile = queryFile;
 	}
 
-	public String getDataSourceQuery() {
-		return dataSourceQuery;
+	public String getQueryFile() {
+		return queryFile;
 	}
 
 	public String getBeanIoMappingFile() {
@@ -137,7 +137,7 @@ public class InterfaceConfig {
 				"name='" + name + '\'' +
 				", enabled=" + enabled +
 				", dynamic=" + dynamic +
-				", dataSourceQuery='" + dataSourceQuery + '\'' +
+				", queryFile='" + queryFile + '\'' +
 				", beanIoMappingFile='" + beanIoMappingFile + '\'' +
 				", keySetColumn='" + keySetColumn + '\'' +
 				", haveHeaders=" + haveHeaders +

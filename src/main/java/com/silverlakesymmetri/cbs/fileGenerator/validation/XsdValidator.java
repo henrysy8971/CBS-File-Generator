@@ -3,7 +3,7 @@ package com.silverlakesymmetri.cbs.fileGenerator.validation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.ClassPathResource;
+import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.xml.sax.SAXException;
@@ -20,9 +20,6 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
-import java.nio.file.LinkOption;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -39,8 +36,8 @@ import java.util.concurrent.ConcurrentHashMap;
 @Component
 public class XsdValidator {
 	private static final Logger logger = LoggerFactory.getLogger(XsdValidator.class);
-	@Value("${file.generation.external.config-dir:}")
-	private String externalConfigDir;
+	@Value("${file.generation.external.xsd-dir:classpath:xsd}")
+	private Resource resource;
 
 	@Value("${validation.xsd.strict-mode:false}")
 	private boolean strictMode;
@@ -119,36 +116,35 @@ public class XsdValidator {
 	 */
 	private Optional<Schema> getOrLoadSchema(String schemaFileName) {
 		return SCHEMA_CACHE.computeIfAbsent(schemaFileName, file -> {
-			// 1. Try File System First
-			if (StringUtils.hasText(externalConfigDir)) {
-				String dir = externalConfigDir.trim();
-				Path baseDir = Paths.get(dir).toAbsolutePath().normalize();
-				Path externalPath = baseDir.resolve("xsd").resolve(file).normalize();
+			Resource schemaResource;
 
-				if (!externalPath.startsWith(baseDir)) {
-					logger.error("Schema file path traversal attempt blocked: {}", file);
-				} else if (Files.exists(externalPath, LinkOption.NOFOLLOW_LINKS) && Files.isReadable(externalPath)) {
-					try (InputStream is = Files.newInputStream(externalPath)) {
-						return createSchemaFromStream(is, externalPath.toString());
-					} catch (IOException e) {
-						logStrictMode(e, "Failed to get external path input stream: {}", externalPath.toString());
-						// Don't return empty yet, try classpath fallback
+			try {
+				// 1. Try relative to external directory first (FileSystemResource)
+				try {
+					schemaResource = resource.createRelative(file);
+					if (!schemaResource.exists() || !schemaResource.isReadable()) {
+						schemaResource = null;
+					}
+				} catch (IOException e) {
+					logStrictMode(e, "Failed to get classpath resource input stream: {}", file);
+					return Optional.empty();
+				}
+
+				// 2. Fallback: load from classpath explicitly
+				if (schemaResource == null) {
+					schemaResource = new org.springframework.core.io.ClassPathResource("xsd/" + file);
+					if (!schemaResource.exists() || !schemaResource.isReadable()) {
+						logger.warn("XSD schema not found in external or classpath: {}", file);
+						return Optional.empty();
 					}
 				}
-			}
 
-			// 2. Fallback to Classpath
-			ClassPathResource resource = new ClassPathResource("xsd/" + file);
-
-			if (!resource.exists() || !resource.isReadable()) {
-				logger.warn("XSD schema not found in External or Classpath locations: {}", file);
-				return Optional.empty();
-			}
-
-			try (InputStream is = resource.getInputStream()) {
-				return createSchemaFromStream(is, resource.getPath());
+				// 3. Load schema from InputStream (try-with-resources)
+				try (InputStream is = schemaResource.getInputStream()) {
+					return createSchemaFromStream(is, schemaResource.getDescription());
+				}
 			} catch (IOException e) {
-				logStrictMode(e, "Failed to get classpath resource input stream: {}", file);
+				logStrictMode(e, "Failed to load XSD schema: {}", file);
 				return Optional.empty();
 			}
 		});
