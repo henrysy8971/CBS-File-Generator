@@ -20,6 +20,8 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 
+import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.FILE_GEN_PART_FILE_PATH;
+
 @Component
 @StepScope
 public class FileValidationTasklet implements Tasklet {
@@ -43,7 +45,7 @@ public class FileValidationTasklet implements Tasklet {
 				.getJobExecution().getExecutionContext();
 
 		// 1. Retrieve file path and guard against missing path
-		String partFilePath = jobContext.getString("partFilePath", null);
+		String partFilePath = jobContext.getString(FILE_GEN_PART_FILE_PATH, null);
 		if (partFilePath == null || partFilePath.trim().isEmpty()) {
 			logger.warn("Validation skipped: 'partFilePath' missing or empty in ExecutionContext.");
 			return RepeatStatus.FINISHED;

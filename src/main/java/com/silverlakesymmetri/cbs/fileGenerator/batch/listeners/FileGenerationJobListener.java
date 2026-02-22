@@ -12,6 +12,10 @@ import org.springframework.batch.item.NonTransientResourceException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.util.Objects;
+
+import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.FILE_GEN_PART_FILE_PATH;
+
 /**
  * Job listener for safe finalization of .part files after batch completion.
  * Features:
@@ -44,14 +48,22 @@ public class FileGenerationJobListener implements JobExecutionListener {
 			logger.error("Missing JobParameter 'jobId'; cannot finalize file.");
 			return;
 		}
-		String partFilePath = jobExecution.getExecutionContext().getString("partFilePath", null);
-		String currentPath = partFilePath;
+		String partFilePath = jobExecution.getExecutionContext().getString(FILE_GEN_PART_FILE_PATH);
 
 		if (partFilePath == null) {
-			logger.warn("No part file found in job context; skipping finalization");
-			return;
+			// Use a more robust way to find the part file path
+			// Iterate through step executions if not found in job context
+			partFilePath = jobExecution.getStepExecutions().stream()
+					.map(se -> se.getExecutionContext().getString(FILE_GEN_PART_FILE_PATH))
+					.filter(Objects::nonNull)
+					.findFirst().orElse(null);
+			if (partFilePath == null) {
+				logger.warn("No part file found in job context; skipping finalization");
+				return;
+			}
 		}
 
+		String currentPath = partFilePath;
 		String finalFilePath = partFilePath.replaceFirst("\\.part$", "");
 
 		// Handle FAILED or STOPPED jobs

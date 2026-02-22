@@ -10,6 +10,8 @@ public final class FileGenerationConstants {
 	private FileGenerationConstants() {
 	}
 
+	public static final String FILE_GEN_PART_FILE_PATH = "partFilePath";
+	public static final String FILE_GEN_TOTAL_RECORD_COUNT = "totalRecordCount";
 	public static final String FILE_GEN_GROUP = "file-generation-group";
 	public static final String FILE_GEN_ADHOC_JOB = "fileGenAdHocJob";
 	public static final String FILE_GEN_POLL_JOB = "fileGenPollJob";

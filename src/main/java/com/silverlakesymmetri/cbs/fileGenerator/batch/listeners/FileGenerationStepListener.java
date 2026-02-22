@@ -12,6 +12,9 @@ import org.springframework.stereotype.Component;
 
 import java.util.Objects;
 
+import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.FILE_GEN_PART_FILE_PATH;
+import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.FILE_GEN_TOTAL_RECORD_COUNT;
+
 @Component
 public class FileGenerationStepListener implements StepExecutionListener {
 	private static final Logger logger = LoggerFactory.getLogger(FileGenerationStepListener.class);
@@ -59,8 +62,16 @@ public class FileGenerationStepListener implements StepExecutionListener {
 					stepExecution.getStepName(), jobId, readCount, processed, skipped, invalid, e);
 		}
 
-		jobContext.putLong("totalRecordCount", processed);
-		jobContext.putLong("totalReadCount", readCount);
+		// Accumulate instead of overwrite to support multi-step generation
+		long previousTotal = jobContext.getLong(FILE_GEN_TOTAL_RECORD_COUNT, 0L);
+		jobContext.putLong(FILE_GEN_TOTAL_RECORD_COUNT, previousTotal + processed);
+
+		// Ensure the Writer's partFilePath is promoted to the Job level
+		// so the JobListener can see it for finalization.
+		String partFilePath = stepExecution.getExecutionContext().getString(FILE_GEN_PART_FILE_PATH);
+		if (partFilePath != null) {
+			jobContext.putString(FILE_GEN_PART_FILE_PATH, partFilePath);
+		}
 
 		if (stepExecution.getStatus() != BatchStatus.COMPLETED) {
 			logger.warn("Step {} completed with status: {}", stepExecution.getStepName(), stepExecution.getStatus());

@@ -18,6 +18,9 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.util.List;
 
+import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.FILE_GEN_PART_FILE_PATH;
+import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.FILE_GEN_TOTAL_RECORD_COUNT;
+
 @Component
 @StepScope
 public class DynamicItemWriter implements ItemStreamWriter<DynamicRecord>, StepExecutionListener {
@@ -103,6 +106,11 @@ public class DynamicItemWriter implements ItemStreamWriter<DynamicRecord>, StepE
 
 	@Override
 	public ExitStatus afterStep(StepExecution stepExecution) {
+		// Populate Job Context with metadata for the JobListener to rename/move the file
+		ExecutionContext jobContext = stepExecution.getJobExecution().getExecutionContext();
+		jobContext.putString(FILE_GEN_PART_FILE_PATH, delegateWriter.getOutputFilePath());
+		jobContext.putLong(FILE_GEN_TOTAL_RECORD_COUNT, delegateWriter.getRecordCount());
+
 		if (delegateWriter instanceof StepExecutionListener) {
 			StepExecutionListener listener = (StepExecutionListener) delegateWriter;
 			return listener.afterStep(stepExecution);

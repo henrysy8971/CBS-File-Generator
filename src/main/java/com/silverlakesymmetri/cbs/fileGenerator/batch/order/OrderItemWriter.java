@@ -23,6 +23,9 @@ import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
 
+import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.FILE_GEN_PART_FILE_PATH;
+import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.FILE_GEN_TOTAL_RECORD_COUNT;
+
 @Component
 @StepScope
 public class OrderItemWriter extends AbstractBaseOutputWriter<OrderDto> {
@@ -154,8 +157,8 @@ public class OrderItemWriter extends AbstractBaseOutputWriter<OrderDto> {
 
 		// Populate Job Context with metadata for the JobListener to rename/move the file
 		ExecutionContext jobContext = stepExecution.getJobExecution().getExecutionContext();
-		jobContext.putString("partFilePath", partFilePath);
-		jobContext.putLong("totalRecordCount", recordCount);
+		jobContext.putString(FILE_GEN_PART_FILE_PATH, partFilePath);
+		jobContext.putLong(FILE_GEN_TOTAL_RECORD_COUNT, recordCount);
 
 		return exitStatus;
 	}
