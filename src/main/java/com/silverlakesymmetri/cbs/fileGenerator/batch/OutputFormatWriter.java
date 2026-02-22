@@ -30,8 +30,5 @@ public interface OutputFormatWriter extends ItemStreamWriter<DynamicRecord> {
 	 */
 	long getSkippedCount();
 
-	/**
-	 * Get temporary file path (before finalization)
-	 */
-	String getOutputFilePath();
+	String getPartFilePath();
 }

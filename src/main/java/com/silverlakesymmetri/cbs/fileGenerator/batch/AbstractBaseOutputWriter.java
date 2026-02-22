@@ -18,6 +18,9 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 
+import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.FILE_GEN_PART_FILE_PATH;
+import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.FILE_GEN_TOTAL_RECORD_COUNT;
+
 public abstract class AbstractBaseOutputWriter<T> implements ItemStreamWriter<T>, StepExecutionListener {
 	protected final Logger logger = LoggerFactory.getLogger(getClass());
 
@@ -143,6 +146,10 @@ public abstract class AbstractBaseOutputWriter<T> implements ItemStreamWriter<T>
 
 	@Override
 	public ExitStatus afterStep(StepExecution stepExecution) {
+		// Populate Job Context with metadata for the JobListener to rename/move the file
+		ExecutionContext jobContext = stepExecution.getJobExecution().getExecutionContext();
+		jobContext.putString(FILE_GEN_PART_FILE_PATH, partFilePath);
+		jobContext.putLong(FILE_GEN_TOTAL_RECORD_COUNT, recordCount);
 		stepSuccessful = (stepExecution.getStatus() == BatchStatus.COMPLETED);
 		return stepExecution.getExitStatus();
 	}
@@ -151,7 +158,7 @@ public abstract class AbstractBaseOutputWriter<T> implements ItemStreamWriter<T>
 		return recordCount;
 	}
 
-	public String getOutputFilePath() {
+	public String getPartFilePath() {
 		return partFilePath;
 	}
 

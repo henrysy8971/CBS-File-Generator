@@ -5,7 +5,6 @@ import com.silverlakesymmetri.cbs.fileGenerator.dto.order.OrderDto;
 import org.springframework.batch.core.ExitStatus;
 import org.springframework.batch.core.StepExecution;
 import org.springframework.batch.core.configuration.annotation.StepScope;
-import org.springframework.batch.item.ExecutionContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.oxm.jaxb.Jaxb2Marshaller;
@@ -22,9 +21,6 @@ import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.Collections;
 import java.util.List;
-
-import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.FILE_GEN_PART_FILE_PATH;
-import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationConstants.FILE_GEN_TOTAL_RECORD_COUNT;
 
 @Component
 @StepScope
@@ -152,14 +148,6 @@ public class OrderItemWriter extends AbstractBaseOutputWriter<OrderDto> {
 
 	@Override
 	public ExitStatus afterStep(StepExecution stepExecution) {
-		// Call parent logic first to set stepSuccessful
-		ExitStatus exitStatus = super.afterStep(stepExecution);
-
-		// Populate Job Context with metadata for the JobListener to rename/move the file
-		ExecutionContext jobContext = stepExecution.getJobExecution().getExecutionContext();
-		jobContext.putString(FILE_GEN_PART_FILE_PATH, partFilePath);
-		jobContext.putLong(FILE_GEN_TOTAL_RECORD_COUNT, recordCount);
-
-		return exitStatus;
+		return super.afterStep(stepExecution);
 	}
 }

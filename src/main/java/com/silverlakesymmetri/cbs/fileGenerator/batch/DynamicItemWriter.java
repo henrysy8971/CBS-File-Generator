@@ -25,7 +25,6 @@ import static com.silverlakesymmetri.cbs.fileGenerator.constants.FileGenerationC
 @StepScope
 public class DynamicItemWriter implements ItemStreamWriter<DynamicRecord>, StepExecutionListener {
 	private static final Logger logger = LoggerFactory.getLogger(DynamicItemWriter.class);
-	private static final String CONTEXT_KEY_PART_FILE = "dynamic.writer.partFilePath";
 	private static final String CONTEXT_KEY_RECORD_COUNT = "dynamic.writer.recordCount";
 	private static final String CONTEXT_KEY_SKIPPED_COUNT = "dynamic.writer.skippedCount";
 	private final OutputFormatWriterFactory writerFactory;
@@ -46,7 +45,7 @@ public class DynamicItemWriter implements ItemStreamWriter<DynamicRecord>, StepE
 
 		try {
 			// RESTORE STATE: ExecutionContext is the source of truth for restarts
-			String existingPartFile = executionContext.getString(CONTEXT_KEY_PART_FILE, null);
+			String existingPartFile = executionContext.getString(FILE_GEN_PART_FILE_PATH);
 			if (existingPartFile != null && !Files.exists(Paths.get(existingPartFile))) {
 				logger.warn("Expected part file not found: {}", existingPartFile);
 			}
@@ -71,7 +70,7 @@ public class DynamicItemWriter implements ItemStreamWriter<DynamicRecord>, StepE
 		// Periodically called by Spring Batch to save the current progress
 		if (delegateWriter != null) {
 			delegateWriter.update(executionContext);
-			executionContext.putString(CONTEXT_KEY_PART_FILE, delegateWriter.getOutputFilePath());
+			executionContext.putString(FILE_GEN_PART_FILE_PATH, delegateWriter.getPartFilePath());
 			executionContext.putLong(CONTEXT_KEY_RECORD_COUNT, delegateWriter.getRecordCount());
 			executionContext.putLong(CONTEXT_KEY_SKIPPED_COUNT, delegateWriter.getSkippedCount());
 		}
@@ -108,9 +107,8 @@ public class DynamicItemWriter implements ItemStreamWriter<DynamicRecord>, StepE
 	public ExitStatus afterStep(StepExecution stepExecution) {
 		// Populate Job Context with metadata for the JobListener to rename/move the file
 		ExecutionContext jobContext = stepExecution.getJobExecution().getExecutionContext();
-		jobContext.putString(FILE_GEN_PART_FILE_PATH, delegateWriter.getOutputFilePath());
+		jobContext.putString(FILE_GEN_PART_FILE_PATH, delegateWriter.getPartFilePath());
 		jobContext.putLong(FILE_GEN_TOTAL_RECORD_COUNT, delegateWriter.getRecordCount());
-
 		if (delegateWriter instanceof StepExecutionListener) {
 			StepExecutionListener listener = (StepExecutionListener) delegateWriter;
 			return listener.afterStep(stepExecution);
